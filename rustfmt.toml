@@ -1,0 +1,6 @@
+use_field_init_shorthand = true
+imports_indent = "Block"
+imports_layout = "HorizontalVertical"
+imports_granularity = "Crate"
+reorder_imports = true
+reorder_modules = true

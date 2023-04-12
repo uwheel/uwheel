@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/haw",
+    "crates/haw_demo",
+    "crates/wheeldb",
+]
+[profile.release]
+opt-level = 2 # fast and small wasm

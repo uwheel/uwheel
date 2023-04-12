@@ -1,0 +1,59 @@
+[package]
+name = "haw"
+version = "0.1.0"
+edition = "2021"
+categories = ["warehousing", "streaming", "incremental aggregation", "no-std"]
+authors = ["Max Meldrum <max@meldrum.se>"]
+readme = "README.md"
+license = "Apache-2.0 & MIT"
+
+[features]
+default = ["years_size_10", "std"]
+alloc = ["rkyv?/alloc"]
+std = ["alloc", "rkyv?/std", "time/std"]
+years_size_10 = []
+years_size_100 = []
+macros = ["time/macros"]
+drill_down = ["alloc"]
+rkyv = ["dep:rkyv", "alloc"]
+
+[dependencies]
+time = { version = "0.3.17", default-features = false }
+# optional
+rkyv = { version = "0.7.39", default-features = false, features = ["size_32", "copy", "copy_unsafe"], optional = true }
+
+[dev-dependencies]
+fastrand = "1.8.0"
+rand = "0.8.5"
+criterion = "0.4"
+lz4_flex = "0.9.5"
+
+[[example]]
+name = "serde"
+path = "examples/serde.rs"
+required-features = ["rkyv"]
+
+[[example]]
+name = "sum_aggregator"
+path = "examples/sum_aggregator.rs"
+
+[[bench]]
+name = "insert"
+harness = false
+
+[[bench]]
+name = "advance"
+harness = false
+
+[[bench]]
+name = "queries"
+harness = false
+
+[[bench]]
+name = "merge"
+harness = false
+
+[[bench]]
+name = "serde"
+harness = false
+required-features = ["rkyv"]

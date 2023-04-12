@@ -1,0 +1,37 @@
+[package]
+name = "haw_fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+arbitrary = { version = "1.0.3", features = ["derive"] }
+
+[dependencies.haw]
+path = "../"
+
+[dependencies.libfuzzer-sys]
+version = "0.4.0"
+features = ["arbitrary-derive"]
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "sum_aggregator"
+path = "fuzz_targets/sum_aggregator.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "all_aggregator"
+path = "fuzz_targets/all_aggregator.rs"
+test = false
+doc = false
