@@ -14,24 +14,16 @@ use core::{
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 use alloc::{boxed::Box, vec::Vec};
 
+#[cfg(all(feature = "rkyv", feature = "alloc"))]
+use rkyv::{ser::Serializer, AlignedVec};
+
 #[cfg(feature = "rkyv")]
-use rkyv::{
-    ser::serializers::{
-        AlignedSerializer,
-        AllocScratch,
-        AllocSerializer,
-        CompositeSerializer,
-        FallbackScratch,
-        HeapScratch,
-        SharedSerializeMap,
-    },
-    ser::Serializer,
-    AlignedVec,
-    Archive,
-    Deserialize,
-    Infallible,
-    Serialize,
-};
+use rkyv::{Archive, Deserialize, Serialize};
+
+#[cfg(all(feature = "rkyv", feature = "alloc"))]
+use crate::DefaultSerializer;
+#[cfg(all(feature = "rkyv", feature = "alloc"))]
+use crate::PartialAggregate;
 
 mod iter;
 
@@ -99,6 +91,7 @@ impl<A: Aggregator> RotationData<A> {
 /// * `CAP` defines the circular buffer capacity (power of two).
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
+#[cfg_attr(not(feature = "drill_down"), derive(Copy))]
 #[derive(Clone, Debug)]
 pub struct AggregationWheel<const CAP: usize, A: Aggregator> {
     /// Number of slots (60 seconds => 60 slots)
@@ -558,36 +551,15 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             None
         }
     }
-
-    #[cfg(feature = "rkyv")]
+    #[cfg(all(feature = "rkyv", feature = "alloc"))]
     #[cfg(any(feature = "rkyv", doc))]
     #[doc(cfg(feature = "rkyv"))]
-    /// Deserialise given bytes into an AggregationWheel
-    pub fn from_bytes(bytes: &[u8]) -> Self
-    where
-        <<A as Aggregator>::PartialAggregate as Archive>::Archived:
-            Deserialize<<A as Aggregator>::PartialAggregate, Infallible>,
-    {
-        let archived = unsafe { rkyv::archived_root::<Self>(bytes) };
-        let wheel: Self = archived.deserialize(&mut Infallible).unwrap();
-        wheel
-    }
-
-    #[cfg(feature = "rkyv")]
-    #[cfg(any(feature = "rkyv", doc))]
-    #[doc(cfg(feature = "rkyv"))]
-    /// Serialises the AggregationWheel to bytes
+    /// Converts the wheel to bytes
     pub fn as_bytes(&self) -> AlignedVec
     where
-        <A as Aggregator>::PartialAggregate: Serialize<
-            CompositeSerializer<
-                AlignedSerializer<AlignedVec>,
-                FallbackScratch<HeapScratch<4096>, AllocScratch>,
-                SharedSerializeMap,
-            >,
-        >,
+        PartialAggregate<A>: Serialize<DefaultSerializer>,
     {
-        let mut serializer = AllocSerializer::<4096>::default();
+        let mut serializer = DefaultSerializer::default();
         serializer.serialize_value(self).unwrap();
         serializer.into_serializer().into_inner()
     }

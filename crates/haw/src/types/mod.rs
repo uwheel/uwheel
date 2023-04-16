@@ -4,25 +4,12 @@ use core::{
     mem::size_of,
     ops::{Index, IndexMut},
 };
-#[cfg(feature = "rkyv")]
-use rkyv::Archive;
 
-#[cfg(not(feature = "rkyv"))]
+/// Bounds required for a PartialAggregateType
 pub trait PartialAggregateBounds: Default + Debug + Clone + Copy + Send {}
-
-#[cfg(feature = "rkyv")]
-pub trait PartialAggregateBounds: Archive + Default + Debug + Clone + Copy + Send {}
-
-#[cfg(not(feature = "rkyv"))]
 impl<T> PartialAggregateBounds for T where T: Clone + Copy + Debug + Sync + Send + Default + 'static {}
 
-#[cfg(feature = "rkyv")]
-impl<T> PartialAggregateBounds for T where
-    T: Archive + Clone + Copy + Debug + Sync + Send + Default + 'static
-{
-}
-
-// Inspired by arrow2's NativeType trait (https://github.com/jorgecarleitao/arrow2/tree/main/src/types)
+// Based on arrow2's NativeType trait (https://github.com/jorgecarleitao/arrow2/tree/main/src/types)
 pub trait PartialAggregateType: PartialAggregateBounds {
     /// Type denoting its representation as bytes.
     /// This is `[u8; N]` where `N = size_of::<T>`.

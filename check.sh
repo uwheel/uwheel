@@ -15,4 +15,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --  -D warnings -W clippy::all
 cargo test --workspace --doc
 
+(cd crates/haw && cargo check --features "rkyv")
 (cd crates/haw && cargo check --features "rkyv, drill_down")
+(cd crates/haw && cargo check --no-default-features --features "years_size_10")
+(cd crates/haw && cargo check --no-default-features --features "years_size_10, rkyv")

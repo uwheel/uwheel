@@ -15,7 +15,7 @@ years_size_10 = []
 years_size_100 = []
 macros = ["time/macros"]
 drill_down = ["alloc"]
-rkyv = ["dep:rkyv", "alloc"]
+rkyv = ["dep:rkyv"]
 
 [dependencies]
 time = { version = "0.3.17", default-features = false }
@@ -31,7 +31,7 @@ lz4_flex = "0.9.5"
 [[example]]
 name = "serde"
 path = "examples/serde.rs"
-required-features = ["rkyv"]
+required-features = ["rkyv", "std"]
 
 [[example]]
 name = "sum_aggregator"

@@ -66,7 +66,7 @@ fn main() {
 
     let now = Instant::now();
     let lz4_decompressed = lz4_flex::decompress_size_prepended(&lz4_compressed).unwrap();
-    let lz4_wheel = Wheel::<SerdeAggregator>::from_bytes(&lz4_decompressed);
+    let lz4_wheel = Wheel::<SerdeAggregator>::from_bytes(&lz4_decompressed).unwrap();
     println!(
         "Empty lz4 decompress and deserialise wheel in {:?}",
         now.elapsed(),
@@ -105,7 +105,7 @@ fn main() {
 
     let now = Instant::now();
     let lz4_decompressed = lz4_flex::decompress_size_prepended(&lz4_compressed).unwrap();
-    let lz4_wheel = Wheel::<SerdeAggregator>::from_bytes(&lz4_decompressed);
+    let lz4_wheel = Wheel::<SerdeAggregator>::from_bytes(&lz4_decompressed).unwrap();
     println!(
         "Full lz4 decompress and deserialise wheel in {:?}",
         now.elapsed(),

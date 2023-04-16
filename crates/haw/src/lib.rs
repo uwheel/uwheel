@@ -84,24 +84,26 @@ use core::{
     write,
 };
 
-#[cfg(feature = "rkyv")]
+#[cfg(all(feature = "rkyv", feature = "alloc"))]
 use rkyv::{
+    de::deserializers::{SharedDeserializeMap, SharedDeserializeMapError},
     ser::serializers::{
         AlignedSerializer,
         AllocScratch,
-        AllocSerializer,
         CompositeSerializer,
         FallbackScratch,
         HeapScratch,
         SharedSerializeMap,
     },
-    ser::Serializer,
-    with::Skip,
     AlignedVec,
-    Archive,
-    Deserialize,
-    Infallible,
-    Serialize,
+};
+#[cfg(feature = "rkyv")]
+use rkyv::{ser::Serializer, with::Skip, Archive, Deserialize, Infallible, Serialize};
+
+#[cfg(all(feature = "rkyv", not(feature = "alloc")))]
+use rkyv::{
+    ser::serializers::{BufferSerializer, BufferSerializerError},
+    AlignedBytes,
 };
 
 /// Aggregation Wheel based on a fixed-sized circular buffer
@@ -135,12 +137,12 @@ core::compile_error!(
     `default-features = false` or compile with `--no-default-features`."
 );
 
-const SECONDS: usize = 60;
-const MINUTES: usize = 60;
-const HOURS: usize = 24;
-const DAYS: usize = 7;
-const WEEKS: usize = 4;
-const MONTHS: usize = 12;
+pub const SECONDS: usize = 60;
+pub const MINUTES: usize = 60;
+pub const HOURS: usize = 24;
+pub const DAYS: usize = 7;
+pub const WEEKS: usize = 4;
+pub const MONTHS: usize = 12;
 
 #[cfg(feature = "years_size_10")]
 pub const YEARS: usize = 10;
@@ -170,6 +172,20 @@ pub type WeeksWheel<A> = AggregationWheel<WEEKS_CAP, A>;
 pub type MonthsWheel<A> = AggregationWheel<MONTHS_CAP, A>;
 /// Type alias for an AggregationWheel representing years
 pub type YearsWheel<A> = AggregationWheel<YEARS_CAP, A>;
+
+cfg_rkyv! {
+    // Alias for an aggregators [`PartialAggregate`] type
+    type PartialAggregate<A> = <A as Aggregator>::PartialAggregate;
+    // Alias for an aggregators [`PartialAggregate`] archived type
+    type Archived<A> = <<A as Aggregator>::PartialAggregate as Archive>::Archived;
+    // Alias for the default serializer used by the crate
+    #[cfg(feature = "alloc")]
+    type DefaultSerializer = CompositeSerializer<
+        AlignedSerializer<AlignedVec>,
+        FallbackScratch<HeapScratch<4096>, AllocScratch>,
+        SharedSerializeMap,
+    >;
+}
 
 /// A type containing error variants that may arise when using a wheel
 #[derive(Debug)]
@@ -232,6 +248,7 @@ impl<T: Debug> fmt::Display for Entry<T> {
 /// Hierarchical aggregation wheel data structure
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
+#[cfg_attr(not(feature = "drill_down"), derive(Copy))]
 #[derive(Clone, Debug)]
 pub struct Wheel<A>
 where
@@ -720,60 +737,77 @@ where
         self.years_wheel.merge(&other.years_wheel, &self.aggregator);
     }
 
-    #[cfg(feature = "rkyv")]
-    /// Converts the wheel to bytes
+    #[cfg(all(feature = "rkyv", not(feature = "alloc")))]
+    #[cfg(any(feature = "rkyv", doc))]
+    #[doc(cfg(feature = "rkyv"))]
+    /// Converts the wheel to bytes as a fixed-sized byte array
+    ///
+    /// Does not perform any allocations and works in no_std mode.
+    pub fn serialize_to_bytes<const N: usize>(
+        &self,
+    ) -> Result<(usize, AlignedBytes<N>), BufferSerializerError>
+    where
+        PartialAggregate<A>: Serialize<BufferSerializer<AlignedBytes<N>>>,
+    {
+        let mut serializer = BufferSerializer::new(AlignedBytes([0u8; N]));
+        let pos = serializer.serialize_value(self)?;
+        Ok((pos, serializer.into_inner()))
+    }
+
+    #[cfg(all(feature = "rkyv", feature = "alloc"))]
+    #[cfg(any(feature = "rkyv", doc))]
+    #[doc(cfg(all(feature = "rkyv", feature = "alloc")))]
+    /// Converts the wheel to bytes using the default serializer
     pub fn as_bytes(&self) -> AlignedVec
     where
-        <A as Aggregator>::PartialAggregate: Serialize<
-            CompositeSerializer<
-                AlignedSerializer<AlignedVec>,
-                FallbackScratch<HeapScratch<4096>, AllocScratch>,
-                SharedSerializeMap,
-            >,
-        >,
+        PartialAggregate<A>: Serialize<DefaultSerializer>,
     {
-        let mut serializer = AllocSerializer::<4096>::default();
+        let mut serializer = DefaultSerializer::default();
         serializer.serialize_value(self).unwrap();
         serializer.into_serializer().into_inner()
     }
 
-    #[cfg(feature = "rkyv")]
+    #[cfg(all(feature = "rkyv", feature = "alloc"))]
+    #[cfg(any(feature = "rkyv", doc))]
+    #[doc(cfg(feature = "rkyv"))]
     /// Deserialise given bytes into a Wheel
     ///
     /// This function will deserialize the whole wheel.
-    pub fn from_bytes(bytes: &[u8]) -> Self
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, SharedDeserializeMapError>
     where
-        <<A as Aggregator>::PartialAggregate as Archive>::Archived:
-            Deserialize<<A as Aggregator>::PartialAggregate, Infallible>,
+        PartialAggregate<A>: Archive,
+        Archived<A>: Deserialize<PartialAggregate<A>, SharedDeserializeMap>,
     {
-        let archived = unsafe { rkyv::archived_root::<Self>(bytes) };
-        let wheel: Self = archived.deserialize(&mut Infallible).unwrap();
-        wheel
+        unsafe { rkyv::from_bytes_unchecked(bytes) }
     }
 
     #[cfg(feature = "rkyv")]
+    #[cfg(any(feature = "rkyv", doc))]
+    #[doc(cfg(feature = "rkyv"))]
     /// Deserialise given bytes into a seconds wheel
     ///
     /// For read-only operations that only target the seconds wheel,
     /// this function is more efficient as it will only deserialize a single wheel.
     pub fn seconds_wheel_from_bytes(bytes: &[u8]) -> SecondsWheel<A>
     where
-        <<A as Aggregator>::PartialAggregate as Archive>::Archived:
-            Deserialize<<A as Aggregator>::PartialAggregate, Infallible>,
+        PartialAggregate<A>: Archive,
+        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
     {
         let archived = unsafe { rkyv::archived_root::<Self>(bytes) };
         archived.seconds_wheel.deserialize(&mut Infallible).unwrap()
     }
 
     #[cfg(feature = "rkyv")]
+    #[cfg(any(feature = "rkyv", doc))]
+    #[doc(cfg(feature = "rkyv"))]
     /// Deserialise given bytes into a minutes wheel
     ///
     /// For read-only operations that only target the minutes wheel,
     /// this function is more efficient as it will only deserialize a single wheel.
     pub fn minutes_wheel_from_bytes(bytes: &[u8]) -> MinutesWheel<A>
     where
-        <<A as Aggregator>::PartialAggregate as Archive>::Archived:
-            Deserialize<<A as Aggregator>::PartialAggregate, Infallible>,
+        PartialAggregate<A>: Archive,
+        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
     {
         let archived_root = unsafe { rkyv::archived_root::<Self>(bytes) };
         archived_root
@@ -783,14 +817,16 @@ where
     }
 
     #[cfg(feature = "rkyv")]
+    #[cfg(any(feature = "rkyv", doc))]
+    #[doc(cfg(feature = "rkyv"))]
     /// Deserialise given bytes into a hours wheel
     ///
     /// For read-only operations that only target the hours wheel,
     /// this function is more efficient as it will only deserialize a single wheel.
     pub fn hours_wheel_from_bytes(bytes: &[u8]) -> HoursWheel<A>
     where
-        <<A as Aggregator>::PartialAggregate as Archive>::Archived:
-            Deserialize<<A as Aggregator>::PartialAggregate, Infallible>,
+        PartialAggregate<A>: Archive,
+        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
     {
         let archived_root = unsafe { rkyv::archived_root::<Self>(bytes) };
         archived_root
@@ -800,18 +836,75 @@ where
     }
 
     #[cfg(feature = "rkyv")]
+    #[cfg(any(feature = "rkyv", doc))]
+    #[doc(cfg(feature = "rkyv"))]
     /// Deserialise given bytes into a days wheel
     ///
     /// For read-only operations that only target the days wheel,
     /// this function is more efficient as it will only deserialize a single wheel.
     pub fn days_wheel_from_bytes(bytes: &[u8]) -> DaysWheel<A>
     where
-        <<A as Aggregator>::PartialAggregate as Archive>::Archived:
-            Deserialize<<A as Aggregator>::PartialAggregate, Infallible>,
+        PartialAggregate<A>: Archive,
+        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
     {
         let archived_root = unsafe { rkyv::archived_root::<Self>(bytes) };
         archived_root
             .days_wheel
+            .deserialize(&mut Infallible)
+            .unwrap()
+    }
+
+    #[cfg(feature = "rkyv")]
+    #[cfg(any(feature = "rkyv", doc))]
+    #[doc(cfg(feature = "rkyv"))]
+    /// Deserialise given bytes into a weeks wheel
+    ///
+    /// For read-only operations that only target the weeks wheel,
+    /// this function is more efficient as it will only deserialize a single wheel.
+    pub fn weeks_wheel_from_bytes(bytes: &[u8]) -> WeeksWheel<A>
+    where
+        PartialAggregate<A>: Archive,
+        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
+    {
+        let archived_root = unsafe { rkyv::archived_root::<Self>(bytes) };
+        archived_root
+            .weeks_wheel
+            .deserialize(&mut Infallible)
+            .unwrap()
+    }
+    #[cfg(feature = "rkyv")]
+    #[cfg(any(feature = "rkyv", doc))]
+    #[doc(cfg(feature = "rkyv"))]
+    /// Deserialise given bytes into a months wheel
+    ///
+    /// For read-only operations that only target the months wheel,
+    /// this function is more efficient as it will only deserialize a single wheel.
+    pub fn months_wheel_from_bytes(bytes: &[u8]) -> MonthsWheel<A>
+    where
+        PartialAggregate<A>: Archive,
+        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
+    {
+        let archived_root = unsafe { rkyv::archived_root::<Self>(bytes) };
+        archived_root
+            .months_wheel
+            .deserialize(&mut Infallible)
+            .unwrap()
+    }
+    #[cfg(feature = "rkyv")]
+    #[cfg(any(feature = "rkyv", doc))]
+    #[doc(cfg(feature = "rkyv"))]
+    /// Deserialise given bytes into a years wheel
+    ///
+    /// For read-only operations that only target the years wheel,
+    /// this function is more efficient as it will only deserialize a single wheel.
+    pub fn years_wheel_from_bytes(bytes: &[u8]) -> YearsWheel<A>
+    where
+        PartialAggregate<A>: Archive,
+        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
+    {
+        let archived_root = unsafe { rkyv::archived_root::<Self>(bytes) };
+        archived_root
+            .years_wheel
             .deserialize(&mut Infallible)
             .unwrap()
     }
@@ -1106,7 +1199,7 @@ mod tests {
         assert_eq!(decoded[59], 0);
     }
 
-    #[cfg(feature = "rkyv")]
+    #[cfg(all(feature = "rkyv", feature = "std"))]
     #[test]
     fn serde_test() {
         let aggregator = U32SumAggregator;
@@ -1116,12 +1209,12 @@ mod tests {
         let mut raw_wheel = wheel.as_bytes();
 
         for _ in 0..3 {
-            let mut wheel = Wheel::<U32SumAggregator>::from_bytes(&raw_wheel);
+            let mut wheel = Wheel::<U32SumAggregator>::from_bytes(&raw_wheel).unwrap();
             wheel.insert(Entry::new(1u32, time + 100)).unwrap();
             raw_wheel = wheel.as_bytes();
         }
 
-        let mut wheel = Wheel::from_bytes(&raw_wheel);
+        let mut wheel = Wheel::from_bytes(&raw_wheel).unwrap();
 
         time += 1000;
         wheel.advance_to(time);
