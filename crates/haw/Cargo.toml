@@ -2,24 +2,26 @@
 name = "haw"
 version = "0.1.0"
 edition = "2021"
-categories = ["warehousing", "streaming", "incremental aggregation", "no-std"]
+categories = ["index", "temporal warehousing", "streaming", "no-std"]
 authors = ["Max Meldrum <max@meldrum.se>"]
 readme = "README.md"
 license = "Apache-2.0 & MIT"
 
+[package.metadata.docs.rs]
+all-features = true
+targets = []
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = ["years_size_10", "std"]
 alloc = ["rkyv?/alloc"]
-std = ["alloc", "rkyv?/std", "time/std"]
+std = ["alloc", "rkyv?/std"]
 years_size_10 = []
 years_size_100 = []
-macros = ["time/macros"]
 drill_down = ["alloc"]
 rkyv = ["dep:rkyv"]
 
 [dependencies]
-time = { version = "0.3.17", default-features = false }
-# optional
 rkyv = { version = "0.7.39", default-features = false, features = ["size_32", "copy", "copy_unsafe"], optional = true }
 
 [dev-dependencies]

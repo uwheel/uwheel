@@ -16,6 +16,7 @@ use egui::{
 use haw::{aggregator::U64SumAggregator, time::NumericalDuration, Entry, Wheel};
 use hdrhistogram::Histogram;
 use instant::Instant;
+use time::OffsetDateTime;
 
 thread_local! {
     pub static QUERY_LATENCY: RefCell<Histogram<u64>> = RefCell::new(Histogram::new(4).unwrap());
@@ -33,6 +34,12 @@ fn measure<T>(query: impl Fn() -> T) -> T {
     });
 
     res
+}
+
+fn to_offset_datetime(time_ms: u64) -> OffsetDateTime {
+    // time represented in milliseconds, convert it to seconds for `OffsetDateTime`
+    let unix_ts = time_ms.saturating_div(1000);
+    OffsetDateTime::from_unix_timestamp(unix_ts as i64).unwrap()
 }
 
 pub const WATERMARK_COLOR: Color32 = Color32::from_rgb(0, 255, 255);
@@ -135,7 +142,7 @@ pub struct HawLabels {
 impl HawLabels {
     pub fn new(wheel: &Wheel<DemoAggregator>) -> Self {
         let watermark_unix_label = wheel.watermark().to_string();
-        let watermark_label = wheel.now().to_string();
+        let watermark_label = to_offset_datetime(wheel.watermark()).to_string();
         let slots_len_label = wheel.len().to_string();
         let remaining_ticks_label = wheel.remaining_ticks().to_string();
         let seconds_ticks_label = wheel.seconds_wheel().ticks_remaining().to_string();
@@ -239,7 +246,8 @@ impl TemplateApp {
         // Watermark
 
         let watermark_agg = wheel.seconds_wheel().lower(0, &aggregator).unwrap_or(0) as f64;
-        let bar = Bar::new(0.5, watermark_agg).name(wheel.now().to_string());
+        let bar =
+            Bar::new(0.5, watermark_agg).name(to_offset_datetime(wheel.watermark()).to_string());
         let watermark_chart = BarChart::new(vec![bar])
             .highlight(true)
             .color(WATERMARK_COLOR)
@@ -346,7 +354,7 @@ impl TemplateApp {
                 .show(ui, |_plot_ui| {})
                 .response
         };
-        let watermark_date = wheel.now();
+        let watermark_date = to_offset_datetime(wheel.watermark());
 
         let label_fmt = move |_s: &str, val: &PlotPoint| {
             let x = val.x as usize;
@@ -656,7 +664,7 @@ impl eframe::App for TemplateApp {
         let update_haw_labels =
             |labels: &mut HawLabels, wheel: &Rc<RefCell<Wheel<DemoAggregator>>>| {
                 let wheel = wheel.borrow();
-                labels.watermark_label = wheel.now().to_string();
+                labels.watermark_label = to_offset_datetime(wheel.watermark()).to_string();
                 labels.watermark_unix_label = wheel.watermark().to_string();
                 labels.remaining_ticks_label = wheel.remaining_ticks().to_string();
                 labels.slots_len_label = wheel.len().to_string();

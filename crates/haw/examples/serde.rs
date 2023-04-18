@@ -2,8 +2,8 @@ use std::time::Instant;
 
 use haw::{time::NumericalDuration, *};
 
-pub type SerdeAggregator = haw::aggregator::U64SumAggregator;
-//pub type SerdeAggregator = haw::aggregator::AllAggregator;
+//pub type SerdeAggregator = haw::aggregator::U64SumAggregator;
+pub type SerdeAggregator = haw::aggregator::AllAggregator;
 
 fn main() {
     // Initial start time
@@ -77,7 +77,9 @@ fn main() {
 
     for _ in 0..total_ticks - 1 {
         wheel.advance(1.seconds());
-        wheel.insert(Entry::new(1, wheel.watermark() + 1)).unwrap();
+        wheel
+            .insert(Entry::new(1.0, wheel.watermark() + 1))
+            .unwrap();
     }
     println!("wheel total {:?}", wheel.landmark());
 

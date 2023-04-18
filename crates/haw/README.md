@@ -1,8 +1,6 @@
 # Hierarchical Aggregation Wheel (HAW)
 
-Hierarchical Aggregation Wheel is data structure that pre-computes and maintains aggregates
-across stream event time. The overall goal is to cover both Streaming + OLAP needs in a single data structure and not to outperform handtuned algorithms (e.g., sliding window algorithms)
-
+Hierarchical Aggregation Wheel is a compact index that pre-computes and maintains aggregates across stream event time. 
 ## Features
 
 - Fast insertions

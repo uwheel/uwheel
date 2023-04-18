@@ -45,15 +45,13 @@
 //!     - Enables rolling up aggregates across 10 years
 //! - `years_size_100`
 //!     - Enables rolling up aggregates across 100 years
-//! - `macros`
-//!     - Enables macros that provide user-friendly syntax for time definitions
 //! - `drill_down` (_implicitly enables alloc_)
 //!     - Enables drill-down operations on wheels at the cost of more storage
 //! - `rkyv`
 //!     - Enables serialisation & deserialisation using the [rkyv](https://docs.rs/rkyv/latest/rkyv/) framework.
 
 #![feature(slice_range)]
-#![feature(doc_cfg)]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(all(feature = "alloc", not(feature = "std")))]
@@ -112,21 +110,16 @@ use rkyv::{
 pub mod agg_wheel;
 /// Aggregation Interface adopted from the work of [Tangwongsan et al.](http://www.vldb.org/pvldb/vol8/p702-tangwongsan.pdf)
 pub mod aggregator;
+/// Time utilities
+///
+/// Heavily borrowed from the [time](https://docs.rs/time/latest/time/) crate
+pub mod time;
 /// Data types used in this crate
 pub mod types;
 
 use aggregator::Aggregator;
 
-extern crate time as other_time;
-/// Utilies borrowed from the [time](https://docs.rs/time/latest/time/) crate
-pub mod time {
-    #[cfg(feature = "macros")]
-    pub use time::macros::datetime;
-    pub use time::{ext::NumericalDuration, Duration, OffsetDateTime};
-}
-
 use agg_wheel::AggregationWheel;
-use other_time::OffsetDateTime;
 
 #[cfg(not(any(feature = "years_size_10", feature = "years_size_100")))]
 core::compile_error!(r#"one of ["years_size_10", "years_size_100"] features must be enabled"#);
@@ -473,13 +466,6 @@ where
         self.watermark
     }
 
-    /// Returns the current watermark as `OffsetDateTime`
-    pub fn now(&self) -> OffsetDateTime {
-        // our watermark is represented in milliseconds, convert it to seconds for `OffsetDateTime`
-        let unix_ts = self.watermark.saturating_div(1000);
-        OffsetDateTime::from_unix_timestamp(unix_ts as i64).unwrap()
-    }
-
     /// Returns a full aggregate in the given time interval
     pub fn interval(&self, dur: time::Duration) -> Option<A::Aggregate> {
         // closure that turns i64 to None if it is zero
@@ -738,8 +724,6 @@ where
     }
 
     #[cfg(all(feature = "rkyv", not(feature = "alloc")))]
-    #[cfg(any(feature = "rkyv", doc))]
-    #[doc(cfg(feature = "rkyv"))]
     /// Converts the wheel to bytes as a fixed-sized byte array
     ///
     /// Does not perform any allocations and works in no_std mode.
@@ -755,8 +739,6 @@ where
     }
 
     #[cfg(all(feature = "rkyv", feature = "alloc"))]
-    #[cfg(any(feature = "rkyv", doc))]
-    #[doc(cfg(all(feature = "rkyv", feature = "alloc")))]
     /// Converts the wheel to bytes using the default serializer
     pub fn as_bytes(&self) -> AlignedVec
     where
@@ -768,8 +750,6 @@ where
     }
 
     #[cfg(all(feature = "rkyv", feature = "alloc"))]
-    #[cfg(any(feature = "rkyv", doc))]
-    #[doc(cfg(feature = "rkyv"))]
     /// Deserialise given bytes into a Wheel
     ///
     /// This function will deserialize the whole wheel.
@@ -782,8 +762,6 @@ where
     }
 
     #[cfg(feature = "rkyv")]
-    #[cfg(any(feature = "rkyv", doc))]
-    #[doc(cfg(feature = "rkyv"))]
     /// Deserialise given bytes into a seconds wheel
     ///
     /// For read-only operations that only target the seconds wheel,
@@ -798,8 +776,6 @@ where
     }
 
     #[cfg(feature = "rkyv")]
-    #[cfg(any(feature = "rkyv", doc))]
-    #[doc(cfg(feature = "rkyv"))]
     /// Deserialise given bytes into a minutes wheel
     ///
     /// For read-only operations that only target the minutes wheel,
@@ -817,8 +793,6 @@ where
     }
 
     #[cfg(feature = "rkyv")]
-    #[cfg(any(feature = "rkyv", doc))]
-    #[doc(cfg(feature = "rkyv"))]
     /// Deserialise given bytes into a hours wheel
     ///
     /// For read-only operations that only target the hours wheel,
@@ -836,8 +810,6 @@ where
     }
 
     #[cfg(feature = "rkyv")]
-    #[cfg(any(feature = "rkyv", doc))]
-    #[doc(cfg(feature = "rkyv"))]
     /// Deserialise given bytes into a days wheel
     ///
     /// For read-only operations that only target the days wheel,
@@ -855,8 +827,6 @@ where
     }
 
     #[cfg(feature = "rkyv")]
-    #[cfg(any(feature = "rkyv", doc))]
-    #[doc(cfg(feature = "rkyv"))]
     /// Deserialise given bytes into a weeks wheel
     ///
     /// For read-only operations that only target the weeks wheel,
@@ -873,8 +843,6 @@ where
             .unwrap()
     }
     #[cfg(feature = "rkyv")]
-    #[cfg(any(feature = "rkyv", doc))]
-    #[doc(cfg(feature = "rkyv"))]
     /// Deserialise given bytes into a months wheel
     ///
     /// For read-only operations that only target the months wheel,
@@ -891,8 +859,6 @@ where
             .unwrap()
     }
     #[cfg(feature = "rkyv")]
-    #[cfg(any(feature = "rkyv", doc))]
-    #[doc(cfg(feature = "rkyv"))]
     /// Deserialise given bytes into a years wheel
     ///
     /// For read-only operations that only target the years wheel,

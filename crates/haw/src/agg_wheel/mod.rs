@@ -64,8 +64,12 @@ cfg_drill_down! {
 
 /// Struct holding data for a complete wheel rotation
 pub struct RotationData<A: Aggregator> {
+    /// A possible partial aggregate that is being rolled up into another wheel
     pub total: Option<A::PartialAggregate>,
     #[cfg(feature = "drill_down")]
+    /// An array of partial aggregate slots
+    ///
+    /// The combined aggregate of these slots equal to the `total` field
     pub drill_down_slots: Option<Vec<A::PartialAggregate>>,
 }
 impl<A: Aggregator> RotationData<A> {
@@ -552,8 +556,6 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         }
     }
     #[cfg(all(feature = "rkyv", feature = "alloc"))]
-    #[cfg(any(feature = "rkyv", doc))]
-    #[doc(cfg(feature = "rkyv"))]
     /// Converts the wheel to bytes
     pub fn as_bytes(&self) -> AlignedVec
     where
