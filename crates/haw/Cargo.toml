@@ -14,7 +14,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["years_size_10", "std"]
-alloc = ["rkyv?/alloc"]
+alloc = ["hashbrown", "rkyv?/alloc"]
 std = ["alloc", "rkyv?/std"]
 years_size_10 = []
 years_size_100 = []
@@ -23,6 +23,7 @@ rkyv = ["dep:rkyv"]
 
 [dependencies]
 rkyv = { version = "0.7.39", default-features = false, features = ["size_32", "copy", "copy_unsafe"], optional = true }
+hashbrown = { version = "0.13", optional = true }
 
 [dev-dependencies]
 fastrand = "1.8.0"

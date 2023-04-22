@@ -2,8 +2,7 @@
 //!
 //! ## What it is
 //!
-//! Hierarchical Aggregation Wheels is a data structure for incremental aggregation and on-the-fly data warehousing.
-//! The overall goal is to cover both Streaming + OLAP needs in a single data structure and not to outperform handtuned algorithms (e.g., sliding window algorithms)
+//! Hierarchical Aggregation Wheel is a compact index that pre-computes and maintains aggregates across stream event time.
 //!
 //! Key features:
 //!
@@ -110,6 +109,9 @@ use rkyv::{
 pub mod agg_wheel;
 /// Aggregation Interface adopted from the work of [Tangwongsan et al.](http://www.vldb.org/pvldb/vol8/p702-tangwongsan.pdf)
 pub mod aggregator;
+#[cfg(feature = "alloc")]
+/// A Map maintaining a [Wheel] per key
+pub mod map;
 /// Time utilities
 ///
 /// Heavily borrowed from the [time](https://docs.rs/time/latest/time/) crate

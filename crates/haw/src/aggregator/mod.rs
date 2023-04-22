@@ -21,7 +21,6 @@ pub trait Aggregator: Default + Debug + 'static {
     /// Final Aggregate type
     type Aggregate: Send;
     /// Partial Aggregate type
-    //type PartialAggregate: PartialAggregateBounds;
     type PartialAggregate: PartialAggregateType;
 
     /// Convert the input entry to a partial aggregate

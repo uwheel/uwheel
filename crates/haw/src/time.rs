@@ -1,7 +1,7 @@
 // The code in this file is pulled in from the [`time`] crate.
 // link: https://github.com/time-rs/time/blob/main/time/src/duration.rs
 // Apache 2.0 & MIT license
-// Reasoning: Avoid external dependency and usage of external dependency in HAWs own user facing API
+// Reasoning: Avoid external dependency and usage of such in this crates own user facing API
 
 use core::{fmt, time::Duration as StdDuration};
 
