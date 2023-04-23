@@ -36,10 +36,6 @@ name = "serde"
 path = "examples/serde.rs"
 required-features = ["rkyv", "std"]
 
-[[example]]
-name = "sum_aggregator"
-path = "examples/sum_aggregator.rs"
-
 [[bench]]
 name = "insert"
 harness = false

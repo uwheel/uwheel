@@ -1,57 +1,7 @@
-//! # Hierarchical Aggregation Wheels
-//!
-//! ## What it is
-//!
-//! Hierarchical Aggregation Wheel is a compact index that pre-computes and maintains aggregates across stream event time.
-//!
-//! Key features:
-//!
-//! * Fast insertions
-//! * Event-time Integration
-//! * Compact and highly compressible
-//! * Bounded Query Latency
-//!
-//! ## How it works
-//!
-//! Similarly to Hierarchical Wheel Timers, we exploit the hierarchical nature of time and utilise several aggregation wheels,
-//! each with a different time granularity. This enables a compact representation of aggregates across time
-//! with a low memory footprint and makes it highly compressible and efficient to store on disk.
-//! For instance, to store aggregates with second granularity up to 10 years, we would need the following aggregation wheels:
-//!
-//! * Seconds wheel with 60 slots
-//! * Minutes wheel with 60 slots
-//! * Hours wheel with 24 slots
-//! * Days wheel with 7 slots
-//! * Weeks wheel with 4 slots
-//! * Months wheel with 12 slots
-//! * Years wheel with 10 slots
-//!
-//! The above scheme results in a total of 177 wheel slots. This is the minimum number of slots
-//! required to support rolling up aggregates across 10 years with second granularity.
-//!
-//! Internally, a low watermark is maintained. Insertions with timestamps below the watermark will be ignored.
-//! It is up to the user of the wheel to advance the watermark and thus roll up aggregates continously up the time hierarchy.
-//! Note that the wheel may insert aggregates above the watermark, but state is only queryable below the watermark point.
-//!
-//!
-//! # Feature Flags
-//!
-//! - `std` (_enabled by default_)
-//!     - Enables features that rely on the standard library
-//! - `alloc` (_enabled by default via std_)
-//!     - Enables a number of features that require the ability to dynamically allocate memory.
-//! - `years_size_10` (_enabled by default_)
-//!     - Enables rolling up aggregates across 10 years
-//! - `years_size_100`
-//!     - Enables rolling up aggregates across 100 years
-//! - `drill_down` (_implicitly enables alloc_)
-//!     - Enables drill-down operations on wheels at the cost of more storage
-//! - `rkyv`
-//!     - Enables serialisation & deserialisation using the [rkyv](https://docs.rs/rkyv/latest/rkyv/) framework.
-
-#![feature(slice_range)]
+#![doc = include_str!("../README.md")]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(slice_range)]
 
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 extern crate alloc;
@@ -108,6 +58,8 @@ use rkyv::{
 /// This is the core data structure that is reused between different hierarchies (e.g., seconds, minutes, hours, days)
 pub mod agg_wheel;
 /// Aggregation Interface adopted from the work of [Tangwongsan et al.](http://www.vldb.org/pvldb/vol8/p702-tangwongsan.pdf)
+///
+/// This module also contains a number of pre-defined aggregators (e.g., SUM)
 pub mod aggregator;
 #[cfg(feature = "alloc")]
 /// A Map maintaining a [Wheel] per key
