@@ -1,8 +1,14 @@
 # WheelDB
 
-A new type of database driven by wheels.
+WheelDB is an in-process temporal analytical database driven by wheels.
 
-More info coming soon
+Features:
+
+- High-throughput Stream Ingestion
+- Stream Analytics + Multi-dimensional OLAP
+- Native Event-time integration
+
+More info coming soon.
 
 ## License
 
