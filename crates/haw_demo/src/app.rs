@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use ahash::AHashMap;
-use eframe::epaint::RectShape;
+use eframe::{egui, epaint::RectShape};
 use egui::{
     plot::{Bar, BarChart, Legend, Plot, PlotPoint},
     Color32,
@@ -202,7 +202,6 @@ impl Default for TemplateApp {
         wheels.insert(Student::Harald, Rc::new(RefCell::new(wheel.clone())));
         let labels = HawLabels::new(&wheel);
         Self {
-            //wheel: Rc::new(RefCell::new(wheel.clone())),
             wheels,
             star_wheel: Rc::new(RefCell::new(wheel)),
             labels,
