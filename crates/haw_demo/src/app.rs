@@ -235,6 +235,9 @@ impl TemplateApp {
     }
     // TODO: optimise
     fn wheels_plot(&self, wheel: Rc<RefCell<Wheel<DemoAggregator>>>, ui: &mut Ui) -> Response {
+        #[cfg(not(target_arch = "wasm32"))]
+        puffin::profile_function!();
+
         let wheel = wheel.borrow();
         let seconds_wheel = wheel.seconds_wheel();
         let days_wheel = wheel.days_wheel();
@@ -647,6 +650,13 @@ impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        #[cfg(not(target_arch = "wasm32"))]
+        puffin::GlobalProfiler::lock().new_frame(); // call once per frame!
+        #[cfg(not(target_arch = "wasm32"))]
+        puffin::profile_function!();
+        #[cfg(not(target_arch = "wasm32"))]
+        puffin_egui::profiler_window(ctx);
+
         let Self {
             labels,
             tick_granularity,
@@ -690,7 +700,7 @@ impl eframe::App for TemplateApp {
         // For inspiration and more examples, go to https://emilk.github.io/egui
 
         #[cfg(not(target_arch = "wasm32"))] // no File->Quit on web pages!
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+        egui::TopBottomPanel::top("top_panel_quit").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
@@ -725,6 +735,9 @@ impl eframe::App for TemplateApp {
         });
 
         egui::SidePanel::right("query_panel").show(ctx, |ui| {
+            #[cfg(not(target_arch = "wasm32"))]
+            puffin::profile_scope!("query_panel");
+
             ui.heading("🗠 Plot");
             ui.horizontal(|ui| {
                 ui.label("Key: ");
@@ -832,6 +845,9 @@ impl eframe::App for TemplateApp {
         });
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
+            #[cfg(not(target_arch = "wasm32"))]
+            puffin::profile_scope!("side_panel");
+
             ui.horizontal(|ui| {
                 ui.heading("💻 HAW Demo");
                 egui::widgets::global_dark_light_mode_buttons(ui);
@@ -1107,8 +1123,6 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
-
-            // input here should be which dimension/key that is viewed!
             self.wheels_plot(plot_wheel, ui);
         });
 

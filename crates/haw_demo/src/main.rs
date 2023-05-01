@@ -6,6 +6,8 @@ mod app;
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
+    // tell puffin to collect data
+    puffin::set_scopes_on(true);
     // Log to stdout (if you run with `RUST_LOG=debug`).
     tracing_subscriber::fmt::init();
 
