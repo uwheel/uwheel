@@ -88,8 +88,7 @@ pub const SECONDS: usize = 60;
 pub const MINUTES: usize = 60;
 pub const HOURS: usize = 24;
 pub const DAYS: usize = 7;
-pub const WEEKS: usize = 4;
-pub const MONTHS: usize = 12;
+pub const WEEKS: usize = 52;
 
 #[cfg(feature = "years_size_10")]
 pub const YEARS: usize = 10;
@@ -101,8 +100,7 @@ const SECONDS_CAP: usize = 128; // This is set as 128 instead of 64 to support w
 const MINUTES_CAP: usize = 64;
 const HOURS_CAP: usize = 32;
 const DAYS_CAP: usize = 8;
-const WEEKS_CAP: usize = 8;
-const MONTHS_CAP: usize = 16;
+const WEEKS_CAP: usize = 64;
 const YEARS_CAP: usize = YEARS.next_power_of_two();
 
 /// Type alias for an AggregationWheel representing seconds
@@ -115,8 +113,6 @@ pub type HoursWheel<A> = AggregationWheel<HOURS_CAP, A>;
 pub type DaysWheel<A> = AggregationWheel<DAYS_CAP, A>;
 /// Type alias for an AggregationWheel representing weeks
 pub type WeeksWheel<A> = AggregationWheel<WEEKS_CAP, A>;
-/// Type alias for an AggregationWheel representing months
-pub type MonthsWheel<A> = AggregationWheel<MONTHS_CAP, A>;
 /// Type alias for an AggregationWheel representing years
 pub type YearsWheel<A> = AggregationWheel<YEARS_CAP, A>;
 
@@ -210,8 +206,6 @@ where
     days_wheel: DaysWheel<A>,
     #[cfg_attr(feature = "rkyv", omit_bounds)]
     weeks_wheel: WeeksWheel<A>,
-    #[cfg_attr(feature = "rkyv", omit_bounds)]
-    months_wheel: MonthsWheel<A>,
     years_wheel: YearsWheel<A>,
     // for some reason rkyv fails to compile without this.
     #[cfg(feature = "rkyv")]
@@ -227,14 +221,13 @@ where
     const HOURS_AS_SECS: u64 = time::Duration::HOUR.whole_seconds() as u64;
     const DAYS_AS_SECS: u64 = time::Duration::DAY.whole_seconds() as u64;
     const WEEK_AS_SECS: u64 = time::Duration::WEEK.whole_seconds() as u64;
-    const MONTH_AS_SECS: u64 = Self::WEEK_AS_SECS * WEEKS as u64;
-    const YEAR_AS_SECS: u64 = Self::MONTH_AS_SECS * MONTHS as u64;
+    const YEAR_AS_SECS: u64 = Self::WEEK_AS_SECS * WEEKS as u64;
     const CYCLE_LENGTH_SECS: u64 = Self::CYCLE_LENGTH.whole_seconds() as u64;
 
     const TOTAL_SECS_IN_WHEEL: u64 = Self::YEAR_AS_SECS * YEARS as u64;
     pub const CYCLE_LENGTH: time::Duration =
         time::Duration::seconds((Self::YEAR_AS_SECS * (YEARS as u64 + 1)) as i64); // need 1 extra to force full cycle rotation
-    pub const TOTAL_WHEEL_SLOTS: usize = SECONDS + MINUTES + HOURS + DAYS + WEEKS + MONTHS + YEARS;
+    pub const TOTAL_WHEEL_SLOTS: usize = SECONDS + MINUTES + HOURS + DAYS + WEEKS + YEARS;
     pub const MAX_WRITE_AHEAD_SLOTS: usize = SECONDS_CAP - SECONDS;
 
     #[cfg(feature = "drill_down")]
@@ -250,7 +243,6 @@ where
             hours_wheel: AggregationWheel::with_drill_down(HOURS),
             days_wheel: AggregationWheel::with_drill_down(DAYS),
             weeks_wheel: AggregationWheel::with_drill_down(WEEKS),
-            months_wheel: AggregationWheel::with_drill_down(MONTHS),
             years_wheel: AggregationWheel::with_drill_down(YEARS),
             #[cfg(feature = "rkyv")]
             _marker: Default::default(),
@@ -269,7 +261,6 @@ where
             hours_wheel: AggregationWheel::new(HOURS),
             days_wheel: AggregationWheel::new(DAYS),
             weeks_wheel: AggregationWheel::new(WEEKS),
-            months_wheel: AggregationWheel::new(MONTHS),
             years_wheel: AggregationWheel::new(YEARS),
             #[cfg(feature = "rkyv")]
             _marker: Default::default(),
@@ -283,7 +274,6 @@ where
             + self.hours_wheel.len()
             + self.days_wheel.len()
             + self.weeks_wheel.len()
-            + self.months_wheel.len()
             + self.years_wheel.len()
     }
 
@@ -315,9 +305,8 @@ where
         let hr_secs = self.hours_wheel.rotation_count() as u64 * Self::HOURS_AS_SECS;
         let day_secs = self.days_wheel.rotation_count() as u64 * Self::DAYS_AS_SECS;
         let week_secs = self.weeks_wheel.rotation_count() as u64 * Self::WEEK_AS_SECS;
-        let month_secs = self.months_wheel.rotation_count() as u64 * Self::MONTH_AS_SECS;
         let year_secs = self.years_wheel.rotation_count() as u64 * Self::YEAR_AS_SECS;
-        let cycle_time = secs + min_secs + hr_secs + day_secs + week_secs + month_secs + year_secs;
+        let cycle_time = secs + min_secs + hr_secs + day_secs + week_secs + year_secs;
         time::Duration::seconds(cycle_time as i64)
     }
 
@@ -380,7 +369,6 @@ where
         self.hours_wheel.clear();
         self.days_wheel.clear();
         self.weeks_wheel.clear();
-        self.months_wheel.clear();
         self.years_wheel.clear();
     }
 
@@ -436,7 +424,6 @@ where
         let day = to_option(dur.whole_days() % DAYS as i64);
         // TODO: integrate week, month and year.
         //let week = to_option(dur.whole_weeks() % WEEKS as i64);
-        //let month = to_option((dur.whole_weeks() / 4) % MONTHS as i64);
         //let year = to_option((dur.whole_weeks() / 48) % YEARS as i64);
         //dbg!((second, minute, hour, day, week, month, year));
         self.combine_and_lower_time(second, minute, hour, day)
@@ -550,7 +537,6 @@ where
             self.hours_wheel.total(),
             self.days_wheel.total(),
             self.weeks_wheel.total(),
-            self.months_wheel.total(),
             self.years_wheel.total(),
         ];
         Self::reduce(wheels, &self.aggregator).map(|partial_agg| self.aggregator.lower(partial_agg))
@@ -603,16 +589,11 @@ where
 
                         // full rotation of weeks wheel
                         if let Some(rot_data) = self.weeks_wheel.tick(aggregator) {
-                            // insert 1 week worth of partial aggregates into month wheel and then tick it
-                            self.months_wheel.insert_rotation_data(rot_data, aggregator);
+                            // insert 1 years worth of partial aggregates into year wheel and then tick it
+                            self.years_wheel.insert_rotation_data(rot_data, aggregator);
 
-                            if let Some(rot_data) = self.months_wheel.tick(aggregator) {
-                                // insert 1 years worth of partial aggregates into year wheel and then tick it
-                                self.years_wheel.insert_rotation_data(rot_data, aggregator);
-
-                                // tick but ignore full rotations as this is the last hierarchy
-                                let _ = self.years_wheel.tick(aggregator);
-                            }
+                            // tick but ignore full rotations as this is the last hierarchy
+                            let _ = self.years_wheel.tick(aggregator);
                         }
                     }
                 }
@@ -641,10 +622,6 @@ where
     pub fn weeks_wheel(&self) -> &WeeksWheel<A> {
         &self.weeks_wheel
     }
-    /// Returns a reference to the months wheel
-    pub fn months_wheel(&self) -> &MonthsWheel<A> {
-        &self.months_wheel
-    }
 
     /// Returns a reference to the years wheel
     pub fn years_wheel(&self) -> &YearsWheel<A> {
@@ -672,8 +649,6 @@ where
         self.hours_wheel.merge(&other.hours_wheel, &self.aggregator);
         self.days_wheel.merge(&other.days_wheel, &self.aggregator);
         self.weeks_wheel.merge(&other.weeks_wheel, &self.aggregator);
-        self.months_wheel
-            .merge(&other.months_wheel, &self.aggregator);
         self.years_wheel.merge(&other.years_wheel, &self.aggregator);
     }
 
@@ -793,22 +768,6 @@ where
         let archived_root = unsafe { rkyv::archived_root::<Self>(bytes) };
         archived_root
             .weeks_wheel
-            .deserialize(&mut Infallible)
-            .unwrap()
-    }
-    #[cfg(feature = "rkyv")]
-    /// Deserialise given bytes into a months wheel
-    ///
-    /// For read-only operations that only target the months wheel,
-    /// this function is more efficient as it will only deserialize a single wheel.
-    pub fn months_wheel_from_bytes(bytes: &[u8]) -> MonthsWheel<A>
-    where
-        PartialAggregate<A>: Archive,
-        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
-    {
-        let archived_root = unsafe { rkyv::archived_root::<Self>(bytes) };
-        archived_root
-            .months_wheel
             .deserialize(&mut Infallible)
             .unwrap()
     }
@@ -942,7 +901,6 @@ mod tests {
         assert_eq!(wheel.hours_wheel.rotation_count(), HOURS - 1);
         assert_eq!(wheel.days_wheel.rotation_count(), DAYS - 1);
         assert_eq!(wheel.weeks_wheel.rotation_count(), WEEKS - 1);
-        assert_eq!(wheel.months_wheel.rotation_count(), MONTHS - 1);
         assert_eq!(wheel.years_wheel.rotation_count(), YEARS - 1);
 
         // force full cycle clear
@@ -954,7 +912,6 @@ mod tests {
         assert_eq!(wheel.hours_wheel.rotation_count(), 0);
         assert_eq!(wheel.days_wheel.rotation_count(), 0);
         assert_eq!(wheel.weeks_wheel.rotation_count(), 0);
-        assert_eq!(wheel.months_wheel.rotation_count(), 0);
         assert_eq!(wheel.years_wheel.rotation_count(), 0);
 
         // Verify len of all wheels
@@ -963,7 +920,6 @@ mod tests {
         assert_eq!(wheel.hours_wheel().len(), HOURS);
         assert_eq!(wheel.days_wheel().len(), DAYS);
         assert_eq!(wheel.weeks_wheel().len(), WEEKS);
-        assert_eq!(wheel.months_wheel().len(), MONTHS);
         assert_eq!(wheel.years_wheel().len(), YEARS);
 
         assert!(wheel.is_full());

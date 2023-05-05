@@ -48,7 +48,6 @@ pub const MINUTE_COLOR: Color32 = Color32::from_rgb(38, 118, 199);
 pub const HOUR_COLOR: Color32 = Color32::from_rgb(0, 218, 0);
 pub const DAY_COLOR: Color32 = Color32::from_rgb(222, 0, 204);
 pub const WEEK_COLOR: Color32 = Color32::from_rgb(255, 237, 73);
-pub const MONTH_COLOR: Color32 = Color32::from_rgb(255, 127, 0);
 pub const YEAR_COLOR: Color32 = Color32::from_rgb(255, 143, 154);
 
 #[derive(Clone, Copy, Hash, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -93,7 +92,6 @@ pub enum Granularity {
     Hour,
     Day,
     Week,
-    Month,
     Year,
 }
 impl Default for Granularity {
@@ -111,10 +109,8 @@ fn calculate_granularity(position: usize) -> Option<(Granularity, usize)> {
         Some((Granularity::Hour, position - 120))
     } else if (145..=151).contains(&position) {
         Some((Granularity::Day, position - 144))
-    } else if (152..=155).contains(&position) {
+    } else if (152..=167).contains(&position) {
         Some((Granularity::Week, position - 151))
-    } else if (156..=167).contains(&position) {
-        Some((Granularity::Month, position - 155))
     } else if (168..=177).contains(&position) {
         Some((Granularity::Year, position - 167))
     } else {
@@ -136,7 +132,6 @@ pub struct HawLabels {
     pub(crate) hours_ticks_label: String,
     pub(crate) days_ticks_label: String,
     pub(crate) weeks_ticks_label: String,
-    pub(crate) months_ticks_label: String,
     pub(crate) years_ticks_label: String,
 }
 impl HawLabels {
@@ -150,7 +145,6 @@ impl HawLabels {
         let hours_ticks_label = wheel.hours_wheel().ticks_remaining().to_string();
         let days_ticks_label = wheel.days_wheel().ticks_remaining().to_string();
         let weeks_ticks_label = wheel.weeks_wheel().ticks_remaining().to_string();
-        let months_ticks_label = wheel.months_wheel().ticks_remaining().to_string();
         let years_ticks_label = wheel.years_wheel().ticks_remaining().to_string();
         let landmark_window_label = wheel.landmark().unwrap_or(0).to_string();
         Self {
@@ -163,7 +157,6 @@ impl HawLabels {
             hours_ticks_label,
             days_ticks_label,
             weeks_ticks_label,
-            months_ticks_label,
             years_ticks_label,
             landmark_window_label,
         }
@@ -325,19 +318,6 @@ impl TemplateApp {
             .name("Weeks");
 
         let mut bars = Vec::new();
-        for i in 1..=12 {
-            let val = wheel.months_wheel().lower(i, &aggregator).unwrap_or(0) as f64;
-            let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Month));
-            pos += 1.0;
-            bars.push(bar);
-        }
-        let months_chart = BarChart::new(bars)
-            .width(0.7)
-            .color(MONTH_COLOR)
-            .highlight(true)
-            .name("Months");
-
-        let mut bars = Vec::new();
         for i in 1..=haw::YEARS {
             let val = wheel.years_wheel().lower(i, &aggregator).unwrap_or(0) as f64;
             let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Year));
@@ -385,7 +365,6 @@ impl TemplateApp {
                 plot_ui.bar_chart(hours_chart);
                 plot_ui.bar_chart(days_chart);
                 plot_ui.bar_chart(weeks_chart);
-                plot_ui.bar_chart(months_chart);
                 plot_ui.bar_chart(years_chart);
                 //plot_ui.ctx().input(|u| u.)
                 if let Some(pos) = plot_ui.ctx().pointer_hover_pos() {
@@ -576,9 +555,9 @@ impl TemplateApp {
                                                 });
                                         }
                                     }
-                                    Some((Granularity::Month, pos)) => {
+                                    Some((Granularity::Year, pos)) => {
                                         if let Some(slots) =
-                                            measure(|| wheel.months_wheel().drill_down(pos))
+                                            measure(|| wheel.years_wheel().drill_down(pos))
                                         {
                                             let mut bars = Vec::new();
                                             let mut pos = 0.5;
@@ -599,32 +578,6 @@ impl TemplateApp {
                                                 .data_aspect(1.0)
                                                 .show(ui, |plot_ui| {
                                                     plot_ui.bar_chart(weeks_chart);
-                                                });
-                                        }
-                                    }
-                                    Some((Granularity::Year, pos)) => {
-                                        if let Some(slots) =
-                                            measure(|| wheel.years_wheel().drill_down(pos))
-                                        {
-                                            let mut bars = Vec::new();
-                                            let mut pos = 0.5;
-                                            for (i, s) in slots.iter().enumerate() {
-                                                let bar = Bar::new(pos, *s as f64)
-                                                    .name(fmt_str(i, Granularity::Month));
-                                                pos += 1.0;
-                                                bars.push(bar);
-                                            }
-                                            let months_chart = BarChart::new(bars)
-                                                .width(0.7)
-                                                .color(MONTH_COLOR)
-                                                .highlight(true)
-                                                .name("Months");
-                                            Plot::new("Drill down")
-                                                .auto_bounds_y()
-                                                .legend(Legend::default())
-                                                .data_aspect(1.0)
-                                                .show(ui, |plot_ui| {
-                                                    plot_ui.bar_chart(months_chart);
                                                 });
                                         }
                                     }
@@ -683,7 +636,6 @@ impl eframe::App for TemplateApp {
                 labels.hours_ticks_label = wheel.hours_wheel().ticks_remaining().to_string();
                 labels.days_ticks_label = wheel.days_wheel().ticks_remaining().to_string();
                 labels.weeks_ticks_label = wheel.weeks_wheel().ticks_remaining().to_string();
-                labels.months_ticks_label = wheel.months_wheel().ticks_remaining().to_string();
                 labels.years_ticks_label = wheel.years_wheel().ticks_remaining().to_string();
             };
 
@@ -939,7 +891,7 @@ impl eframe::App for TemplateApp {
                         Granularity::Minute => haw::time::Duration::minutes(*ticks as i64),
                         Granularity::Hour => haw::time::Duration::hours(*ticks as i64),
                         Granularity::Day => haw::time::Duration::days(*ticks as i64),
-                        Granularity::Week | Granularity::Month | Granularity::Year => {
+                        Granularity::Week | Granularity::Year => {
                             panic!("Not supported for now")
                         }
                     };
@@ -1046,10 +998,6 @@ impl eframe::App for TemplateApp {
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Weeks ticks remaining: ").strong());
                 ui.label(RichText::new(&*labels.weeks_ticks_label).strong());
-            });
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Months ticks remaining: ").strong());
-                ui.label(RichText::new(&*labels.months_ticks_label).strong());
             });
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Years ticks remaining: ").strong());

@@ -56,57 +56,45 @@ impl AggState {
 impl PartialAggregateType for AggState {
     type Bytes = [u8; 32];
     fn to_be_bytes(&self) -> Self::Bytes {
-        let count = self.count.to_be_bytes();
-        let sum = self.sum.to_be_bytes();
-        let min = self.min.to_be_bytes();
-        let max = self.max.to_be_bytes();
-        let mut result = [0; 32];
-        result[0] = count[0];
-        result[1] = count[1];
-        result[2] = count[2];
-        result[3] = count[3];
-        result[4] = sum[0];
-        result[5] = sum[1];
-        result[6] = sum[2];
-        result[7] = sum[3];
-        result[8] = min[0];
-        result[9] = min[1];
-        result[10] = min[2];
-        result[11] = min[3];
-        result[12] = max[0];
-        result[13] = max[1];
-        result[14] = max[2];
-        result[15] = max[3];
-        //result[0] =
-        result
+        let mut bytes = [0; 32];
+        bytes[0..8].copy_from_slice(&self.min.to_be_bytes());
+        bytes[8..16].copy_from_slice(&self.max.to_be_bytes());
+        bytes[16..24].copy_from_slice(&self.count.to_be_bytes());
+        bytes[24..32].copy_from_slice(&self.sum.to_be_bytes());
+        bytes
     }
     fn to_le_bytes(&self) -> Self::Bytes {
-        //let count = self.count.to_le_bytes();
-        //let sum = self.sum.to_le_bytes();
-        //let min = self.min.to_le_bytes();
-        //let max = self.max.to_le_bytes();
-        //let result: [u8; 32] = array::concat([&arr1, &arr2, &arr3, &arr4]);
-        //use core::array;
-        //array::from_fn([&count, &sum, &min, &max].concat())
-        //let mut result = [0; 32];
-        unimplemented!();
+        let mut bytes = [0; 32];
+        bytes[0..8].copy_from_slice(&self.min.to_le_bytes());
+        bytes[8..16].copy_from_slice(&self.max.to_le_bytes());
+        bytes[16..24].copy_from_slice(&self.count.to_le_bytes());
+        bytes[24..32].copy_from_slice(&self.sum.to_le_bytes());
+        bytes
     }
     #[inline]
     fn from_le_bytes(bytes: Self::Bytes) -> Self {
-        let mut count = [0; 8];
-        count[0] = bytes[0];
-        count[1] = bytes[1];
-        count[2] = bytes[2];
-        count[3] = bytes[3];
-        count[4] = bytes[4];
-        count[5] = bytes[5];
-        count[6] = bytes[6];
-        count[7] = bytes[7];
-        let _c = u64::from_be(unsafe { core::mem::transmute(count) });
-        unimplemented!();
+        let min = f64::from_le_bytes(bytes[0..8].try_into().unwrap());
+        let max = f64::from_le_bytes(bytes[8..16].try_into().unwrap());
+        let count = u64::from_le_bytes(bytes[16..24].try_into().unwrap());
+        let sum = f64::from_le_bytes(bytes[24..32].try_into().unwrap());
+        AggState {
+            min,
+            max,
+            count,
+            sum,
+        }
     }
-    fn from_be_bytes(_bytes: Self::Bytes) -> Self {
-        unimplemented!();
+    fn from_be_bytes(bytes: Self::Bytes) -> Self {
+        let min = f64::from_be_bytes(bytes[0..8].try_into().unwrap());
+        let max = f64::from_be_bytes(bytes[8..16].try_into().unwrap());
+        let count = u64::from_be_bytes(bytes[16..24].try_into().unwrap());
+        let sum = f64::from_be_bytes(bytes[24..32].try_into().unwrap());
+        AggState {
+            min,
+            max,
+            count,
+            sum,
+        }
     }
 }
 
@@ -181,5 +169,29 @@ mod tests {
         assert_eq!(all.max_value(), 1.0);
         assert_eq!(all.min_value(), 1.0);
         assert_eq!(all.avg(), 1.0);
+    }
+    #[test]
+    fn test_be_bytes() {
+        let agg_state = AggState {
+            min: 0.0,
+            max: 1.0,
+            count: 10,
+            sum: 5.0,
+        };
+        let bytes = agg_state.to_be_bytes();
+        let decoded = AggState::from_be_bytes(bytes);
+        assert_eq!(agg_state, decoded);
+    }
+    #[test]
+    fn test_le_bytes() {
+        let agg_state = AggState {
+            min: 0.0,
+            max: 1.0,
+            count: 10,
+            sum: 5.0,
+        };
+        let bytes = agg_state.to_le_bytes();
+        let decoded = AggState::from_le_bytes(bytes);
+        assert_eq!(agg_state, decoded);
     }
 }

@@ -40,10 +40,6 @@ fn main() {
         std::mem::size_of::<WeeksWheel<SerdeAggregator>>()
     );
     println!(
-        "Memory Months Wheel {} bytes",
-        std::mem::size_of::<MonthsWheel<SerdeAggregator>>()
-    );
-    println!(
         "Memory Years Wheel {} bytes",
         std::mem::size_of::<YearsWheel<SerdeAggregator>>()
     );

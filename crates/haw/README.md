@@ -23,11 +23,10 @@ For instance, to store aggregates with second granularity up to 10 years, we wou
 * Minutes wheel with 60 slots
 * Hours wheel with 24 slots
 * Days wheel with 7 slots
-* Weeks wheel with 4 slots
-* Months wheel with 12 slots
+* Weeks wheel with 52 slots
 * Years wheel with 10 slots
 
-The above scheme results in a total of 177 wheel slots. This is the minimum number of slots
+The above scheme results in a total of 213 wheel slots. This is the minimum number of slots
 required to support rolling up aggregates across 10 years with second granularity.
 
 Internally, a low watermark is maintained. Insertions with timestamps below the watermark will be ignored.
