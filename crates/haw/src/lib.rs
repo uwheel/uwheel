@@ -204,7 +204,6 @@ where
     minutes_wheel: MinutesWheel<A>,
     hours_wheel: HoursWheel<A>,
     days_wheel: DaysWheel<A>,
-    #[cfg_attr(feature = "rkyv", omit_bounds)]
     weeks_wheel: WeeksWheel<A>,
     years_wheel: YearsWheel<A>,
     // for some reason rkyv fails to compile without this.
@@ -384,7 +383,7 @@ where
             let diff = entry.timestamp - self.watermark;
             let seconds = Duration::from_millis(diff).as_secs();
 
-            if self.seconds_wheel().can_write_ahead(seconds) {
+            if self.seconds_wheel.can_write_ahead(seconds) {
                 // lift the entry to a partial aggregate and insert
                 let partial_agg = self.aggregator.lift(entry.data);
                 self.seconds_wheel
@@ -424,7 +423,7 @@ where
         let day = to_option(dur.whole_days() % DAYS as i64);
         // TODO: integrate week, month and year.
         //let week = to_option(dur.whole_weeks() % WEEKS as i64);
-        //let year = to_option((dur.whole_weeks() / 48) % YEARS as i64);
+        //let year = to_option((dur.whole_weeks() / ) % YEARS as i64);
         //dbg!((second, minute, hour, day, week, month, year));
         self.combine_and_lower_time(second, minute, hour, day)
     }
@@ -602,29 +601,29 @@ where
     }
 
     /// Returns a reference to the seconds wheel
-    pub fn seconds_wheel(&self) -> &SecondsWheel<A> {
+    pub fn seconds(&self) -> &SecondsWheel<A> {
         &self.seconds_wheel
     }
     /// Returns a reference to the minutes wheel
-    pub fn minutes_wheel(&self) -> &MinutesWheel<A> {
+    pub fn minutes(&self) -> &MinutesWheel<A> {
         &self.minutes_wheel
     }
     /// Returns a reference to the hours wheel
-    pub fn hours_wheel(&self) -> &HoursWheel<A> {
+    pub fn hours(&self) -> &HoursWheel<A> {
         &self.hours_wheel
     }
     /// Returns a reference to the days wheel
-    pub fn days_wheel(&self) -> &DaysWheel<A> {
+    pub fn days(&self) -> &DaysWheel<A> {
         &self.days_wheel
     }
 
     /// Returns a reference to the weeks wheel
-    pub fn weeks_wheel(&self) -> &WeeksWheel<A> {
+    pub fn weeks(&self) -> &WeeksWheel<A> {
         &self.weeks_wheel
     }
 
     /// Returns a reference to the years wheel
-    pub fn years_wheel(&self) -> &YearsWheel<A> {
+    pub fn years(&self) -> &YearsWheel<A> {
         &self.years_wheel
     }
 
@@ -839,17 +838,15 @@ mod tests {
         assert!(wheel.insert(Entry::new(5u32, 5000)).is_ok());
         assert!(wheel.insert(Entry::new(11u32, 11000)).is_ok());
 
-        assert_eq!(wheel.seconds_wheel().lower(0, &aggregator), Some(1u32));
+        assert_eq!(wheel.seconds().lower(0), Some(1u32));
 
         time = 6000; // new watermark
         wheel.advance_to(time);
 
-        assert_eq!(wheel.seconds_wheel().total(), Some(6u32));
+        assert_eq!(wheel.seconds().total(), Some(6u32));
         // check we get the same result by combining the range of last 6 seconds
         assert_eq!(
-            wheel
-                .seconds_wheel()
-                .combine_and_lower_range(0..5, &aggregator),
+            wheel.seconds().combine_and_lower_range(0..5, &aggregator),
             Some(6u32)
         );
     }
@@ -859,13 +856,13 @@ mod tests {
         let mut time = 0;
         let mut wheel = Wheel::<U32SumAggregator>::new(time);
 
-        assert_eq!(wheel.seconds_wheel().write_ahead_len(), SECONDS_CAP);
+        assert_eq!(wheel.seconds().write_ahead_len(), SECONDS_CAP);
 
         time += 58000; // 58 seconds
         wheel.advance_to(time);
         // head: 58
         // tail:0
-        assert_eq!(wheel.seconds_wheel().write_ahead_len(), SECONDS_CAP - 58);
+        assert_eq!(wheel.seconds().write_ahead_len(), SECONDS_CAP - 58);
 
         // current watermark is 58000, this should be rejected
         assert!(wheel
@@ -915,12 +912,12 @@ mod tests {
         assert_eq!(wheel.years_wheel.rotation_count(), 0);
 
         // Verify len of all wheels
-        assert_eq!(wheel.seconds_wheel().len(), SECONDS);
-        assert_eq!(wheel.minutes_wheel().len(), MINUTES);
-        assert_eq!(wheel.hours_wheel().len(), HOURS);
-        assert_eq!(wheel.days_wheel().len(), DAYS);
-        assert_eq!(wheel.weeks_wheel().len(), WEEKS);
-        assert_eq!(wheel.years_wheel().len(), YEARS);
+        assert_eq!(wheel.seconds().len(), SECONDS);
+        assert_eq!(wheel.minutes().len(), MINUTES);
+        assert_eq!(wheel.hours().len(), HOURS);
+        assert_eq!(wheel.days().len(), DAYS);
+        assert_eq!(wheel.weeks().len(), WEEKS);
+        assert_eq!(wheel.years().len(), YEARS);
 
         assert!(wheel.is_full());
         assert!(!wheel.is_empty());
@@ -946,28 +943,28 @@ mod tests {
         }
 
         // can't drill down on seconds wheel as it is the first wheel
-        assert!(wheel.seconds_wheel().drill_down(1).is_none());
+        assert!(wheel.seconds().drill_down(1).is_none());
 
         // Drill down on each wheel (e.g., minute, hours, days) and confirm summed results
 
-        let slots = wheel.minutes_wheel().drill_down(1).unwrap();
+        let slots = wheel.minutes().drill_down(1).unwrap();
         assert_eq!(slots.iter().sum::<u64>(), 60u64);
 
-        let slots = wheel.hours_wheel().drill_down(1).unwrap();
+        let slots = wheel.hours().drill_down(1).unwrap();
         assert_eq!(slots.iter().sum::<u64>(), 60u64 * 60);
 
-        let slots = wheel.days_wheel().drill_down(1).unwrap();
+        let slots = wheel.days().drill_down(1).unwrap();
         assert_eq!(slots.iter().sum::<u64>(), 60u64 * 60 * 24);
 
         // drill down range of 3 and confirm combined aggregates
-        let decoded = wheel.minutes_wheel().drill_down_range(..3).unwrap();
+        let decoded = wheel.minutes().drill_down_range(..3).unwrap();
         assert_eq!(decoded[0], 3);
         assert_eq!(decoded[1], 3);
         assert_eq!(decoded[59], 3);
 
         // test cut of last 5 seconds of last 1 minute + first 10 aggregates of last 2 min
         let decoded = wheel
-            .minutes_wheel()
+            .minutes()
             .drill_down_cut(
                 DrillCut {
                     slot: 1,
@@ -984,7 +981,7 @@ mod tests {
         assert_eq!(sum, 15u64);
 
         // drill down whole of minutes wheel
-        let decoded = wheel.minutes_wheel().drill_down_range(..).unwrap();
+        let decoded = wheel.minutes().drill_down_range(..).unwrap();
         let sum = decoded.iter().sum::<u64>();
         assert_eq!(sum, 3600u64);
     }
@@ -1005,7 +1002,7 @@ mod tests {
         wheel.advance_to(time);
 
         // confirm there are "holes" as we bump time by 2 seconds above
-        let decoded = wheel.minutes_wheel().drill_down(1).unwrap();
+        let decoded = wheel.minutes().drill_down(1).unwrap();
         assert_eq!(decoded[0], 1);
         assert_eq!(decoded[1], 0);
         assert_eq!(decoded[2], 1);
@@ -1065,7 +1062,7 @@ mod tests {
         wheel.merge(&mut other_wheel);
 
         // same as drill_down_holes test but confirm that drill down slots have be merged between wheels
-        let decoded = wheel.minutes_wheel().drill_down(1).unwrap();
+        let decoded = wheel.minutes().drill_down(1).unwrap();
         assert_eq!(decoded[0], 2);
         assert_eq!(decoded[1], 0);
         assert_eq!(decoded[2], 2);
@@ -1096,9 +1093,7 @@ mod tests {
         wheel.advance_to(time);
 
         assert_eq!(
-            wheel
-                .seconds_wheel()
-                .combine_and_lower_range(.., &aggregator),
+            wheel.seconds().combine_and_lower_range(.., &aggregator),
             Some(3u32)
         );
 

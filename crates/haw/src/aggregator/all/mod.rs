@@ -152,9 +152,8 @@ mod tests {
 
     #[test]
     fn all_test() {
-        let aggregator = AllAggregator::default();
         let mut time = 0u64;
-        let mut wheel = Wheel::new(time);
+        let mut wheel = Wheel::<AllAggregator>::new(time);
 
         for _ in 0..SECONDS + 1 {
             wheel.advance_to(time);
@@ -163,7 +162,7 @@ mod tests {
             time += 1000; // increase by 1 second
         }
 
-        let all = wheel.minutes_wheel().lower(1, &aggregator).unwrap();
+        let all: AggState = wheel.minutes().lower(1).unwrap();
         assert_eq!(all.sum(), 60.0);
         assert_eq!(all.count(), 60);
         assert_eq!(all.max_value(), 1.0);

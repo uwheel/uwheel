@@ -1,16 +1,13 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use ahash::AHashMap;
-use eframe::{egui, epaint::RectShape};
+use eframe::egui;
 use egui::{
     plot::{Bar, BarChart, Legend, Plot, PlotPoint},
     Color32,
-    Pos2,
-    Rect,
     Response,
     RichText,
     ScrollArea,
-    Stroke,
     Ui,
 };
 use haw::{aggregator::U64SumAggregator, time::NumericalDuration, Entry, Wheel};
@@ -140,12 +137,12 @@ impl HawLabels {
         let watermark_label = to_offset_datetime(wheel.watermark()).to_string();
         let slots_len_label = wheel.len().to_string();
         let remaining_ticks_label = wheel.remaining_ticks().to_string();
-        let seconds_ticks_label = wheel.seconds_wheel().ticks_remaining().to_string();
-        let minutes_ticks_label = wheel.minutes_wheel().ticks_remaining().to_string();
-        let hours_ticks_label = wheel.hours_wheel().ticks_remaining().to_string();
-        let days_ticks_label = wheel.days_wheel().ticks_remaining().to_string();
-        let weeks_ticks_label = wheel.weeks_wheel().ticks_remaining().to_string();
-        let years_ticks_label = wheel.years_wheel().ticks_remaining().to_string();
+        let seconds_ticks_label = wheel.seconds().ticks_remaining().to_string();
+        let minutes_ticks_label = wheel.minutes().ticks_remaining().to_string();
+        let hours_ticks_label = wheel.hours().ticks_remaining().to_string();
+        let days_ticks_label = wheel.days().ticks_remaining().to_string();
+        let weeks_ticks_label = wheel.weeks().ticks_remaining().to_string();
+        let years_ticks_label = wheel.years().ticks_remaining().to_string();
         let landmark_window_label = wheel.landmark().unwrap_or(0).to_string();
         Self {
             watermark_unix_label,
@@ -232,15 +229,14 @@ impl TemplateApp {
         puffin::profile_function!();
 
         let wheel = wheel.borrow();
-        let seconds_wheel = wheel.seconds_wheel();
-        let days_wheel = wheel.days_wheel();
-        let aggregator = DemoAggregator::default();
+        let seconds_wheel = wheel.seconds();
+        let days_wheel = wheel.days();
 
         let fmt_str = |i: usize, gran: Granularity| -> String { format!("{} {:?} ago", i, gran) };
 
         // Watermark
 
-        let watermark_agg = wheel.seconds_wheel().lower(0, &aggregator).unwrap_or(0) as f64;
+        let watermark_agg = wheel.seconds().lower(0).unwrap_or(0) as f64;
         let bar =
             Bar::new(0.5, watermark_agg).name(to_offset_datetime(wheel.watermark()).to_string());
         let watermark_chart = BarChart::new(vec![bar])
@@ -251,8 +247,8 @@ impl TemplateApp {
 
         let mut pos = 1.5;
         let mut bars = Vec::new();
-        for i in 1..=60 {
-            let val = seconds_wheel.lower(i, &aggregator).unwrap_or(0) as f64;
+        for i in 1..=haw::SECONDS {
+            let val = seconds_wheel.lower(i).unwrap_or(0) as f64;
             let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Second));
             pos += 1.0;
             bars.push(bar);
@@ -265,8 +261,8 @@ impl TemplateApp {
 
         // MINUTES
         let mut bars = Vec::new();
-        for i in 1..=60 {
-            let val = wheel.minutes_wheel().lower(i, &aggregator).unwrap_or(0) as f64;
+        for i in 1..=haw::MINUTES {
+            let val = wheel.minutes().lower(i).unwrap_or(0) as f64;
             let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Minute));
             pos += 1.0;
             bars.push(bar);
@@ -279,8 +275,8 @@ impl TemplateApp {
 
         // HOURS
         let mut bars = Vec::new();
-        for i in 1..=24 {
-            let val = wheel.hours_wheel().lower(i, &aggregator).unwrap_or(0) as f64;
+        for i in 1..=haw::HOURS {
+            let val = wheel.hours().lower(i).unwrap_or(0) as f64;
             let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Hour));
             pos += 1.0;
             bars.push(bar);
@@ -292,8 +288,8 @@ impl TemplateApp {
             .name("Hours");
 
         let mut bars = Vec::new();
-        for i in 1..=7 {
-            let val = days_wheel.lower(i, &aggregator).unwrap_or(0) as f64;
+        for i in 1..=haw::DAYS {
+            let val = days_wheel.lower(i).unwrap_or(0) as f64;
             let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Day));
             pos += 1.0;
             bars.push(bar);
@@ -305,8 +301,8 @@ impl TemplateApp {
             .name("Days");
 
         let mut bars = Vec::new();
-        for i in 1..=4 {
-            let val = wheel.weeks_wheel().lower(i, &aggregator).unwrap_or(0) as f64;
+        for i in 1..=haw::WEEKS {
+            let val = wheel.weeks().lower(i).unwrap_or(0) as f64;
             let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Week));
             pos += 1.0;
             bars.push(bar);
@@ -319,7 +315,7 @@ impl TemplateApp {
 
         let mut bars = Vec::new();
         for i in 1..=haw::YEARS {
-            let val = wheel.years_wheel().lower(i, &aggregator).unwrap_or(0) as f64;
+            let val = wheel.years().lower(i).unwrap_or(0) as f64;
             let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Year));
             pos += 1.0;
             bars.push(bar);
@@ -366,7 +362,6 @@ impl TemplateApp {
                 plot_ui.bar_chart(days_chart);
                 plot_ui.bar_chart(weeks_chart);
                 plot_ui.bar_chart(years_chart);
-                //plot_ui.ctx().input(|u| u.)
                 if let Some(pos) = plot_ui.ctx().pointer_hover_pos() {
                     if pos.x > 0.0 {
                         egui::Window::new("Drill Down").default_width(620.0).show(
@@ -382,7 +377,7 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Minute, pos)) => {
                                         if let Some(slots) =
-                                            measure(|| wheel.minutes_wheel().drill_down(pos))
+                                            measure(|| wheel.minutes().drill_down(pos))
                                         {
                                             let mut bars = Vec::new();
                                             let mut pos = 0.5;
@@ -397,88 +392,19 @@ impl TemplateApp {
                                                 .color(SECOND_COLOR)
                                                 .highlight(true)
                                                 .name("Seconds");
-                                            let mut response = Plot::new("Drill down")
+                                            Plot::new("Drill down")
                                                 .legend(Legend::default())
                                                 .auto_bounds_y()
                                                 .auto_bounds_x()
                                                 .data_aspect(1.0)
                                                 .show(ui, |plot_ui| {
                                                     plot_ui.bar_chart(seconds_chart);
-                                                })
-                                                .response;
-                                            let mut last_click_pos_for_zoom: Option<Pos2> = None;
-                                            let mut boxed_zoom_rect = None;
-                                            if response.drag_started()
-                                                && response
-                                                    .drag_started_by(egui::PointerButton::Middle)
-                                            {
-                                                last_click_pos_for_zoom = response.hover_pos();
-                                            }
-                                            let box_start_pos = last_click_pos_for_zoom;
-                                            let box_end_pos = response.hover_pos();
-                                            if let (Some(box_start_pos), Some(box_end_pos)) =
-                                                (box_start_pos, box_end_pos)
-                                            {
-                                                // while dragging prepare a Shape and draw it later on top of the plot
-                                                if response.dragged_by(egui::PointerButton::Middle)
-                                                {
-                                                    response = response
-                                                        .on_hover_cursor(egui::CursorIcon::ZoomIn);
-                                                    let rect = Rect::from_two_pos(
-                                                        box_start_pos,
-                                                        box_end_pos,
-                                                    );
-                                                    boxed_zoom_rect = Some((
-                                                        RectShape::stroke(
-                                                            rect,
-                                                            0.0,
-                                                            Stroke::new(4., Color32::DARK_BLUE),
-                                                        ), // Outer stroke
-                                                        RectShape::stroke(
-                                                            rect,
-                                                            0.0,
-                                                            Stroke::new(2., Color32::LIGHT_YELLOW),
-                                                        ), // Inner stroke
-                                                    ));
-                                                }
-                                                if response.drag_released() {
-                                                    /*
-                                                    let box_start_pos = transform.value_from_position(box_start_pos);
-                                                    let box_end_pos = transform.value_from_position(box_end_pos);
-                                                    let new_bounds = PlotBounds {
-                                                        min: [
-                                                            box_start_pos.x.min(box_end_pos.x),
-                                                            box_start_pos.y.min(box_end_pos.y),
-                                                        ],
-                                                        max: [
-                                                            box_start_pos.x.max(box_end_pos.x),
-                                                            box_start_pos.y.max(box_end_pos.y),
-                                                        ],
-                                                    };
-                                                    if new_bounds.is_valid() {
-                                                        transform.set_bounds(new_bounds);
-                                                        bounds_modified = true.into();
-                                                    }
-                                                    // reset the boxed zoom state
-                                                    last_click_pos_for_zoom = None;
-                                                    */
-                                                }
-                                                if let Some(boxed_zoom_rect) = boxed_zoom_rect {
-                                                    ui.painter()
-                                                        .with_clip_rect(ui.ctx().screen_rect())
-                                                        .add(boxed_zoom_rect.0);
-                                                    ui.painter()
-                                                        .with_clip_rect(ui.ctx().screen_rect())
-                                                        .add(boxed_zoom_rect.1);
-                                                    //ui.painter().with_clip_rect(rect).add(boxed_zoom_rect.0);
-                                                    //ui.painter().with_clip_rect(rect).add(boxed_zoom_rect.1);
-                                                }
-                                            }
+                                                });
                                         }
                                     }
                                     Some((Granularity::Hour, pos)) => {
                                         if let Some(slots) =
-                                            measure(|| wheel.hours_wheel().drill_down(pos))
+                                            measure(|| wheel.hours().drill_down(pos))
                                         {
                                             let mut bars = Vec::new();
                                             let mut pos = 0.5;
@@ -505,7 +431,7 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Day, pos)) => {
                                         if let Some(slots) =
-                                            measure(|| wheel.days_wheel().drill_down(pos))
+                                            measure(|| wheel.days().drill_down(pos))
                                         {
                                             let mut bars = Vec::new();
                                             let mut pos = 0.5;
@@ -531,7 +457,7 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Week, pos)) => {
                                         if let Some(slots) =
-                                            measure(|| wheel.weeks_wheel().drill_down(pos))
+                                            measure(|| wheel.weeks().drill_down(pos))
                                         {
                                             let mut bars = Vec::new();
                                             let mut pos = 0.5;
@@ -557,7 +483,7 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Year, pos)) => {
                                         if let Some(slots) =
-                                            measure(|| wheel.years_wheel().drill_down(pos))
+                                            measure(|| wheel.years().drill_down(pos))
                                         {
                                             let mut bars = Vec::new();
                                             let mut pos = 0.5;
@@ -631,12 +557,12 @@ impl eframe::App for TemplateApp {
                 labels.remaining_ticks_label = wheel.remaining_ticks().to_string();
                 labels.slots_len_label = wheel.len().to_string();
                 labels.landmark_window_label = wheel.landmark().unwrap_or(0).to_string();
-                labels.seconds_ticks_label = wheel.seconds_wheel().ticks_remaining().to_string();
-                labels.minutes_ticks_label = wheel.minutes_wheel().ticks_remaining().to_string();
-                labels.hours_ticks_label = wheel.hours_wheel().ticks_remaining().to_string();
-                labels.days_ticks_label = wheel.days_wheel().ticks_remaining().to_string();
-                labels.weeks_ticks_label = wheel.weeks_wheel().ticks_remaining().to_string();
-                labels.years_ticks_label = wheel.years_wheel().ticks_remaining().to_string();
+                labels.seconds_ticks_label = wheel.seconds().ticks_remaining().to_string();
+                labels.minutes_ticks_label = wheel.minutes().ticks_remaining().to_string();
+                labels.hours_ticks_label = wheel.hours().ticks_remaining().to_string();
+                labels.days_ticks_label = wheel.days().ticks_remaining().to_string();
+                labels.weeks_ticks_label = wheel.weeks().ticks_remaining().to_string();
+                labels.years_ticks_label = wheel.years().ticks_remaining().to_string();
             };
 
         let insert_wheel = wheels.get(insert_key).unwrap().clone();

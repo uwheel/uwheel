@@ -79,7 +79,7 @@ fn main() {
     }
     println!("wheel total {:?}", wheel.landmark());
 
-    let raw_seconds_wheel = wheel.seconds_wheel().as_bytes();
+    let raw_seconds_wheel = wheel.seconds().as_bytes();
     println!(
         "Serialised Seconds wheel size {} bytes",
         raw_seconds_wheel.len()

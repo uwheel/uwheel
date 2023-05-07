@@ -169,6 +169,45 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         self.tail == self.head
     }
 
+    /// Combines partial aggregates of the last `subtrahend` slots
+    ///
+    /// # Panics
+    ///
+    /// Panics if subtrahend is greater than the length of the wheel
+    #[inline]
+    pub fn interval(&self, subtrahend: usize) -> A::PartialAggregate {
+        assert!(subtrahend <= self.len());
+        let aggregator = A::default();
+        Iter::<CAP, A>::new(&self.slots, self.slot_idx_from_head(subtrahend), self.head)
+            .flatten()
+            .fold(Default::default(), |a, b| aggregator.combine(a, *b))
+    }
+
+    /// Combines partial aggregates of the last `subtrahend` slots and lowers it to a final aggregate
+    ///
+    /// # Panics
+    ///
+    /// Panics if subtrahend is greater than the length of the wheel
+    #[inline]
+    pub fn lower_interval(&self, subtrahend: usize) -> A::Aggregate {
+        let aggregator = A::default();
+        aggregator.lower(self.interval(subtrahend))
+    }
+
+    /// Lowers partial aggregate from `subtrahend` slots backwards from the head
+    ///
+    /// If `0` is specified, it will lower the current head.
+    ///
+    /// # Panics
+    ///
+    /// Panics if subtrahend is greater than the length of the wheel
+    #[inline]
+    pub fn lower(&self, subtrahend: usize) -> Option<A::Aggregate> {
+        assert!(subtrahend <= self.num_slots);
+        let index = self.slot_idx_from_head(subtrahend);
+        self.slots[index].map(|res| A::default().lower(res))
+    }
+
     /// Returns drill down slots from `slot` slots backwards from the head
     ///
     /// If `0` is specified, it will drill down the current head.
@@ -182,6 +221,21 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             .and_then(|slots| slots[index].as_deref())
     }
 
+    /// Returns drill down slots from `slot` slots backwards from the head and lowers the aggregates
+    ///
+    /// If `0` is specified, it will drill down the current head.
+    #[cfg(feature = "drill_down")]
+    #[inline]
+    pub fn lower_drill_down(&self, slot: usize) -> Option<Vec<A::Aggregate>> {
+        let aggregator = A::default();
+        self.drill_down(slot).map(|partial_aggs| {
+            partial_aggs
+                .iter()
+                .map(|agg| aggregator.lower(*agg))
+                .collect()
+        })
+    }
+
     /// Drill down and cut across 2 slots
     ///
     ///
@@ -190,6 +244,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the wheel.
     #[cfg(feature = "drill_down")]
+    #[inline]
     pub fn drill_down_cut<AR, BR>(
         &self,
         a: DrillCut<AR>,
@@ -239,16 +294,6 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             }
         }
         Some(res)
-    }
-
-    /// Lowers partial aggregate from `slot` slots backwards from the head
-    ///
-    /// If `0` is specified, it will lower the current head.
-    #[inline]
-    pub fn lower(&self, slot: usize, aggregator: &A) -> Option<A::Aggregate> {
-        debug_assert!(slot <= self.num_slots);
-        let index = self.slot_idx_from_head(slot);
-        self.slots[index].map(|res| aggregator.lower(res))
     }
 
     /// Combines partial aggregates from `subtrahend` slots back up to the head.

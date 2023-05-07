@@ -104,7 +104,7 @@ fn deser_wheel_lz4(wheel: Wheel<AllAggregator>, bencher: &mut Bencher) {
 #[inline]
 fn ser_seconds_wheel(bencher: &mut Bencher) {
     let wheel = large_wheel();
-    bencher.iter(|| black_box(wheel.seconds_wheel().as_bytes()));
+    bencher.iter(|| black_box(wheel.seconds().as_bytes()));
 }
 
 #[inline]

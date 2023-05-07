@@ -52,10 +52,9 @@ Note that the wheel may insert aggregates above the watermark, but state is only
 ```rust
 use haw::{aggregator::U32SumAggregator, time::NumericalDuration, Entry, Wheel};
 
-let aggregator = U32SumAggregator;
 // Initial start time (represented as milliseconds)
 let mut time = 0;
-let mut wheel = Wheel::new(time);
+let mut wheel: Wheel<U32SumAggregator> = Wheel::new(time);
 
 // Fill the seconds wheel (60 slots)
 for _ in 0..60 {
@@ -66,14 +65,14 @@ for _ in 0..60 {
 // force a rotation of the seconds wheel
 wheel.advance(60.seconds());
 
-// Access the minutes wheel directly to verify 60 seconds of partial aggregates has been ticked over
-assert_eq!(wheel.minutes_wheel().lower(1, &aggregator), Some(60));
+// interval of last 1 minute
+assert_eq!(wheel.minutes().interval(1), 60);
 
 // full range of data
 assert_eq!(wheel.landmark(), Some(60));
 
 // interval of last 15 seconds
-assert_eq!(wheel.interval(15.seconds()), Some(15));
+assert_eq!(wheel.seconds().interval(15), 15);
 ```
 
 ## License
