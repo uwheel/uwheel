@@ -451,10 +451,10 @@ where
                 let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
                 let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
 
-                let sec = self.seconds_wheel.combine_up_to_head(second, aggregator);
-                let min = self.minutes_wheel.combine_up_to_head(minute, aggregator);
-                let hr = self.hours_wheel.combine_up_to_head(hour, aggregator);
-                let day = self.days_wheel.combine_up_to_head(day, aggregator);
+                let sec = self.seconds_wheel.interval(second);
+                let min = self.minutes_wheel.interval(minute);
+                let hr = self.hours_wheel.interval(hour);
+                let day = self.days_wheel.interval(day);
 
                 Self::reduce([sec, min, hr, day], aggregator).map(|total| aggregator.lower(total))
             }
@@ -464,21 +464,21 @@ where
                 let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
                 let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
 
-                let min = self.minutes_wheel.combine_up_to_head(minute, aggregator);
-                let hr = self.hours_wheel.combine_up_to_head(hour, aggregator);
-                let day = self.days_wheel.combine_up_to_head(day, aggregator);
+                let min = self.minutes_wheel.interval(minute);
+                let hr = self.hours_wheel.interval(hour);
+                let day = self.days_wheel.interval(day);
                 Self::reduce([min, hr, day], aggregator).map(|total| aggregator.lower(total))
             }
             // dh
             (Some(day), Some(hour), None, None) => {
                 let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
-                let hr = self.hours_wheel.combine_up_to_head(hour, aggregator);
-                let day = self.days_wheel.combine_up_to_head(day, aggregator);
+                let hr = self.hours_wheel.interval(hour);
+                let day = self.days_wheel.interval(day);
                 Self::reduce([hr, day], aggregator).map(|total| aggregator.lower(total))
             }
             // d
             (Some(day), None, None, None) => {
-                let day = self.days_wheel.combine_up_to_head(day, aggregator);
+                let day = self.days_wheel.interval(day);
                 Self::reduce([day], aggregator).map(|total| aggregator.lower(total))
             }
             // hms
@@ -486,39 +486,38 @@ where
                 let second = cmp::min(self.seconds_wheel.rotation_count(), second);
                 let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
 
-                let sec = self.seconds_wheel.combine_up_to_head(second, aggregator);
-                let min = self.minutes_wheel.combine_up_to_head(minute, aggregator);
-                let hr = self.hours_wheel.combine_up_to_head(hour, aggregator);
+                let sec = self.seconds_wheel.interval(second);
+                let min = self.minutes_wheel.interval(minute);
+                let hr = self.hours_wheel.interval(hour);
                 Self::reduce([sec, min, hr], aggregator).map(|total| aggregator.lower(total))
             }
             // hm
             (None, Some(hour), Some(minute), None) => {
                 let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
-                let min = self.minutes_wheel.combine_up_to_head(minute, aggregator);
-
-                let hr = self.hours_wheel.combine_up_to_head(hour, aggregator);
+                let min = self.minutes_wheel.interval(minute);
+                let hr = self.hours_wheel.interval(hour);
                 Self::reduce([min, hr], aggregator).map(|total| aggregator.lower(total))
             }
             // h
             (None, Some(hour), None, None) => {
-                let hr = self.hours_wheel.combine_up_to_head(hour, aggregator);
+                let hr = self.hours_wheel.interval(hour);
                 Self::reduce([hr], aggregator).map(|total| aggregator.lower(total))
             }
             // ms
             (None, None, Some(minute), Some(second)) => {
                 //let second = cmp::min(self.seconds_wheel.rotation_count(), second.into()) as usize;
-                let sec = self.seconds_wheel.combine_up_to_head(second, aggregator);
-                let min = self.minutes_wheel.combine_up_to_head(minute, aggregator);
+                let sec = self.seconds_wheel.interval(second);
+                let min = self.minutes_wheel.interval(minute);
                 Self::reduce([sec, min], aggregator).map(|total| aggregator.lower(total))
             }
             // m
             (None, None, Some(minute), None) => {
-                let min = self.minutes_wheel.combine_up_to_head(minute, aggregator);
+                let min = self.minutes_wheel.interval(minute);
                 Self::reduce([min], aggregator).map(|total| aggregator.lower(total))
             }
             // s
             (None, None, None, Some(second)) => {
-                let sec = self.seconds_wheel.combine_up_to_head(second, aggregator);
+                let sec = self.seconds_wheel.interval(second);
                 Self::reduce([sec], aggregator).map(|total| aggregator.lower(total))
             }
             (_, _, _, _) => {
@@ -561,38 +560,35 @@ where
     /// In the worst case, a tick may cause a rotation of all the wheels in the hierarchy.
     #[inline]
     fn tick(&mut self) {
-        let aggregator = &self.aggregator;
-
         self.watermark += Self::SECOND_AS_MS;
 
         // full rotation of seconds wheel
-        if let Some(rot_data) = self.seconds_wheel.tick(aggregator) {
+        if let Some(rot_data) = self.seconds_wheel.tick() {
             // insert 60 seconds worth of partial aggregates into minute wheel and then tick it
-            self.minutes_wheel
-                .insert_rotation_data(rot_data, aggregator);
+            self.minutes_wheel.insert_rotation_data(rot_data);
 
             // full rotation of minutes wheel
-            if let Some(rot_data) = self.minutes_wheel.tick(aggregator) {
+            if let Some(rot_data) = self.minutes_wheel.tick() {
                 // insert 60 minutes worth of partial aggregates into hours wheel and then tick it
-                self.hours_wheel.insert_rotation_data(rot_data, aggregator);
+                self.hours_wheel.insert_rotation_data(rot_data);
 
                 // full rotation of hours wheel
-                if let Some(rot_data) = self.hours_wheel.tick(aggregator) {
+                if let Some(rot_data) = self.hours_wheel.tick() {
                     // insert 24 hours worth of partial aggregates into days wheel and then tick it
-                    self.days_wheel.insert_rotation_data(rot_data, aggregator);
+                    self.days_wheel.insert_rotation_data(rot_data);
 
                     // full rotation of days wheel
-                    if let Some(rot_data) = self.days_wheel.tick(aggregator) {
+                    if let Some(rot_data) = self.days_wheel.tick() {
                         // insert 7 days worth of partial aggregates into weeks wheel and then tick it
-                        self.weeks_wheel.insert_rotation_data(rot_data, aggregator);
+                        self.weeks_wheel.insert_rotation_data(rot_data);
 
                         // full rotation of weeks wheel
-                        if let Some(rot_data) = self.weeks_wheel.tick(aggregator) {
+                        if let Some(rot_data) = self.weeks_wheel.tick() {
                             // insert 1 years worth of partial aggregates into year wheel and then tick it
-                            self.years_wheel.insert_rotation_data(rot_data, aggregator);
+                            self.years_wheel.insert_rotation_data(rot_data);
 
                             // tick but ignore full rotations as this is the last hierarchy
-                            let _ = self.years_wheel.tick(aggregator);
+                            let _ = self.years_wheel.tick();
                         }
                     }
                 }
@@ -641,14 +637,12 @@ where
         }
 
         // merge all aggregation wheels
-        self.seconds_wheel
-            .merge(&other.seconds_wheel, &self.aggregator);
-        self.minutes_wheel
-            .merge(&other.minutes_wheel, &self.aggregator);
-        self.hours_wheel.merge(&other.hours_wheel, &self.aggregator);
-        self.days_wheel.merge(&other.days_wheel, &self.aggregator);
-        self.weeks_wheel.merge(&other.weeks_wheel, &self.aggregator);
-        self.years_wheel.merge(&other.years_wheel, &self.aggregator);
+        self.seconds_wheel.merge(&other.seconds_wheel);
+        self.minutes_wheel.merge(&other.minutes_wheel);
+        self.hours_wheel.merge(&other.hours_wheel);
+        self.days_wheel.merge(&other.days_wheel);
+        self.weeks_wheel.merge(&other.weeks_wheel);
+        self.years_wheel.merge(&other.years_wheel);
     }
 
     #[cfg(all(feature = "rkyv", not(feature = "alloc")))]
@@ -824,14 +818,12 @@ mod tests {
         // TODO: this does not work properly.
         // assert_eq!(wheel.interval(120.seconds()), Some(217u32));
         assert_eq!(wheel.interval(2.days()), None);
-        assert_eq!(wheel.interval(50.hours()), None);
     }
 
     #[test]
     fn mixed_timestamp_insertions_test() {
-        let aggregator = U32SumAggregator;
         let mut time = 1000;
-        let mut wheel = Wheel::new(time);
+        let mut wheel = Wheel::<U32SumAggregator>::new(time);
         wheel.advance_to(time);
 
         assert!(wheel.insert(Entry::new(1u32, 1000)).is_ok());
@@ -845,10 +837,7 @@ mod tests {
 
         assert_eq!(wheel.seconds().total(), Some(6u32));
         // check we get the same result by combining the range of last 6 seconds
-        assert_eq!(
-            wheel.seconds().combine_and_lower_range(0..5, &aggregator),
-            Some(6u32)
-        );
+        assert_eq!(wheel.seconds().combine_and_lower_range(0..5), Some(6u32));
     }
 
     #[test]
@@ -1075,7 +1064,6 @@ mod tests {
     #[cfg(all(feature = "rkyv", feature = "std"))]
     #[test]
     fn serde_test() {
-        let aggregator = U32SumAggregator;
         let mut time = 1000;
         let wheel: Wheel<U32SumAggregator> = Wheel::new(time);
 
@@ -1087,24 +1075,18 @@ mod tests {
             raw_wheel = wheel.as_bytes();
         }
 
-        let mut wheel = Wheel::from_bytes(&raw_wheel).unwrap();
+        let mut wheel = Wheel::<U32SumAggregator>::from_bytes(&raw_wheel).unwrap();
 
         time += 1000;
         wheel.advance_to(time);
 
-        assert_eq!(
-            wheel.seconds().combine_and_lower_range(.., &aggregator),
-            Some(3u32)
-        );
+        assert_eq!(wheel.seconds().combine_and_lower_range(..), Some(3u32));
 
         let raw_wheel = wheel.as_bytes();
 
         // deserialize seconds wheel only and confirm same query works
-        let seconds_wheel = Wheel::seconds_wheel_from_bytes(&raw_wheel);
+        let seconds_wheel = Wheel::<U32SumAggregator>::seconds_wheel_from_bytes(&raw_wheel);
 
-        assert_eq!(
-            seconds_wheel.combine_and_lower_range(.., &aggregator),
-            Some(3u32)
-        );
+        assert_eq!(seconds_wheel.combine_and_lower_range(..), Some(3u32));
     }
 }

@@ -18,7 +18,7 @@ use alloc::{boxed::Box, vec::Vec};
 use rkyv::{ser::Serializer, AlignedVec};
 
 #[cfg(feature = "rkyv")]
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv::{with::Skip, Archive, Deserialize, Serialize};
 
 #[cfg(all(feature = "rkyv", feature = "alloc"))]
 use crate::DefaultSerializer;
@@ -122,6 +122,8 @@ pub struct AggregationWheel<const CAP: usize, A: Aggregator> {
     ///
     /// Represents the oldest in time slot
     tail: usize,
+    #[cfg_attr(feature = "rkyv", with(Skip))]
+    aggregator: A,
     #[cfg(test)]
     pub(crate) total_ticks: usize,
 }
@@ -158,6 +160,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             rotation_count: 0,
             head: 0,
             tail: 0,
+            aggregator: Default::default(),
             #[cfg(test)]
             total_ticks: 0,
         }
@@ -171,54 +174,63 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
 
     /// Combines partial aggregates of the last `subtrahend` slots
     ///
-    /// # Panics
-    ///
-    /// Panics if subtrahend is greater than the length of the wheel
+    /// - If given a interval, returns the combined partial aggregate based on that interval,
+    ///   or `None` if out of bounds
     #[inline]
-    pub fn interval(&self, subtrahend: usize) -> A::PartialAggregate {
-        assert!(subtrahend <= self.len());
-        let aggregator = A::default();
-        Iter::<CAP, A>::new(&self.slots, self.slot_idx_from_head(subtrahend), self.head)
-            .flatten()
-            .fold(Default::default(), |a, b| aggregator.combine(a, *b))
+    pub fn interval(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
+        if subtrahend > self.len() {
+            None
+        } else {
+            let partial_agg =
+                Iter::<CAP, A>::new(&self.slots, self.slot_idx_from_head(subtrahend), self.head)
+                    .flatten()
+                    .fold(Default::default(), |a, b| self.aggregator.combine(a, *b));
+            Some(partial_agg)
+        }
     }
 
     /// Combines partial aggregates of the last `subtrahend` slots and lowers it to a final aggregate
     ///
-    /// # Panics
-    ///
-    /// Panics if subtrahend is greater than the length of the wheel
+    /// - If given a interval, returns the final aggregate based on that interval,
+    ///   or `None` if out of bounds
     #[inline]
-    pub fn lower_interval(&self, subtrahend: usize) -> A::Aggregate {
-        let aggregator = A::default();
-        aggregator.lower(self.interval(subtrahend))
+    pub fn lower_interval(&self, subtrahend: usize) -> Option<A::Aggregate> {
+        self.interval(subtrahend)
+            .map(|partial_agg| self.aggregator.lower(partial_agg))
     }
 
     /// Lowers partial aggregate from `subtrahend` slots backwards from the head
     ///
-    /// If `0` is specified, it will lower the current head.
-    ///
-    /// # Panics
-    ///
-    /// Panics if subtrahend is greater than the length of the wheel
+    /// - If given a position, returns the final aggregate based on that position,
+    ///   or `None` if out of bounds
+    /// - If `0` is specified, it will lower the current head.
     #[inline]
     pub fn lower(&self, subtrahend: usize) -> Option<A::Aggregate> {
-        assert!(subtrahend <= self.num_slots);
-        let index = self.slot_idx_from_head(subtrahend);
-        self.slots[index].map(|res| A::default().lower(res))
+        if subtrahend > self.len() {
+            None
+        } else {
+            let index = self.slot_idx_from_head(subtrahend);
+            self.slots[index].map(|res| self.aggregator.lower(res))
+        }
     }
 
     /// Returns drill down slots from `slot` slots backwards from the head
     ///
-    /// If `0` is specified, it will drill down the current head.
+    ///
+    /// - If given a position, returns the drill down slots based on that position,
+    ///   or `None` if out of bounds
+    /// - If `0` is specified, it will drill down the current head.
     #[cfg(feature = "drill_down")]
     #[inline]
     pub fn drill_down(&self, slot: usize) -> Option<&[A::PartialAggregate]> {
-        debug_assert!(slot <= self.num_slots);
-        let index = self.slot_idx_from_head(slot);
-        self.drill_down_slots
-            .as_ref()
-            .and_then(|slots| slots[index].as_deref())
+        if slot > self.len() {
+            None
+        } else {
+            let index = self.slot_idx_from_head(slot);
+            self.drill_down_slots
+                .as_ref()
+                .and_then(|slots| slots[index].as_deref())
+        }
     }
 
     /// Returns drill down slots from `slot` slots backwards from the head and lowers the aggregates
@@ -278,37 +290,21 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     where
         R: RangeBounds<usize>,
     {
-        // TODO: range should go from head to tail (check combine_up_to_head)
+        // TODO: range should go from head to tail (check interval)
         let (tail, head) = self.range_tail_head(range);
         let binding = self.drill_down_slots.as_ref().unwrap();
         let drill_iter = DrillIter::<CAP, A>::new(binding, tail, head);
         let mut res = Vec::new();
-        let aggregator = A::default();
         for slot in drill_iter.flatten() {
             if res.is_empty() {
                 res.extend_from_slice(slot);
             } else {
                 for (curr, other) in res.iter_mut().zip(slot) {
-                    *curr = aggregator.combine(*curr, *other);
+                    *curr = self.aggregator.combine(*curr, *other);
                 }
             }
         }
         Some(res)
-    }
-
-    /// Combines partial aggregates from `subtrahend` slots back up to the head.
-    pub fn combine_up_to_head(
-        &self,
-        subtrahend: usize,
-        aggregator: &A,
-    ) -> Option<A::PartialAggregate> {
-        let tail = self.slot_idx_from_head(subtrahend);
-        let iter: Iter<CAP, A> = Iter::new(&self.slots, tail, self.head);
-        let mut res: Option<A::PartialAggregate> = None;
-        for slot in iter.flatten() {
-            Self::insert(&mut res, *slot, aggregator);
-        }
-        res
     }
 
     /// Combines partial aggregates within the given range into a new partial aggregate
@@ -317,13 +313,13 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     ///
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the wheel.
-    pub fn combine_range<R>(&self, range: R, aggregator: &A) -> Option<A::PartialAggregate>
+    pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
     {
         let mut res: Option<A::PartialAggregate> = None;
         for slot in self.range(range).flatten() {
-            Self::insert(&mut res, *slot, aggregator);
+            Self::insert(&mut res, *slot, &self.aggregator);
         }
         res
     }
@@ -333,12 +329,12 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     ///
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the wheel.
-    pub fn combine_and_lower_range<R>(&self, range: R, aggregator: &A) -> Option<A::Aggregate>
+    pub fn combine_and_lower_range<R>(&self, range: R) -> Option<A::Aggregate>
     where
         R: RangeBounds<usize>,
     {
-        self.combine_range(range, aggregator)
-            .map(|res| aggregator.lower(res))
+        self.combine_range(range)
+            .map(|res| self.aggregator.lower(res))
     }
     /// Returns an iterator going from tail to head in the given range
     fn range<R>(&self, range: R) -> Iter<'_, CAP, A>
@@ -397,13 +393,11 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         }
     }
 
-    /// Combine into the curent head of the circular buffer
     #[inline]
     fn insert_at(&mut self, slot_idx: usize, entry: A::PartialAggregate, aggregator: &A) {
         Self::insert(self.slot(slot_idx), entry, aggregator);
     }
 
-    /// Combine into the curent head of the circular buffer
     #[inline]
     fn insert_head(&mut self, entry: A::PartialAggregate, aggregator: &A) {
         Self::insert(self.slot(self.head), entry, aggregator);
@@ -424,9 +418,9 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     }
 
     #[inline]
-    pub(super) fn insert_rotation_data(&mut self, data: RotationData<A>, aggregator: &A) {
+    pub(super) fn insert_rotation_data(&mut self, data: RotationData<A>) {
         if let Some(partial_agg) = data.total {
-            self.insert_head(partial_agg, aggregator);
+            self.insert_head(partial_agg, &Default::default());
         }
         #[cfg(feature = "drill_down")]
         self.insert_drill_down_slots(data.drill_down_slots);
@@ -435,16 +429,16 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// Merge two AggregationWheels of similar granularity
     ///
     /// NOTE: must ensure wheels have been advanced to the same time
-    pub(crate) fn merge(&mut self, other: &Self, aggregator: &A) {
+    pub(crate) fn merge(&mut self, other: &Self) {
         // merge current total
         if let Some(other_total) = other.total {
-            Self::insert(&mut self.total, other_total, aggregator)
+            Self::insert(&mut self.total, other_total, &self.aggregator)
         }
 
         // Merge regular wheel slots
         for (self_slot, other_slot) in self.slots.iter_mut().zip(other.slots) {
             if let Some(other_agg) = other_slot {
-                Self::insert(self_slot, other_agg, aggregator);
+                Self::insert(self_slot, other_agg, &self.aggregator);
             }
         }
         #[cfg(feature = "drill_down")]
@@ -460,7 +454,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
                                 let mut new_aggs = Vec::new();
 
                                 for (x, y) in self_encodes.iter_mut().zip(other_encodes) {
-                                    new_aggs.push(aggregator.combine(*x, y));
+                                    new_aggs.push(self.aggregator.combine(*x, y));
                                 }
                                 *self_slot = Some(new_aggs);
                             }
@@ -558,10 +552,10 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
 
     /// Tick the wheel by 1 slot
     #[inline]
-    pub fn tick(&mut self, aggregator: &A) -> Option<RotationData<A>> {
+    pub fn tick(&mut self) -> Option<RotationData<A>> {
         // Possibly update the partial aggregate for the current rotation
         if let Some(curr) = &self.slots[self.head] {
-            Self::insert(&mut self.total, *curr, aggregator);
+            Self::insert(&mut self.total, *curr, &self.aggregator);
         }
 
         // If the wheel is full, we clear the oldest entry
