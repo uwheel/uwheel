@@ -14,22 +14,24 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["years_size_10", "std"]
-alloc = ["hashbrown", "rkyv?/alloc"]
-std = ["alloc", "rkyv?/std"]
+std = ["rkyv?/std"]
 years_size_10 = []
 years_size_100 = []
-drill_down = ["alloc"]
+drill_down = []
 rkyv = ["dep:rkyv"]
 
 [dependencies]
-rkyv = { version = "0.7.39", default-features = false, features = ["size_32", "copy", "copy_unsafe"], optional = true }
-hashbrown = { version = "0.13", optional = true }
+hashbrown = "0.13"
+rkyv = { version = "0.7.39", features = ["copy", "copy_unsafe"], optional = true }
 
 [dev-dependencies]
 fastrand = "1.8.0"
 rand = "0.8.5"
 criterion = "0.4"
 lz4_flex = "0.9.5"
+
+clap = { version = "3.2", features = ["derive"] }
+zipf = "7.0.0"
 
 [[example]]
 name = "serde"

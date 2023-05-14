@@ -10,7 +10,7 @@ Features:
 - Event-time driven using low watermarking
 - Bounded query latency
 - Roll-ups & drill-downs with the ``drill_down`` feature enabled
-- Compatible with `#[no_std]`
+- Compatible with `#[no_std]` with the ``alloc`` crate
 
 ## How it works
 
@@ -36,13 +36,11 @@ Note that the wheel may insert aggregates above the watermark, but state is only
 ## Feature Flags
 - `std` (_enabled by default_)
     - Enables features that rely on the standard library
-- `alloc` (_enabled by default via std_)
-    - Enables a number of features that require the ability to dynamically allocate memory.
 - `years_size_10` (_enabled by default_)
     - Enables rolling up aggregates across 10 years
 - `years_size_100`
     - Enables rolling up aggregates across 100 years
-- `drill_down` (_implicitly enables alloc_)
+- `drill_down`
     - Enables drill-down operations on wheels at the cost of more storage
 - `rkyv`
     - Enables serialisation & deserialisation using the [rkyv](https://docs.rs/rkyv/latest/rkyv/) framework.
@@ -66,13 +64,13 @@ for _ in 0..60 {
 wheel.advance(60.seconds());
 
 // interval of last 1 minute
-assert_eq!(wheel.minutes().interval(1), Some(60));
+assert_eq!(wheel.minutes().unwrap().interval(1), Some(60));
 
 // full range of data
 assert_eq!(wheel.landmark(), Some(60));
 
 // interval of last 15 seconds
-assert_eq!(wheel.seconds().interval(15), Some(15));
+assert_eq!(wheel.seconds_unchecked().interval(15), Some(15));
 ```
 
 ## License

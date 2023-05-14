@@ -73,7 +73,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{aggregator::U64SumAggregator, time::NumericalDuration};
+    use crate::aggregator::U64SumAggregator;
 
     use super::*;
 
@@ -85,8 +85,18 @@ mod tests {
         assert!(map.insert("bar".to_string(), Entry::new(50, 1600)).is_ok());
 
         assert!(map.landmark().is_none());
-        assert!(map.get("foo").unwrap().interval(1.seconds()).is_none());
-        assert!(map.get("bar").unwrap().interval(1.seconds()).is_none());
+        assert!(map
+            .get("foo")
+            .unwrap()
+            .seconds_unchecked()
+            .interval(1)
+            .is_none());
+        assert!(map
+            .get("bar")
+            .unwrap()
+            .seconds_unchecked()
+            .interval(1)
+            .is_none());
 
         map.advance_to(2000);
 
@@ -95,7 +105,13 @@ mod tests {
         assert_eq!(map.get("foo").unwrap().landmark(), Some(100));
         assert_eq!(map.get("bar").unwrap().landmark(), Some(50));
 
-        assert_eq!(map.get("foo").unwrap().interval(1.seconds()), Some(100));
-        assert_eq!(map.get("bar").unwrap().interval(1.seconds()), Some(50));
+        assert_eq!(
+            map.get("foo").unwrap().seconds_unchecked().interval(1),
+            Some(100)
+        );
+        assert_eq!(
+            map.get("bar").unwrap().seconds_unchecked().interval(1),
+            Some(50)
+        );
     }
 }

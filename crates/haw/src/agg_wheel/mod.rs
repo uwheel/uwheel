@@ -1,4 +1,4 @@
-use crate::aggregator::Aggregator;
+use crate::{aggregator::Aggregator, types::PartialAggregateType};
 use core::{
     assert,
     debug_assert,
@@ -11,19 +11,19 @@ use core::{
     slice,
 };
 
-#[cfg(all(feature = "alloc", not(feature = "std")))]
-use alloc::{boxed::Box, vec::Vec};
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 
-#[cfg(all(feature = "rkyv", feature = "alloc"))]
+#[cfg(feature = "rkyv")]
 use rkyv::{ser::Serializer, AlignedVec};
 
 #[cfg(feature = "rkyv")]
-use rkyv::{with::Skip, Archive, Deserialize, Serialize};
-
-#[cfg(all(feature = "rkyv", feature = "alloc"))]
 use crate::DefaultSerializer;
-#[cfg(all(feature = "rkyv", feature = "alloc"))]
+#[cfg(feature = "rkyv")]
 use crate::PartialAggregate;
+
+#[cfg(feature = "rkyv")]
+use rkyv::{with::Skip, Archive, Deserialize, Serialize};
 
 mod iter;
 
@@ -594,7 +594,62 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             None
         }
     }
-    #[cfg(all(feature = "rkyv", feature = "alloc"))]
+
+    pub fn from_be_bytes(&self, _bytes: &[u8]) -> Self {
+        unimplemented!();
+    }
+    pub fn to_be_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let empty: u8 = 0xFF;
+
+        // # Safety
+        // We know that these fields do not exceed a byte
+        let num_slots: u8 = self.num_slots.try_into().unwrap();
+        let head: u8 = self.head.try_into().unwrap();
+        let tail: u8 = self.tail.try_into().unwrap();
+        let rotation_count: u8 = self.rotation_count.try_into().unwrap();
+
+        bytes.push(num_slots.to_be());
+        bytes.push(head.to_be());
+        bytes.push(tail.to_be());
+        bytes.push(rotation_count.to_be());
+
+        if let Some(tot) = self.total {
+            bytes.extend_from_slice(tot.to_be_bytes().as_ref());
+        } else {
+            bytes.push(empty);
+        }
+        let mut count: u16 = 0;
+        let mut prev_value: Option<A::PartialAggregate> = None;
+
+        // Apply RLE on `None` values
+        for value in self.slots.iter() {
+            if value.is_none() && prev_value.is_none() {
+                // If the current value is the same as the previous one, increase the count
+                count += 1;
+            } else {
+                // Serialize the count and the previous value when encountering a new value
+                bytes.extend_from_slice(&count.to_be_bytes());
+
+                if let Some(prev) = prev_value {
+                    bytes.extend_from_slice(prev.to_be_bytes().as_ref());
+                }
+
+                // Update the count and previous value
+                count = 1;
+                prev_value = *value;
+            }
+        }
+        // Serialize the final count and previous value
+        bytes.extend_from_slice(&count.to_be_bytes());
+        if let Some(prev) = prev_value {
+            bytes.extend_from_slice(prev.to_be_bytes().as_ref());
+        }
+
+        bytes
+    }
+
+    #[cfg(feature = "rkyv")]
     /// Converts the wheel to bytes
     pub fn as_bytes(&self) -> AlignedVec
     where

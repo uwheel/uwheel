@@ -53,6 +53,21 @@ fn main() {
     );
 
     let now = Instant::now();
+    let raw_wheel_native = wheel.to_be_bytes();
+    println!(
+        "Native: Serialised empty wheel size {} bytes in {:?}",
+        raw_wheel_native.len(),
+        now.elapsed()
+    );
+    let now = Instant::now();
+    let lz4_compressed = lz4_flex::compress_prepend_size(&raw_wheel_native);
+    println!(
+        "Native: Empty lz4 serialised wheel size {} bytes in {:?}",
+        lz4_compressed.len(),
+        now.elapsed(),
+    );
+
+    let now = Instant::now();
     let lz4_compressed = lz4_flex::compress_prepend_size(&raw_wheel);
     println!(
         "Empty lz4 serialised wheel size {} bytes in {:?}",
@@ -79,10 +94,25 @@ fn main() {
     }
     println!("wheel total {:?}", wheel.landmark());
 
-    let raw_seconds_wheel = wheel.seconds().as_bytes();
+    let raw_seconds_wheel = wheel.seconds_unchecked().as_bytes();
     println!(
         "Serialised Seconds wheel size {} bytes",
         raw_seconds_wheel.len()
+    );
+
+    let now = Instant::now();
+    let raw_wheel_native = wheel.to_be_bytes();
+    println!(
+        "Native: Full serialised wheel size {} bytes in {:?}",
+        raw_wheel_native.len(),
+        now.elapsed()
+    );
+    let now = Instant::now();
+    let lz4_compressed = lz4_flex::compress_prepend_size(&raw_wheel_native);
+    println!(
+        "Native: Full lz4 serialised wheel size bytes {} in {:?}",
+        lz4_compressed.len(),
+        now.elapsed(),
     );
 
     let now = Instant::now();

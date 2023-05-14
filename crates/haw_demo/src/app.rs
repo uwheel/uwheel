@@ -137,12 +137,30 @@ impl HawLabels {
         let watermark_label = to_offset_datetime(wheel.watermark()).to_string();
         let slots_len_label = wheel.len().to_string();
         let remaining_ticks_label = wheel.remaining_ticks().to_string();
-        let seconds_ticks_label = wheel.seconds().ticks_remaining().to_string();
-        let minutes_ticks_label = wheel.minutes().ticks_remaining().to_string();
-        let hours_ticks_label = wheel.hours().ticks_remaining().to_string();
-        let days_ticks_label = wheel.days().ticks_remaining().to_string();
-        let weeks_ticks_label = wheel.weeks().ticks_remaining().to_string();
-        let years_ticks_label = wheel.years().ticks_remaining().to_string();
+        let seconds_ticks_label = wheel
+            .seconds()
+            .map(|w| w.ticks_remaining().to_string())
+            .unwrap_or_else(|| "None".to_string());
+        let minutes_ticks_label = wheel
+            .minutes()
+            .map(|w| w.ticks_remaining().to_string())
+            .unwrap_or_else(|| "None".to_string());
+        let hours_ticks_label = wheel
+            .hours()
+            .map(|w| w.ticks_remaining().to_string())
+            .unwrap_or_else(|| "None".to_string());
+        let days_ticks_label = wheel
+            .days()
+            .map(|w| w.ticks_remaining().to_string())
+            .unwrap_or_else(|| "None".to_string());
+        let weeks_ticks_label = wheel
+            .weeks()
+            .map(|w| w.ticks_remaining().to_string())
+            .unwrap_or_else(|| "None".to_string());
+        let years_ticks_label = wheel
+            .years()
+            .map(|w| w.ticks_remaining().to_string())
+            .unwrap_or_else(|| "None".to_string());
         let landmark_window_label = wheel.landmark().unwrap_or(0).to_string();
         Self {
             watermark_unix_label,
@@ -229,14 +247,14 @@ impl TemplateApp {
         puffin::profile_function!();
 
         let wheel = wheel.borrow();
-        let seconds_wheel = wheel.seconds();
-        let days_wheel = wheel.days();
-
         let fmt_str = |i: usize, gran: Granularity| -> String { format!("{} {:?} ago", i, gran) };
 
         // Watermark
 
-        let watermark_agg = wheel.seconds().lower(0).unwrap_or(0) as f64;
+        let watermark_agg = wheel
+            .seconds()
+            .map(|w| w.lower(0).unwrap_or(0))
+            .unwrap_or(0) as f64;
         let bar =
             Bar::new(0.5, watermark_agg).name(to_offset_datetime(wheel.watermark()).to_string());
         let watermark_chart = BarChart::new(vec![bar])
@@ -247,11 +265,13 @@ impl TemplateApp {
 
         let mut pos = 1.5;
         let mut bars = Vec::new();
-        for i in 1..=haw::SECONDS {
-            let val = seconds_wheel.lower(i).unwrap_or(0) as f64;
-            let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Second));
-            pos += 1.0;
-            bars.push(bar);
+        if let Some(seconds_wheel) = wheel.seconds() {
+            for i in 1..=haw::SECONDS {
+                let val = seconds_wheel.lower(i).unwrap_or(0) as f64;
+                let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Second));
+                pos += 1.0;
+                bars.push(bar);
+            }
         }
         let seconds_chart = BarChart::new(bars)
             .highlight(true)
@@ -261,11 +281,13 @@ impl TemplateApp {
 
         // MINUTES
         let mut bars = Vec::new();
-        for i in 1..=haw::MINUTES {
-            let val = wheel.minutes().lower(i).unwrap_or(0) as f64;
-            let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Minute));
-            pos += 1.0;
-            bars.push(bar);
+        if let Some(minutes_wheel) = wheel.minutes() {
+            for i in 1..=haw::MINUTES {
+                let val = minutes_wheel.lower(i).unwrap_or(0) as f64;
+                let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Minute));
+                pos += 1.0;
+                bars.push(bar);
+            }
         }
         let minutes_chart = BarChart::new(bars)
             .width(0.7)
@@ -275,11 +297,13 @@ impl TemplateApp {
 
         // HOURS
         let mut bars = Vec::new();
-        for i in 1..=haw::HOURS {
-            let val = wheel.hours().lower(i).unwrap_or(0) as f64;
-            let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Hour));
-            pos += 1.0;
-            bars.push(bar);
+        if let Some(hours_wheel) = wheel.hours() {
+            for i in 1..=haw::HOURS {
+                let val = hours_wheel.lower(i).unwrap_or(0) as f64;
+                let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Hour));
+                pos += 1.0;
+                bars.push(bar);
+            }
         }
         let hours_chart = BarChart::new(bars)
             .width(0.7)
@@ -288,11 +312,13 @@ impl TemplateApp {
             .name("Hours");
 
         let mut bars = Vec::new();
-        for i in 1..=haw::DAYS {
-            let val = days_wheel.lower(i).unwrap_or(0) as f64;
-            let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Day));
-            pos += 1.0;
-            bars.push(bar);
+        if let Some(days_wheel) = wheel.days() {
+            for i in 1..=haw::DAYS {
+                let val = days_wheel.lower(i).unwrap_or(0) as f64;
+                let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Day));
+                pos += 1.0;
+                bars.push(bar);
+            }
         }
         let days_chart = BarChart::new(bars)
             .width(0.7)
@@ -301,11 +327,13 @@ impl TemplateApp {
             .name("Days");
 
         let mut bars = Vec::new();
-        for i in 1..=haw::WEEKS {
-            let val = wheel.weeks().lower(i).unwrap_or(0) as f64;
-            let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Week));
-            pos += 1.0;
-            bars.push(bar);
+        if let Some(weeks_wheel) = wheel.weeks() {
+            for i in 1..=haw::WEEKS {
+                let val = weeks_wheel.lower(i).unwrap_or(0) as f64;
+                let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Week));
+                pos += 1.0;
+                bars.push(bar);
+            }
         }
         let weeks_chart = BarChart::new(bars)
             .width(0.7)
@@ -314,11 +342,13 @@ impl TemplateApp {
             .name("Weeks");
 
         let mut bars = Vec::new();
-        for i in 1..=haw::YEARS {
-            let val = wheel.years().lower(i).unwrap_or(0) as f64;
-            let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Year));
-            pos += 1.0;
-            bars.push(bar);
+        if let Some(years_wheel) = wheel.years() {
+            for i in 1..=haw::YEARS {
+                let val = years_wheel.lower(i).unwrap_or(0) as f64;
+                let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Year));
+                pos += 1.0;
+                bars.push(bar);
+            }
         }
         let years_chart = BarChart::new(bars)
             .width(0.7)
@@ -376,135 +406,136 @@ impl TemplateApp {
                                         empty_plot(ui);
                                     }
                                     Some((Granularity::Minute, pos)) => {
-                                        if let Some(slots) =
-                                            measure(|| wheel.minutes().drill_down(pos))
-                                        {
-                                            let mut bars = Vec::new();
-                                            let mut pos = 0.5;
-                                            for (i, s) in slots.iter().enumerate() {
-                                                let bar = Bar::new(pos, *s as f64)
-                                                    .name(fmt_str(i, Granularity::Second));
-                                                pos += 1.0;
-                                                bars.push(bar);
+                                        if let Some(minutes) = wheel.minutes() {
+                                            if let Some(slots) = measure(|| minutes.drill_down(pos))
+                                            {
+                                                let mut bars = Vec::new();
+                                                let mut pos = 0.5;
+                                                for (i, s) in slots.iter().enumerate() {
+                                                    let bar = Bar::new(pos, *s as f64)
+                                                        .name(fmt_str(i, Granularity::Second));
+                                                    pos += 1.0;
+                                                    bars.push(bar);
+                                                }
+                                                let seconds_chart = BarChart::new(bars)
+                                                    .width(0.7)
+                                                    .color(SECOND_COLOR)
+                                                    .highlight(true)
+                                                    .name("Seconds");
+                                                Plot::new("Drill down")
+                                                    .legend(Legend::default())
+                                                    .auto_bounds_y()
+                                                    .auto_bounds_x()
+                                                    .data_aspect(1.0)
+                                                    .show(ui, |plot_ui| {
+                                                        plot_ui.bar_chart(seconds_chart);
+                                                    });
                                             }
-                                            let seconds_chart = BarChart::new(bars)
-                                                .width(0.7)
-                                                .color(SECOND_COLOR)
-                                                .highlight(true)
-                                                .name("Seconds");
-                                            Plot::new("Drill down")
-                                                .legend(Legend::default())
-                                                .auto_bounds_y()
-                                                .auto_bounds_x()
-                                                .data_aspect(1.0)
-                                                .show(ui, |plot_ui| {
-                                                    plot_ui.bar_chart(seconds_chart);
-                                                });
                                         }
                                     }
                                     Some((Granularity::Hour, pos)) => {
-                                        if let Some(slots) =
-                                            measure(|| wheel.hours().drill_down(pos))
-                                        {
-                                            let mut bars = Vec::new();
-                                            let mut pos = 0.5;
-                                            for (i, s) in slots.iter().enumerate() {
-                                                let bar = Bar::new(pos, *s as f64)
-                                                    .name(fmt_str(i, Granularity::Minute));
-                                                pos += 1.0;
-                                                bars.push(bar);
+                                        if let Some(hours) = wheel.hours() {
+                                            if let Some(slots) = measure(|| hours.drill_down(pos)) {
+                                                let mut bars = Vec::new();
+                                                let mut pos = 0.5;
+                                                for (i, s) in slots.iter().enumerate() {
+                                                    let bar = Bar::new(pos, *s as f64)
+                                                        .name(fmt_str(i, Granularity::Minute));
+                                                    pos += 1.0;
+                                                    bars.push(bar);
+                                                }
+                                                let minutes_chart = BarChart::new(bars)
+                                                    .width(0.7)
+                                                    .color(MINUTE_COLOR)
+                                                    .highlight(true)
+                                                    .name("Minutes");
+                                                Plot::new("Drill down")
+                                                    .legend(Legend::default())
+                                                    .auto_bounds_y()
+                                                    .auto_bounds_x()
+                                                    .data_aspect(1.0)
+                                                    .show(ui, |plot_ui| {
+                                                        plot_ui.bar_chart(minutes_chart);
+                                                    });
                                             }
-                                            let minutes_chart = BarChart::new(bars)
-                                                .width(0.7)
-                                                .color(MINUTE_COLOR)
-                                                .highlight(true)
-                                                .name("Minutes");
-                                            Plot::new("Drill down")
-                                                .legend(Legend::default())
-                                                .auto_bounds_y()
-                                                .auto_bounds_x()
-                                                .data_aspect(1.0)
-                                                .show(ui, |plot_ui| {
-                                                    plot_ui.bar_chart(minutes_chart);
-                                                });
                                         }
                                     }
                                     Some((Granularity::Day, pos)) => {
-                                        if let Some(slots) =
-                                            measure(|| wheel.days().drill_down(pos))
-                                        {
-                                            let mut bars = Vec::new();
-                                            let mut pos = 0.5;
-                                            for (i, s) in slots.iter().enumerate() {
-                                                let bar = Bar::new(pos, *s as f64)
-                                                    .name(fmt_str(i, Granularity::Hour));
-                                                pos += 1.0;
-                                                bars.push(bar);
+                                        if let Some(days) = wheel.days() {
+                                            if let Some(slots) = measure(|| days.drill_down(pos)) {
+                                                let mut bars = Vec::new();
+                                                let mut pos = 0.5;
+                                                for (i, s) in slots.iter().enumerate() {
+                                                    let bar = Bar::new(pos, *s as f64)
+                                                        .name(fmt_str(i, Granularity::Hour));
+                                                    pos += 1.0;
+                                                    bars.push(bar);
+                                                }
+                                                let hours_chart = BarChart::new(bars)
+                                                    .width(0.7)
+                                                    .color(HOUR_COLOR)
+                                                    .highlight(true)
+                                                    .name("Hours");
+                                                Plot::new("Drill down")
+                                                    .legend(Legend::default())
+                                                    .auto_bounds_y()
+                                                    .data_aspect(1.0)
+                                                    .show(ui, |plot_ui| {
+                                                        plot_ui.bar_chart(hours_chart);
+                                                    });
                                             }
-                                            let hours_chart = BarChart::new(bars)
-                                                .width(0.7)
-                                                .color(HOUR_COLOR)
-                                                .highlight(true)
-                                                .name("Hours");
-                                            Plot::new("Drill down")
-                                                .legend(Legend::default())
-                                                .auto_bounds_y()
-                                                .data_aspect(1.0)
-                                                .show(ui, |plot_ui| {
-                                                    plot_ui.bar_chart(hours_chart);
-                                                });
                                         }
                                     }
                                     Some((Granularity::Week, pos)) => {
-                                        if let Some(slots) =
-                                            measure(|| wheel.weeks().drill_down(pos))
-                                        {
-                                            let mut bars = Vec::new();
-                                            let mut pos = 0.5;
-                                            for (i, s) in slots.iter().enumerate() {
-                                                let bar = Bar::new(pos, *s as f64)
-                                                    .name(fmt_str(i, Granularity::Day));
-                                                pos += 1.0;
-                                                bars.push(bar);
+                                        if let Some(weeks) = wheel.weeks() {
+                                            if let Some(slots) = measure(|| weeks.drill_down(pos)) {
+                                                let mut bars = Vec::new();
+                                                let mut pos = 0.5;
+                                                for (i, s) in slots.iter().enumerate() {
+                                                    let bar = Bar::new(pos, *s as f64)
+                                                        .name(fmt_str(i, Granularity::Day));
+                                                    pos += 1.0;
+                                                    bars.push(bar);
+                                                }
+                                                let days_chart = BarChart::new(bars)
+                                                    .width(0.7)
+                                                    .color(DAY_COLOR)
+                                                    .highlight(true)
+                                                    .name("Days");
+                                                Plot::new("Drill down")
+                                                    .legend(Legend::default())
+                                                    .auto_bounds_y()
+                                                    .data_aspect(1.0)
+                                                    .show(ui, |plot_ui| {
+                                                        plot_ui.bar_chart(days_chart);
+                                                    });
                                             }
-                                            let days_chart = BarChart::new(bars)
-                                                .width(0.7)
-                                                .color(DAY_COLOR)
-                                                .highlight(true)
-                                                .name("Days");
-                                            Plot::new("Drill down")
-                                                .legend(Legend::default())
-                                                .auto_bounds_y()
-                                                .data_aspect(1.0)
-                                                .show(ui, |plot_ui| {
-                                                    plot_ui.bar_chart(days_chart);
-                                                });
                                         }
                                     }
                                     Some((Granularity::Year, pos)) => {
-                                        if let Some(slots) =
-                                            measure(|| wheel.years().drill_down(pos))
-                                        {
-                                            let mut bars = Vec::new();
-                                            let mut pos = 0.5;
-                                            for (i, s) in slots.iter().enumerate() {
-                                                let bar = Bar::new(pos, *s as f64)
-                                                    .name(fmt_str(i, Granularity::Week));
-                                                pos += 1.0;
-                                                bars.push(bar);
+                                        if let Some(years) = wheel.years() {
+                                            if let Some(slots) = measure(|| years.drill_down(pos)) {
+                                                let mut bars = Vec::new();
+                                                let mut pos = 0.5;
+                                                for (i, s) in slots.iter().enumerate() {
+                                                    let bar = Bar::new(pos, *s as f64)
+                                                        .name(fmt_str(i, Granularity::Week));
+                                                    pos += 1.0;
+                                                    bars.push(bar);
+                                                }
+                                                let weeks_chart = BarChart::new(bars)
+                                                    .width(0.7)
+                                                    .color(WEEK_COLOR)
+                                                    .highlight(true)
+                                                    .name("Weeks");
+                                                Plot::new("Drill down")
+                                                    .auto_bounds_y()
+                                                    .legend(Legend::default())
+                                                    .data_aspect(1.0)
+                                                    .show(ui, |plot_ui| {
+                                                        plot_ui.bar_chart(weeks_chart);
+                                                    });
                                             }
-                                            let weeks_chart = BarChart::new(bars)
-                                                .width(0.7)
-                                                .color(WEEK_COLOR)
-                                                .highlight(true)
-                                                .name("Weeks");
-                                            Plot::new("Drill down")
-                                                .auto_bounds_y()
-                                                .legend(Legend::default())
-                                                .data_aspect(1.0)
-                                                .show(ui, |plot_ui| {
-                                                    plot_ui.bar_chart(weeks_chart);
-                                                });
                                         }
                                     }
                                     _ => {
@@ -557,12 +588,30 @@ impl eframe::App for TemplateApp {
                 labels.remaining_ticks_label = wheel.remaining_ticks().to_string();
                 labels.slots_len_label = wheel.len().to_string();
                 labels.landmark_window_label = wheel.landmark().unwrap_or(0).to_string();
-                labels.seconds_ticks_label = wheel.seconds().ticks_remaining().to_string();
-                labels.minutes_ticks_label = wheel.minutes().ticks_remaining().to_string();
-                labels.hours_ticks_label = wheel.hours().ticks_remaining().to_string();
-                labels.days_ticks_label = wheel.days().ticks_remaining().to_string();
-                labels.weeks_ticks_label = wheel.weeks().ticks_remaining().to_string();
-                labels.years_ticks_label = wheel.years().ticks_remaining().to_string();
+                labels.seconds_ticks_label = wheel
+                    .seconds()
+                    .map(|w| w.ticks_remaining().to_string())
+                    .unwrap_or_else(|| "None".to_string());
+                labels.minutes_ticks_label = wheel
+                    .minutes()
+                    .map(|w| w.ticks_remaining().to_string())
+                    .unwrap_or_else(|| "None".to_string());
+                labels.hours_ticks_label = wheel
+                    .hours()
+                    .map(|w| w.ticks_remaining().to_string())
+                    .unwrap_or_else(|| "None".to_string());
+                labels.days_ticks_label = wheel
+                    .days()
+                    .map(|w| w.ticks_remaining().to_string())
+                    .unwrap_or_else(|| "None".to_string());
+                labels.weeks_ticks_label = wheel
+                    .weeks()
+                    .map(|w| w.ticks_remaining().to_string())
+                    .unwrap_or_else(|| "None".to_string());
+                labels.years_ticks_label = wheel
+                    .years()
+                    .map(|w| w.ticks_remaining().to_string())
+                    .unwrap_or_else(|| "None".to_string());
             };
 
         let insert_wheel = wheels.get(insert_key).unwrap().clone();

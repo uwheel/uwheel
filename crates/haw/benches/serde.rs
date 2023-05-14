@@ -3,9 +3,11 @@ use haw::{aggregator::AllAggregator, *};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("wheel-serde");
+    group.bench_function("ser-small-wheel-native", ser_small_wheel_native);
     group.bench_function("ser-small-wheel", ser_small_wheel);
     group.bench_function("ser-small-wheel-lz4", ser_small_wheel_lz4);
     group.bench_function("ser-large-wheel", ser_large_wheel);
+    group.bench_function("ser-large-wheel-native", ser_large_wheel_native);
     group.bench_function("ser-large-wheel-lz4", ser_large_wheel_lz4);
     group.bench_function("deser-small-wheel", deser_small_wheel);
     group.bench_function("deser-small-wheel_lz4", deser_small_wheel_lz4);
@@ -50,11 +52,17 @@ fn small_wheel() -> Wheel<AllAggregator> {
 fn ser_small_wheel(bencher: &mut Bencher) {
     ser_wheel(small_wheel(), bencher)
 }
+fn ser_small_wheel_native(bencher: &mut Bencher) {
+    ser_wheel_native(small_wheel(), bencher)
+}
 fn ser_small_wheel_lz4(bencher: &mut Bencher) {
     ser_wheel_lz4(small_wheel(), bencher)
 }
 fn ser_large_wheel(bencher: &mut Bencher) {
     ser_wheel(large_wheel(), bencher)
+}
+fn ser_large_wheel_native(bencher: &mut Bencher) {
+    ser_wheel_native(large_wheel(), bencher)
 }
 fn ser_large_wheel_lz4(bencher: &mut Bencher) {
     ser_wheel_lz4(large_wheel(), bencher)
@@ -63,6 +71,10 @@ fn ser_large_wheel_lz4(bencher: &mut Bencher) {
 #[inline]
 fn ser_wheel(wheel: Wheel<AllAggregator>, bencher: &mut Bencher) {
     bencher.iter(|| black_box(wheel.as_bytes()));
+}
+#[inline]
+fn ser_wheel_native(wheel: Wheel<AllAggregator>, bencher: &mut Bencher) {
+    bencher.iter(|| black_box(wheel.to_be_bytes()));
 }
 
 #[inline]
@@ -104,7 +116,7 @@ fn deser_wheel_lz4(wheel: Wheel<AllAggregator>, bencher: &mut Bencher) {
 #[inline]
 fn ser_seconds_wheel(bencher: &mut Bencher) {
     let wheel = large_wheel();
-    bencher.iter(|| black_box(wheel.seconds().as_bytes()));
+    bencher.iter(|| black_box(wheel.seconds_unchecked().as_bytes()));
 }
 
 #[inline]
