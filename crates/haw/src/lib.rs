@@ -271,6 +271,7 @@ where
     aggregator: A,
     watermark: u64,
     seconds_wheel: MaybeWheel<SECONDS_CAP, A>,
+    #[cfg_attr(feature = "rkyv", omit_bounds)]
     minutes_wheel: MaybeWheel<MINUTES_CAP, A>,
     hours_wheel: MaybeWheel<HOURS_CAP, A>,
     days_wheel: MaybeWheel<DAYS_CAP, A>,
