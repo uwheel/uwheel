@@ -110,6 +110,9 @@ pub struct AggregationWheel<const CAP: usize, A: Aggregator> {
     /// Example: Drill down slots for a day would hold 24 hour slots
     #[cfg(feature = "drill_down")]
     drill_down_slots: DrillDownSlots<A::PartialAggregate, CAP>,
+    /// A flag indicating whether drill down is enabled
+    #[cfg(feature = "drill_down")]
+    drill_down: bool,
     /// Partial aggregate for a full rotation
     total: Option<A::PartialAggregate>,
     /// Keeps track whether we have done a full rotation (rotation_count == num_slots)
@@ -135,11 +138,8 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
 
         /// Creates a new AggregationWheel with drill-down enabled
         pub fn with_drill_down(num_slots: usize) -> Self {
-            let drill_down_slots: [Option<Vec<A::PartialAggregate>>; CAP] =
-                [Self::INIT_DRILL_DOWN_VALUE; CAP];
-
             let mut agg_wheel = Self::new(num_slots);
-            agg_wheel.drill_down_slots = Some(Box::new(drill_down_slots));
+            agg_wheel.drill_down = true;
             agg_wheel
         }
     }
@@ -156,6 +156,8 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             slots,
             #[cfg(feature = "drill_down")]
             drill_down_slots: None,
+            #[cfg(feature = "drill_down")]
+            drill_down: false,
             total: None,
             rotation_count: 0,
             head: 0,
@@ -388,6 +390,11 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// Insert encoded drill down slots at the current head
     #[cfg(feature = "drill_down")]
     fn insert_drill_down_slots(&mut self, encoded_slots_opt: Option<Vec<A::PartialAggregate>>) {
+        // if drill down slots have not been allocated
+        if self.drill_down_slots.is_none() {
+            self.drill_down_slots = Some(Box::new([Self::INIT_DRILL_DOWN_VALUE; CAP]));
+        }
+        // insert drill down slots into the current head
         if let Some(ref mut drill_down_slots) = &mut self.drill_down_slots {
             drill_down_slots[self.head] = encoded_slots_opt;
         }
@@ -423,7 +430,11 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             self.insert_head(partial_agg, &Default::default());
         }
         #[cfg(feature = "drill_down")]
-        self.insert_drill_down_slots(data.drill_down_slots);
+        {
+            if self.drill_down {
+                self.insert_drill_down_slots(data.drill_down_slots);
+            }
+        }
     }
 
     /// Merge two AggregationWheels of similar granularity
@@ -573,21 +584,28 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             self.total_ticks += 1;
         }
 
+        // Return RotationData if wheel has doen a full rotation
         if self.rotation_count == self.num_slots {
+            // our total partial aggregate to be rolled up
             let total = self.total.take();
+
+            // reset count
             self.rotation_count = 0;
 
             #[cfg(feature = "drill_down")]
-            // drill-down slots of this wheel to be inserted in another wheel
-            let drill_down_slots = self
-                .range(..)
-                .copied()
-                .map(|m| m.unwrap_or_default())
-                .collect();
+            {
+                if self.drill_down {
+                    let drill_down_slots = self
+                        .range(..)
+                        .copied()
+                        .map(|m| m.unwrap_or_default())
+                        .collect();
 
-            #[cfg(feature = "drill_down")]
-            return Some(RotationData::new(total, Some(drill_down_slots)));
-
+                    Some(RotationData::new(total, Some(drill_down_slots)))
+                } else {
+                    Some(RotationData::new(total, None))
+                }
+            }
             #[cfg(not(feature = "drill_down"))]
             Some(RotationData::new(total))
         } else {
