@@ -41,14 +41,12 @@ impl<'a, const CAP: usize, A: Aggregator> Iterator for Iter<'a, CAP, A> {
     }
 }
 
-#[cfg(feature = "drill_down")]
 pub struct DrillIter<'a, const CAP: usize, A: Aggregator> {
     ring: &'a [Option<Vec<A::PartialAggregate>>; CAP],
     tail: usize,
     head: usize,
 }
 
-#[cfg(feature = "drill_down")]
 impl<'a, const CAP: usize, A: Aggregator> DrillIter<'a, CAP, A> {
     pub(super) fn new(
         ring: &'a [Option<Vec<A::PartialAggregate>>; CAP],
@@ -58,7 +56,6 @@ impl<'a, const CAP: usize, A: Aggregator> DrillIter<'a, CAP, A> {
         DrillIter { ring, tail, head }
     }
 }
-#[cfg(feature = "drill_down")]
 impl<'a, const CAP: usize, A: Aggregator> Iterator for DrillIter<'a, CAP, A> {
     type Item = Option<&'a [A::PartialAggregate]>;
     //type Item = &'a Option<A::PartialAggregate>;

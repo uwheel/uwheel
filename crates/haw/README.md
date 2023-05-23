@@ -9,7 +9,7 @@ Features:
 - Compact and highly compressible
 - Event-time driven using low watermarking
 - Bounded query latency
-- Roll-ups & drill-downs with the ``drill_down`` feature enabled
+- Roll-ups & drill-downs
 - Compatible with `#[no_std]` with the ``alloc`` crate
 
 ## How it works
@@ -40,8 +40,6 @@ Note that the wheel may insert aggregates above the watermark, but state is only
     - Enables rolling up aggregates across 10 years
 - `years_size_100`
     - Enables rolling up aggregates across 100 years
-- `drill_down`
-    - Enables drill-down operations on wheels at the cost of more storage
 - `rkyv`
     - Enables serialisation & deserialisation using the [rkyv](https://docs.rs/rkyv/latest/rkyv/) framework.
 

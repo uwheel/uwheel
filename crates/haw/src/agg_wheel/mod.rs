@@ -29,44 +29,41 @@ mod iter;
 
 use iter::Iter;
 
-cfg_drill_down! {
-    use crate::agg_wheel::iter::DrillIter;
+use crate::agg_wheel::iter::DrillIter;
 
-    /// Type alias for drill down slots
-    type DrillDownSlots<A, const CAP: usize> = Option<Box<[Option<Vec<A>>; CAP]>>;
+/// Type alias for drill down slots
+type DrillDownSlots<A, const CAP: usize> = Option<Box<[Option<Vec<A>>; CAP]>>;
 
-    pub struct DrillCut<R>
-    where
-        R: RangeBounds<usize>,
-    {
-        /// slot ``subtrahend`` from head
-        pub slot: usize,
-        /// Range of partial aggregates within the drill down slots
-        pub range: R,
-    }
+pub struct DrillCut<R>
+where
+    R: RangeBounds<usize>,
+{
+    /// slot ``subtrahend`` from head
+    pub slot: usize,
+    /// Range of partial aggregates within the drill down slots
+    pub range: R,
+}
 
-    // utility function for drill down cutting
-    #[inline]
-    fn into_range(range: &impl RangeBounds<usize>, len: usize) -> Range<usize> {
-        let start = match range.start_bound() {
-            core::ops::Bound::Included(&n) => n,
-            core::ops::Bound::Excluded(&n) => n + 1,
-            core::ops::Bound::Unbounded => 0,
-        };
-        let end = match range.end_bound() {
-            core::ops::Bound::Included(&n) => n + 1,
-            core::ops::Bound::Excluded(&n) => n,
-            core::ops::Bound::Unbounded => len,
-        };
-        start..end
-    }
+// utility function for drill down cutting
+#[inline]
+fn into_range(range: &impl RangeBounds<usize>, len: usize) -> Range<usize> {
+    let start = match range.start_bound() {
+        core::ops::Bound::Included(&n) => n,
+        core::ops::Bound::Excluded(&n) => n + 1,
+        core::ops::Bound::Unbounded => 0,
+    };
+    let end = match range.end_bound() {
+        core::ops::Bound::Included(&n) => n + 1,
+        core::ops::Bound::Excluded(&n) => n,
+        core::ops::Bound::Unbounded => len,
+    };
+    start..end
 }
 
 /// Struct holding data for a complete wheel rotation
 pub struct RotationData<A: Aggregator> {
     /// A possible partial aggregate that is being rolled up into another wheel
     pub total: Option<A::PartialAggregate>,
-    #[cfg(feature = "drill_down")]
     /// An array of partial aggregate slots
     ///
     /// The combined aggregate of these slots equal to the `total` field
@@ -75,11 +72,10 @@ pub struct RotationData<A: Aggregator> {
 impl<A: Aggregator> RotationData<A> {
     pub fn new(
         total: Option<A::PartialAggregate>,
-        #[cfg(feature = "drill_down")] drill_down_slots: Option<Vec<A::PartialAggregate>>,
+        drill_down_slots: Option<Vec<A::PartialAggregate>>,
     ) -> Self {
         Self {
             total,
-            #[cfg(feature = "drill_down")]
             drill_down_slots,
         }
     }
@@ -95,7 +91,6 @@ impl<A: Aggregator> RotationData<A> {
 /// * `CAP` defines the circular buffer capacity (power of two).
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
-#[cfg_attr(not(feature = "drill_down"), derive(Copy))]
 #[derive(Clone, Debug)]
 pub struct AggregationWheel<const CAP: usize, A: Aggregator> {
     /// Number of slots (60 seconds => 60 slots)
@@ -108,10 +103,8 @@ pub struct AggregationWheel<const CAP: usize, A: Aggregator> {
     ///
     /// The slots hold encoded entries from a different granularity.
     /// Example: Drill down slots for a day would hold 24 hour slots
-    #[cfg(feature = "drill_down")]
     drill_down_slots: DrillDownSlots<A::PartialAggregate, CAP>,
     /// A flag indicating whether drill down is enabled
-    #[cfg(feature = "drill_down")]
     drill_down: bool,
     /// Partial aggregate for a full rotation
     total: Option<A::PartialAggregate>,
@@ -132,16 +125,13 @@ pub struct AggregationWheel<const CAP: usize, A: Aggregator> {
 }
 impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     const INIT_VALUE: Option<A::PartialAggregate> = None;
+    const INIT_DRILL_DOWN_VALUE: Option<Vec<A::PartialAggregate>> = None;
 
-    cfg_drill_down! {
-        const INIT_DRILL_DOWN_VALUE: Option<Vec<A::PartialAggregate>> = None;
-
-        /// Creates a new AggregationWheel with drill-down enabled
-        pub fn with_drill_down(num_slots: usize) -> Self {
-            let mut agg_wheel = Self::new(num_slots);
-            agg_wheel.drill_down = true;
-            agg_wheel
-        }
+    /// Creates a new AggregationWheel with drill-down enabled
+    pub fn with_drill_down(num_slots: usize) -> Self {
+        let mut agg_wheel = Self::new(num_slots);
+        agg_wheel.drill_down = true;
+        agg_wheel
     }
 
     /// Creates a new AggregationWheel using `num_slots`
@@ -154,9 +144,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         Self {
             num_slots,
             slots,
-            #[cfg(feature = "drill_down")]
             drill_down_slots: None,
-            #[cfg(feature = "drill_down")]
             drill_down: false,
             total: None,
             rotation_count: 0,
@@ -222,7 +210,6 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// - If given a position, returns the drill down slots based on that position,
     ///   or `None` if out of bounds
     /// - If `0` is specified, it will drill down the current head.
-    #[cfg(feature = "drill_down")]
     #[inline]
     pub fn drill_down(&self, slot: usize) -> Option<&[A::PartialAggregate]> {
         if slot > self.len() {
@@ -238,7 +225,6 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// Returns drill down slots from `slot` slots backwards from the head and lowers the aggregates
     ///
     /// If `0` is specified, it will drill down the current head.
-    #[cfg(feature = "drill_down")]
     #[inline]
     pub fn lower_drill_down(&self, slot: usize) -> Option<Vec<A::Aggregate>> {
         let aggregator = A::default();
@@ -257,7 +243,6 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     ///
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the wheel.
-    #[cfg(feature = "drill_down")]
     #[inline]
     pub fn drill_down_cut<AR, BR>(
         &self,
@@ -280,6 +265,30 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
 
         Some(res)
     }
+    /// Drill down across 2 slots and lowers results
+    ///
+    ///
+    /// # Panics
+    ///
+    /// Panics if the starting point is greater than the end point or if
+    /// the end point is greater than the length of the wheel.
+    #[inline]
+    pub fn lower_drill_down_cut<AR, BR>(
+        &self,
+        a: DrillCut<AR>,
+        b: DrillCut<BR>,
+    ) -> Option<Vec<A::Aggregate>>
+    where
+        AR: RangeBounds<usize>,
+        BR: RangeBounds<usize>,
+    {
+        self.drill_down_cut(a, b).map(|partials| {
+            partials
+                .into_iter()
+                .map(|pa| self.aggregator.lower(pa))
+                .collect()
+        })
+    }
 
     /// Drill downs a range of wheel slots and their combines aggregates
     ///
@@ -287,7 +296,6 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     ///
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the wheel.
-    #[cfg(feature = "drill_down")]
     pub fn drill_down_range<R>(&self, range: R) -> Option<Vec<A::PartialAggregate>>
     where
         R: RangeBounds<usize>,
@@ -354,11 +362,8 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             let tail = self.tail;
             self.tail = self.wrap_add(self.tail, 1);
             self.slots[tail] = None;
-            #[cfg(feature = "drill_down")]
-            {
-                if let Some(ref mut drill_down_slots) = &mut self.drill_down_slots {
-                    drill_down_slots[tail] = None;
-                }
+            if let Some(ref mut drill_down_slots) = &mut self.drill_down_slots {
+                drill_down_slots[tail] = None;
             }
         }
     }
@@ -388,7 +393,6 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     }
 
     /// Insert encoded drill down slots at the current head
-    #[cfg(feature = "drill_down")]
     fn insert_drill_down_slots(&mut self, encoded_slots_opt: Option<Vec<A::PartialAggregate>>) {
         // if drill down slots have not been allocated
         if self.drill_down_slots.is_none() {
@@ -429,11 +433,8 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         if let Some(partial_agg) = data.total {
             self.insert_head(partial_agg, &Default::default());
         }
-        #[cfg(feature = "drill_down")]
-        {
-            if self.drill_down {
-                self.insert_drill_down_slots(data.drill_down_slots);
-            }
+        if self.drill_down {
+            self.insert_drill_down_slots(data.drill_down_slots);
         }
     }
 
@@ -452,37 +453,34 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
                 Self::insert(self_slot, other_agg, &self.aggregator);
             }
         }
-        #[cfg(feature = "drill_down")]
-        {
-            match (&mut self.drill_down_slots, &other.drill_down_slots) {
-                (Some(slots), Some(other_slots)) => {
-                    for (mut self_slot, other_slot) in
-                        slots.iter_mut().zip(other_slots.clone().into_iter())
-                    {
-                        match (&mut self_slot, other_slot) {
-                            // if both wheels contains drill down slots, then decode, combine and encode into self
-                            (Some(self_encodes), Some(other_encodes)) => {
-                                let mut new_aggs = Vec::new();
+        match (&mut self.drill_down_slots, &other.drill_down_slots) {
+            (Some(slots), Some(other_slots)) => {
+                for (mut self_slot, other_slot) in
+                    slots.iter_mut().zip(other_slots.clone().into_iter())
+                {
+                    match (&mut self_slot, other_slot) {
+                        // if both wheels contains drill down slots, then decode, combine and encode into self
+                        (Some(self_encodes), Some(other_encodes)) => {
+                            let mut new_aggs = Vec::new();
 
-                                for (x, y) in self_encodes.iter_mut().zip(other_encodes) {
-                                    new_aggs.push(self.aggregator.combine(*x, y));
-                                }
-                                *self_slot = Some(new_aggs);
+                            for (x, y) in self_encodes.iter_mut().zip(other_encodes) {
+                                new_aggs.push(self.aggregator.combine(*x, y));
                             }
-                            // if other wheel but not self, just move to self
-                            (None, Some(other_encodes)) => {
-                                *self_slot = Some(other_encodes);
-                            }
-                            _ => {
-                                // do nothing
-                            }
+                            *self_slot = Some(new_aggs);
+                        }
+                        // if other wheel but not self, just move to self
+                        (None, Some(other_encodes)) => {
+                            *self_slot = Some(other_encodes);
+                        }
+                        _ => {
+                            // do nothing
                         }
                     }
                 }
-                (Some(_), None) => panic!("only lhs wheel was configured with drill-down"),
-                (None, Some(_)) => panic!("only rhs wheel was configured with drill-down"),
-                _ => (),
             }
+            (Some(_), None) => panic!("only lhs wheel was configured with drill-down"),
+            (None, Some(_)) => panic!("only rhs wheel was configured with drill-down"),
+            _ => (),
         }
     }
 
@@ -547,13 +545,9 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         self.head = 0;
         self.tail = 0;
 
-        #[cfg(feature = "drill_down")]
-        {
-            if let Some(drill_down_slots) = &mut self.drill_down_slots {
-                let slots: [Option<Vec<A::PartialAggregate>>; CAP] =
-                    [Self::INIT_DRILL_DOWN_VALUE; CAP];
-                **drill_down_slots = slots;
-            }
+        if let Some(drill_down_slots) = &mut self.drill_down_slots {
+            let slots: [Option<Vec<A::PartialAggregate>>; CAP] = [Self::INIT_DRILL_DOWN_VALUE; CAP];
+            **drill_down_slots = slots;
         }
 
         // prepare fast tick
@@ -592,22 +586,17 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             // reset count
             self.rotation_count = 0;
 
-            #[cfg(feature = "drill_down")]
-            {
-                if self.drill_down {
-                    let drill_down_slots = self
-                        .range(..)
-                        .copied()
-                        .map(|m| m.unwrap_or_default())
-                        .collect();
+            if self.drill_down {
+                let drill_down_slots = self
+                    .range(..)
+                    .copied()
+                    .map(|m| m.unwrap_or_default())
+                    .collect();
 
-                    Some(RotationData::new(total, Some(drill_down_slots)))
-                } else {
-                    Some(RotationData::new(total, None))
-                }
+                Some(RotationData::new(total, Some(drill_down_slots)))
+            } else {
+                Some(RotationData::new(total, None))
             }
-            #[cfg(not(feature = "drill_down"))]
-            Some(RotationData::new(total))
         } else {
             None
         }

@@ -188,12 +188,10 @@ impl<T: Debug> fmt::Display for Entry<T> {
 #[derive(Debug, Clone)]
 pub struct MaybeWheel<const CAP: usize, A: Aggregator> {
     slots: usize,
-    #[cfg(feature = "drill_down")]
     drill_down: bool,
     wheel: Option<Box<AggregationWheel<CAP, A>>>,
 }
 impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
-    #[cfg(feature = "drill_down")]
     fn with_drill_down(slots: usize) -> Self {
         Self {
             slots,
@@ -204,7 +202,6 @@ impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
     fn new(slots: usize) -> Self {
         Self {
             slots,
-            #[cfg(feature = "drill_down")]
             drill_down: false,
             wheel: None,
         }
@@ -242,14 +239,11 @@ impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
     fn get_or_insert(&mut self) -> &mut AggregationWheel<CAP, A> {
         if self.wheel.is_none() {
             let agg_wheel = {
-                #[cfg(feature = "drill_down")]
                 if self.drill_down {
                     AggregationWheel::with_drill_down(self.slots)
                 } else {
                     AggregationWheel::new(self.slots)
                 }
-                #[cfg(not(feature = "drill_down"))]
-                AggregationWheel::new(self.slots)
             };
 
             self.wheel = Some(Box::new(agg_wheel));
@@ -261,7 +255,6 @@ impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
 /// Hierarchical aggregation wheel data structure
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
-//#[cfg_attr(not(feature = "drill_down"), derive(Copy))]
 #[derive(Clone, Debug)]
 pub struct Wheel<A>
 where
@@ -300,7 +293,6 @@ where
     pub const TOTAL_WHEEL_SLOTS: usize = SECONDS + MINUTES + HOURS + DAYS + WEEKS + YEARS;
     pub const MAX_WRITE_AHEAD_SLOTS: usize = SECONDS_CAP - SECONDS;
 
-    #[cfg(feature = "drill_down")]
     /// Creates a new Wheel starting from the given time with drill-down capabilities
     ///
     /// Time is represented as milliseconds
@@ -1043,7 +1035,6 @@ mod tests {
         assert!(wheel.landmark().is_none());
     }
 
-    #[cfg(feature = "drill_down")]
     #[test]
     fn drill_down_test() {
         use crate::agg_wheel::DrillCut;
@@ -1105,7 +1096,6 @@ mod tests {
         assert_eq!(sum, 3600u64);
     }
 
-    #[cfg(feature = "drill_down")]
     #[test]
     fn drill_down_holes_test() {
         let mut time = 0;
