@@ -37,6 +37,8 @@ pub mod time;
 /// Data types used in this crate
 pub mod types;
 
+mod waw;
+
 use aggregator::Aggregator;
 
 mod wheel;

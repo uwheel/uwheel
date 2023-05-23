@@ -689,7 +689,8 @@ impl eframe::App for TemplateApp {
                     RichText::new(
                         plot_wheel
                             .borrow()
-                            .interval(5.seconds())
+                            .seconds()
+                            .and_then(|w| w.interval(5))
                             .unwrap_or(0)
                             .to_string(),
                     )
@@ -702,7 +703,8 @@ impl eframe::App for TemplateApp {
                     RichText::new(
                         plot_wheel
                             .borrow()
-                            .interval(15.seconds())
+                            .seconds()
+                            .and_then(|w| w.interval(15))
                             .unwrap_or(0)
                             .to_string(),
                     )
@@ -715,7 +717,8 @@ impl eframe::App for TemplateApp {
                     RichText::new(
                         plot_wheel
                             .borrow()
-                            .interval(30.seconds())
+                            .seconds()
+                            .and_then(|w| w.interval(30))
                             .unwrap_or(0)
                             .to_string(),
                     )
@@ -728,7 +731,8 @@ impl eframe::App for TemplateApp {
                     RichText::new(
                         plot_wheel
                             .borrow()
-                            .interval(1.minutes())
+                            .seconds()
+                            .and_then(|w| w.interval(1))
                             .unwrap_or(0)
                             .to_string(),
                     )
@@ -741,7 +745,8 @@ impl eframe::App for TemplateApp {
                     RichText::new(
                         plot_wheel
                             .borrow()
-                            .interval(1.hours())
+                            .hours()
+                            .and_then(|w| w.interval(1))
                             .unwrap_or(0)
                             .to_string(),
                     )
@@ -754,7 +759,8 @@ impl eframe::App for TemplateApp {
                     RichText::new(
                         plot_wheel
                             .borrow()
-                            .interval(1.days())
+                            .days()
+                            .and_then(|w| w.interval(1))
                             .unwrap_or(0)
                             .to_string(),
                     )

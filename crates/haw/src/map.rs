@@ -85,18 +85,8 @@ mod tests {
         assert!(map.insert("bar".to_string(), Entry::new(50, 1600)).is_ok());
 
         assert!(map.landmark().is_none());
-        assert!(map
-            .get("foo")
-            .unwrap()
-            .seconds_unchecked()
-            .interval(1)
-            .is_none());
-        assert!(map
-            .get("bar")
-            .unwrap()
-            .seconds_unchecked()
-            .interval(1)
-            .is_none());
+        assert!(map.get("foo").unwrap().seconds().is_none());
+        assert!(map.get("bar").unwrap().seconds().is_none());
 
         map.advance_to(2000);
 

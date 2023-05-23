@@ -17,7 +17,6 @@ default = ["years_size_10", "std"]
 std = ["rkyv?/std"]
 years_size_10 = []
 years_size_100 = []
-drill_down = []
 rkyv = ["dep:rkyv"]
 
 [dependencies]

@@ -7,7 +7,7 @@ license = "Apache-2.0 & MIT"
 
 
 [dependencies]
-haw = { path = "../haw", features = ["rkyv", "drill_down"] }
+haw = { path = "../haw", features = ["rkyv"] }
 time = { version = "0.3.17", default-features = false }
 smallvec = "1.10.0"
 parking_lot = "0.12.1"

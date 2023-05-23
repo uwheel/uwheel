@@ -400,13 +400,9 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         }
     }
 
+    /// Insert PartialAggregate into the head of the wheel
     #[inline]
-    fn insert_at(&mut self, slot_idx: usize, entry: A::PartialAggregate, aggregator: &A) {
-        Self::insert(self.slot(slot_idx), entry, aggregator);
-    }
-
-    #[inline]
-    fn insert_head(&mut self, entry: A::PartialAggregate, aggregator: &A) {
+    pub fn insert_head(&mut self, entry: A::PartialAggregate, aggregator: &A) {
         Self::insert(self.slot(self.head), entry, aggregator);
     }
 
@@ -483,37 +479,6 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// Locate slot id `subtrahend` back
     pub(crate) fn slot_idx_from_head(&self, subtrahend: usize) -> usize {
         self.wrap_sub(self.head, subtrahend)
-    }
-
-    /// How many write ahead slots are available
-    #[inline]
-    pub(crate) fn write_ahead_len(&self) -> usize {
-        let diff = self.len();
-        CAP - diff
-    }
-
-    /// Check whether this wheel can write ahead by ´addend` slots
-    pub(crate) fn can_write_ahead(&self, addend: u64) -> bool {
-        // Problem: if the wheel is full length and addend slots wraps around the tail, then
-        // we will update valid historic slots with future aggregates. We should not allow this.
-        addend as usize <= self.write_ahead_len()
-    }
-
-    /// Attempts to write `entry` into the Wheel
-    #[inline]
-    pub fn write_ahead(&mut self, addend: u64, partial_agg: A::PartialAggregate, aggregator: &A) {
-        let slot_idx = self.slot_idx_forward_from_head(addend as usize);
-        self.insert_at(slot_idx, partial_agg, aggregator);
-    }
-
-    /// Locate slot id `addend` forward
-    fn slot_idx_forward_from_head(&self, addend: usize) -> usize {
-        self.wrap_add(self.head, addend)
-    }
-
-    /// Locate slot id `addend` forward
-    fn _slot_idx_from_tail(&self, addend: usize) -> usize {
-        self.wrap_add(self.tail, addend)
     }
 
     #[inline]

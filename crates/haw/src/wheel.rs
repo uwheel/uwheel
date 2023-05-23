@@ -33,7 +33,7 @@ use rkyv::{with::Skip, Archive, Deserialize, Infallible, Serialize};
 use alloc::{boxed::Box, vec::Vec};
 
 use super::{Entry, Error};
-use crate::{agg_wheel::AggregationWheel, aggregator::Aggregator, time};
+use crate::{agg_wheel::AggregationWheel, aggregator::Aggregator, time, waw::Waw};
 
 #[cfg(not(any(feature = "years_size_10", feature = "years_size_100")))]
 core::compile_error!(r#"one of ["years_size_10", "years_size_100"] features must be enabled"#);
@@ -56,7 +56,7 @@ pub const YEARS: usize = 10;
 pub const YEARS: usize = 100;
 
 // Default Wheel Capacities (power of two)
-const SECONDS_CAP: usize = 128; // This is set as 128 instead of 64 to support write ahead slots
+const SECONDS_CAP: usize = 64;
 const MINUTES_CAP: usize = 64;
 const HOURS_CAP: usize = 32;
 const DAYS_CAP: usize = 8;
@@ -100,6 +100,8 @@ where
     #[cfg_attr(feature = "rkyv", with(Skip))]
     aggregator: A,
     watermark: u64,
+    waw: Waw<A>,
+    #[cfg_attr(feature = "rkyv", omit_bounds)]
     seconds_wheel: MaybeWheel<SECONDS_CAP, A>,
     #[cfg_attr(feature = "rkyv", omit_bounds)]
     minutes_wheel: MaybeWheel<MINUTES_CAP, A>,
@@ -128,7 +130,7 @@ where
     pub const CYCLE_LENGTH: time::Duration =
         time::Duration::seconds((Self::YEAR_AS_SECS * (YEARS as u64 + 1)) as i64); // need 1 extra to force full cycle rotation
     pub const TOTAL_WHEEL_SLOTS: usize = SECONDS + MINUTES + HOURS + DAYS + WEEKS + YEARS;
-    pub const MAX_WRITE_AHEAD_SLOTS: usize = SECONDS_CAP - SECONDS;
+    pub const MAX_WRITE_AHEAD_SLOTS: usize = 64;
 
     /// Creates a new Wheel starting from the given time with drill-down capabilities
     ///
@@ -137,6 +139,7 @@ where
         Self {
             aggregator: A::default(),
             watermark: time,
+            waw: Waw::with_capacity(Self::MAX_WRITE_AHEAD_SLOTS),
             seconds_wheel: MaybeWheel::with_drill_down(SECONDS),
             minutes_wheel: MaybeWheel::with_drill_down(MINUTES),
             hours_wheel: MaybeWheel::with_drill_down(HOURS),
@@ -155,6 +158,7 @@ where
         Self {
             aggregator: A::default(),
             watermark: time,
+            waw: Waw::with_capacity(Self::MAX_WRITE_AHEAD_SLOTS),
             seconds_wheel: MaybeWheel::new(SECONDS),
             minutes_wheel: MaybeWheel::new(MINUTES),
             hours_wheel: MaybeWheel::new(HOURS),
@@ -188,10 +192,7 @@ where
 
     /// Returns how many slots (seconds) in front of the current watermark that can be written to
     pub fn write_ahead_len(&self) -> usize {
-        self.seconds_wheel
-            .as_deref()
-            .map(|w| w.write_ahead_len())
-            .unwrap_or(Self::MAX_WRITE_AHEAD_SLOTS)
+        self.waw.write_ahead_len()
     }
 
     /// Returns how many ticks (seconds) are left until the wheel is fully utilised
@@ -235,6 +236,7 @@ where
             // calculate how many fast_ticks we can perform
             let fast_ticks = ticks.saturating_div(SECONDS);
 
+            // TODO: verify Write-ahead wheel logic
             if fast_ticks == 0 {
                 // if fast ticks is 0, then tick normally
                 tick_n(ticks, self);
@@ -285,16 +287,16 @@ where
         } else {
             let diff = entry.timestamp - self.watermark;
             let seconds = Duration::from_millis(diff).as_secs();
-
-            let seconds_wheel = self.seconds_wheel.get_or_insert();
-            if seconds_wheel.can_write_ahead(seconds) {
+            // if can write into waw, otherwise overflow...
+            if self.waw.can_write_ahead(seconds) {
                 // lift the entry to a partial aggregate and insert
                 let partial_agg = self.aggregator.lift(entry.data);
-                seconds_wheel.write_ahead(seconds, partial_agg, &self.aggregator);
+                self.waw.write_ahead(seconds, partial_agg, &self.aggregator);
                 Ok(())
             } else {
-                // cannot fit within the wheel, return it to the user to handle it..
-                let write_ahead_ms = Duration::from_secs(self.write_ahead_len() as u64).as_millis();
+                // cannot fit within the write-ahead wheel, return it to the user to handle it..
+                let write_ahead_ms =
+                    Duration::from_secs(self.waw.write_ahead_len() as u64).as_millis();
                 let max_write_ahead_ts = self.watermark + write_ahead_ms as u64;
                 Err(Error::Overflow {
                     entry,
@@ -309,130 +311,6 @@ where
     pub fn watermark(&self) -> u64 {
         self.watermark
     }
-
-    /// Returns a full aggregate in the given time interval
-    pub fn interval(&self, dur: time::Duration) -> Option<A::Aggregate> {
-        // closure that turns i64 to None if it is zero
-        let to_option = |num: i64| {
-            if num == 0 {
-                None
-            } else {
-                Some(num as usize)
-            }
-        };
-        let second = to_option(dur.whole_seconds() % SECONDS as i64); // % SECONDS_CAP?
-        let minute = to_option(dur.whole_minutes() % MINUTES as i64);
-        let hour = to_option(dur.whole_hours() % HOURS as i64);
-        let day = to_option(dur.whole_days() % DAYS as i64);
-        // TODO: integrate week, month and year.
-        //let week = to_option(dur.whole_weeks() % WEEKS as i64);
-        //let year = to_option((dur.whole_weeks() / ) % YEARS as i64);
-        //dbg!((second, minute, hour, day, week, month, year));
-        self.combine_and_lower_time(second, minute, hour, day)
-    }
-
-    /// Combines partial aggregates based on the the given time and lowers the result
-    #[inline]
-    pub fn combine_and_lower_time(
-        &self,
-        _second: Option<usize>,
-        _minute: Option<usize>,
-        _hour: Option<usize>,
-        _day: Option<usize>,
-    ) -> Option<A::Aggregate> {
-        /*
-        // Single-Wheel Query => time must be lower than wheel.len() otherwise it wil panic as range out of bound
-        // Multi-Wheel Query => Need to make sure we don't duplicate data across granularities.
-        let aggregator = &self.aggregator;
-
-        // TODO: currently panics if any ranges are out of bound
-        // TODO: fix type conversions
-        match (day, hour, minute, second) {
-            // dhms
-            (Some(day), Some(hour), Some(minute), Some(second)) => {
-                // Do not query below rotation count
-                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
-                //let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
-                let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
-
-                let sec = self.seconds_wheel.interval(second);
-                //let min = self.minutes_wheel.interval(minute);
-                let min = self.minutes_wheel.as_ref().unwrap().interval(minute);
-                let hr = self.hours_wheel.interval(hour);
-                let day = self.days_wheel.interval(day);
-
-                Self::reduce([sec, min, hr, day], aggregator).map(|total| aggregator.lower(total))
-            }
-            // dhm
-            (Some(day), Some(hour), Some(minute), None) => {
-                // Do not query below rotation count
-                //let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
-                let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
-
-                let min = self.minutes_wheel.as_ref().unwrap().interval(minute);
-                let hr = self.hours_wheel.interval(hour);
-                let day = self.days_wheel.interval(day);
-                Self::reduce([min, hr, day], aggregator).map(|total| aggregator.lower(total))
-            }
-            // dh
-            (Some(day), Some(hour), None, None) => {
-                let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
-                let hr = self.hours_wheel.interval(hour);
-                let day = self.days_wheel.interval(day);
-                Self::reduce([hr, day], aggregator).map(|total| aggregator.lower(total))
-            }
-            // d
-            (Some(day), None, None, None) => {
-                let day = self.days_wheel.interval(day);
-                Self::reduce([day], aggregator).map(|total| aggregator.lower(total))
-            }
-            // hms
-            (None, Some(hour), Some(minute), Some(second)) => {
-                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
-                //let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
-
-                let sec = self.seconds_wheel.interval(second);
-                let min = self.minutes_wheel.as_ref().unwrap().interval(minute);
-                let hr = self.hours_wheel.interval(hour);
-                Self::reduce([sec, min, hr], aggregator).map(|total| aggregator.lower(total))
-            }
-            // hm
-            (None, Some(hour), Some(minute), None) => {
-                //let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
-                let min = self.minutes_wheel.as_ref().unwrap().interval(minute);
-                let hr = self.hours_wheel.interval(hour);
-                Self::reduce([min, hr], aggregator).map(|total| aggregator.lower(total))
-            }
-            // h
-            (None, Some(hour), None, None) => {
-                let hr = self.hours_wheel.interval(hour);
-                Self::reduce([hr], aggregator).map(|total| aggregator.lower(total))
-            }
-            // ms
-            (None, None, Some(minute), Some(second)) => {
-                //let second = cmp::min(self.seconds_wheel.rotation_count(), second.into()) as usize;
-                let sec = self.seconds_wheel.interval(second);
-                let min = self.minutes_wheel.as_ref().unwrap().interval(minute);
-                Self::reduce([sec, min], aggregator).map(|total| aggregator.lower(total))
-            }
-            // m
-            (None, None, Some(minute), None) => {
-                let min = self.minutes_wheel.as_ref().unwrap().interval(minute);
-                Self::reduce([min], aggregator).map(|total| aggregator.lower(total))
-            }
-            // s
-            (None, None, None, Some(second)) => {
-                let sec = self.seconds_wheel.interval(second);
-                Self::reduce([sec], aggregator).map(|total| aggregator.lower(total))
-            }
-            (_, _, _, _) => {
-                panic!("combine_and_lower_time was given invalid Time arguments");
-            }
-            */
-        None
-        //}
-    }
-
     /// Executes a Landmark Window that combines total partial aggregates across all wheels
     #[inline]
     pub fn landmark(&self) -> Option<A::Aggregate> {
@@ -470,6 +348,11 @@ where
         self.watermark += Self::SECOND_AS_MS;
 
         let seconds = self.seconds_wheel.get_or_insert();
+
+        // Tick the Write-ahead wheel, if new entry insert into head of seconds wheel
+        if let Some(agg) = self.waw.tick() {
+            seconds.insert_head(agg, &self.aggregator)
+        }
 
         // full rotation of seconds wheel
         if let Some(rot_data) = seconds.tick() {
@@ -856,8 +739,6 @@ mod tests {
         assert!(wheel.insert(Entry::new(5u32, 5000)).is_ok());
         assert!(wheel.insert(Entry::new(11u32, 11000)).is_ok());
 
-        assert_eq!(wheel.seconds_unchecked().lower(0), Some(1u32));
-
         time = 6000; // new watermark
         wheel.advance_to(time);
 
@@ -878,10 +759,7 @@ mod tests {
         wheel.advance_to(time);
         // head: 58
         // tail:0
-        assert_eq!(
-            wheel.seconds_unchecked().write_ahead_len(),
-            SECONDS_CAP - 58
-        );
+        assert_eq!(wheel.write_ahead_len(), 64);
 
         // current watermark is 58000, this should be rejected
         assert!(wheel
