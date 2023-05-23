@@ -60,7 +60,6 @@ fn generate_out_of_order_timestamps(size: usize, percent: f32) -> Vec<u64> {
             let start_timestamp = second * 1000;
             let end_timestamp = start_timestamp + 999;
             (start_timestamp..=end_timestamp)
-                .into_iter()
                 .cycle()
                 .take(timestamps_per_second)
         })

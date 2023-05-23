@@ -12,18 +12,13 @@ use core::{
 };
 
 #[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 
 #[cfg(feature = "rkyv")]
-use rkyv::{ser::Serializer, AlignedVec};
+use rkyv::{ser::Serializer, with::Skip, AlignedVec, Archive, Deserialize, Serialize};
 
 #[cfg(feature = "rkyv")]
-use crate::DefaultSerializer;
-#[cfg(feature = "rkyv")]
-use crate::PartialAggregate;
-
-#[cfg(feature = "rkyv")]
-use rkyv::{with::Skip, Archive, Deserialize, Serialize};
+use crate::wheel::{DefaultSerializer, PartialAggregate};
 
 mod iter;
 
@@ -34,6 +29,7 @@ use crate::agg_wheel::iter::DrillIter;
 /// Type alias for drill down slots
 type DrillDownSlots<A, const CAP: usize> = Option<Box<[Option<Vec<A>>; CAP]>>;
 
+/// Defines a drill-down cut
 pub struct DrillCut<R>
 where
     R: RangeBounds<usize>,

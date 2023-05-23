@@ -1,3 +1,12 @@
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    #[clap(short, long, value_parser, default_value_t = false)]
+    drill_down: bool,
+}
+
 use std::time::Instant;
 
 use haw::{time::NumericalDuration, *};
@@ -6,13 +15,15 @@ use haw::{time::NumericalDuration, *};
 pub type SerdeAggregator = haw::aggregator::AllAggregator;
 
 fn main() {
+    let args = Args::parse();
     // Initial start time
     let time = 0;
 
-    #[cfg(feature = "drill_down")]
-    let mut wheel = Wheel::<SerdeAggregator>::with_drill_down(time);
-    #[cfg(not(feature = "drill_down"))]
-    let mut wheel = Wheel::<SerdeAggregator>::new(time);
+    let mut wheel = if args.drill_down {
+        Wheel::<SerdeAggregator>::with_drill_down(time)
+    } else {
+        Wheel::<SerdeAggregator>::new(time)
+    };
 
     println!(
         "Memory size Wheel {} bytes",

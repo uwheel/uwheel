@@ -113,7 +113,13 @@ fn main() {
             )
         }
     }
-    dbg!(before_writes.elapsed());
+    let elapsed = before_writes.elapsed();
+    dbg!(elapsed);
+    println!(
+        "ingestion ran at {} ops/s (took {:?})",
+        (runs as f64 / elapsed.as_secs_f64()),
+        elapsed,
+    );
 
     let before_reads = std::time::Instant::now();
     for k in keys {
