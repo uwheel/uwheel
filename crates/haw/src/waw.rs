@@ -11,9 +11,23 @@ use alloc::{boxed::Box, vec::Vec};
 #[derive(Debug, Clone)]
 pub struct Waw<A: Aggregator> {
     capacity: usize,
-    slots: Box<[Option<A::PartialAggregate>]>,
+    slots: Box<[Option<A::Window>]>,
     tail: usize,
     head: usize,
+}
+
+impl<A: Aggregator> Default for Waw<A> {
+    fn default() -> Self {
+        Self {
+            capacity: 64,
+            slots: (0..64) // FIX
+                .map(|_| None)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            head: 0,
+            tail: 0,
+        }
+    }
 }
 
 impl<A: Aggregator> Waw<A> {
@@ -30,7 +44,7 @@ impl<A: Aggregator> Waw<A> {
         }
     }
     #[inline]
-    pub fn tick(&mut self) -> Option<A::PartialAggregate> {
+    pub fn tick(&mut self) -> Option<A::Window> {
         // bump head
         self.head = self.wrap_add(self.head, 1);
 
@@ -63,30 +77,24 @@ impl<A: Aggregator> Waw<A> {
 
     /// Attempts to write `entry` into the Wheel
     #[inline]
-    pub fn write_ahead(&mut self, addend: u64, partial_agg: A::PartialAggregate, aggregator: &A) {
+    pub fn write_ahead(&mut self, addend: u64, partial_agg: A::Input, aggregator: &A) {
         let slot_idx = self.slot_idx_forward_from_head(addend as usize);
         //dbg!(slot_idx);
         self.insert_at(slot_idx, partial_agg, aggregator);
     }
     #[inline]
-    fn insert_at(&mut self, slot_idx: usize, entry: A::PartialAggregate, aggregator: &A) {
+    fn insert_at(&mut self, slot_idx: usize, entry: A::Input, aggregator: &A) {
         Self::insert(self.slot(slot_idx), entry, aggregator);
     }
     #[inline]
-    fn slot(&mut self, idx: usize) -> &mut Option<A::PartialAggregate> {
+    fn slot(&mut self, idx: usize) -> &mut Option<A::Window> {
         &mut self.slots[idx]
     }
-    /// Combine partial aggregates or insert new entry
     #[inline]
-    fn insert(slot: &mut Option<A::PartialAggregate>, entry: A::PartialAggregate, aggregator: &A) {
+    fn insert(slot: &mut Option<A::Window>, entry: A::Input, aggregator: &A) {
         match slot {
-            Some(curr) => {
-                let new_curr = aggregator.combine(*curr, entry);
-                *curr = new_curr;
-            }
-            None => {
-                *slot = Some(entry);
-            }
+            Some(window) => aggregator.insert(window, entry),
+            None => *slot = Some(aggregator.init_window(entry)),
         }
     }
 

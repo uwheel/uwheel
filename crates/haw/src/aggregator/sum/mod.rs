@@ -9,11 +9,20 @@ macro_rules! unsigned_sum_impl {
             type Input = $type;
             type Aggregate = $type;
             type PartialAggregate = $pa;
-
+            type Window = $pa;
             #[inline]
-            fn lift(&self, input: Self::Input) -> Self::PartialAggregate {
-                input
+            fn insert(&self, window: &mut Self::Window, input: Self::Input) {
+                *window = window.saturating_add(input);
             }
+
+            fn init_window(&self, input: Self::Input) -> Self::Window {
+                input.into()
+            }
+
+            fn lift(&self, window: Self::Window) -> Self::PartialAggregate {
+                window.into()
+            }
+
             #[inline]
             fn combine(
                 &self,
@@ -39,11 +48,21 @@ macro_rules! signed_sum_impl {
             type Input = $type;
             type Aggregate = $type;
             type PartialAggregate = $pa;
+            type Window = $pa;
 
             #[inline]
-            fn lift(&self, input: Self::Input) -> Self::PartialAggregate {
-                input
+            fn insert(&self, window: &mut Self::Window, input: Self::Input) {
+                *window = window.saturating_add(input);
             }
+
+            fn init_window(&self, input: Self::Input) -> Self::Window {
+                input.into()
+            }
+
+            fn lift(&self, window: Self::Window) -> Self::PartialAggregate {
+                window.into()
+            }
+
             #[inline]
             fn combine(
                 &self,
@@ -69,10 +88,20 @@ macro_rules! float_sum_impl {
             type Input = $pa;
             type Aggregate = $type;
             type PartialAggregate = $pa;
+            type Window = $pa;
+            #[inline]
+            fn insert(&self, window: &mut Self::Window, input: Self::Input) {
+                *window += input;
+            }
 
-            fn lift(&self, input: Self::Input) -> Self::PartialAggregate {
+            fn init_window(&self, input: Self::Input) -> Self::Window {
                 input.into()
             }
+
+            fn lift(&self, window: Self::Window) -> Self::PartialAggregate {
+                window.into()
+            }
+
             fn combine(
                 &self,
                 a: Self::PartialAggregate,
