@@ -1,4 +1,4 @@
-use crate::{aggregator::Aggregator, types::PartialAggregateType};
+use crate::aggregator::Aggregator;
 use core::{
     assert,
     debug_assert,
@@ -124,14 +124,14 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     const INIT_DRILL_DOWN_VALUE: Option<Vec<A::PartialAggregate>> = None;
 
     /// Creates a new AggregationWheel with drill-down enabled
-    pub fn with_drill_down(num_slots: usize) -> Self {
-        let mut agg_wheel = Self::new(num_slots);
+    pub fn with_capacity_and_drill_down(num_slots: usize) -> Self {
+        let mut agg_wheel = Self::with_capacity(num_slots);
         agg_wheel.drill_down = true;
         agg_wheel
     }
 
     /// Creates a new AggregationWheel using `num_slots`
-    pub fn new(num_slots: usize) -> Self {
+    pub fn with_capacity(num_slots: usize) -> Self {
         assert!(CAP != 0, "Capacity is not allowed to be zero");
         assert!(CAP.is_power_of_two(), "Capacity must be a power of two");
 
@@ -167,11 +167,8 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         if subtrahend > self.len() {
             None
         } else {
-            let partial_agg =
-                Iter::<CAP, A>::new(&self.slots, self.slot_idx_from_head(subtrahend), self.head)
-                    .flatten()
-                    .fold(Default::default(), |a, b| self.aggregator.combine(a, *b));
-            Some(partial_agg)
+            let tail = self.slot_idx_from_head(subtrahend);
+            self.combine_range(tail..self.head)
         }
     }
 
@@ -185,18 +182,43 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             .map(|partial_agg| self.aggregator.lower(partial_agg))
     }
 
+    /// Returns partial aggregate from `subtrahend` slots backwards from the head
+    ///
+    /// - If given a position, returns the partial aggregate based on that position,
+    ///   or `None` if out of bounds
+    /// - If `0` is specified, it will return the current head.
+    #[inline]
+    pub fn at(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
+        if subtrahend > self.len() {
+            None
+        } else {
+            let index = self.slot_idx_from_head(subtrahend);
+            Some(self.slots[index].unwrap_or_default())
+        }
+    }
+
     /// Lowers partial aggregate from `subtrahend` slots backwards from the head
     ///
     /// - If given a position, returns the final aggregate based on that position,
     ///   or `None` if out of bounds
     /// - If `0` is specified, it will lower the current head.
     #[inline]
-    pub fn lower(&self, subtrahend: usize) -> Option<A::Aggregate> {
+    pub fn lower_at(&self, subtrahend: usize) -> Option<A::Aggregate> {
+        self.at(subtrahend).map(|res| self.aggregator.lower(res))
+    }
+
+    /// Returns an interval of drill down slots from `subtrahend` slots backwards from the head
+    ///
+    ///
+    /// - If given a position, returns the drill down slots based on that position,
+    ///   or `None` if out of bounds
+    /// - If `0` is specified, it will drill down the current head.
+    pub fn drill_down_interval(&self, subtrahend: usize) -> Option<Vec<A::PartialAggregate>> {
         if subtrahend > self.len() {
             None
         } else {
-            let index = self.slot_idx_from_head(subtrahend);
-            self.slots[index].map(|res| self.aggregator.lower(res))
+            let tail = self.slot_idx_from_head(subtrahend);
+            self.combine_drill_down_range(tail..self.head)
         }
     }
 
@@ -223,11 +245,10 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// If `0` is specified, it will drill down the current head.
     #[inline]
     pub fn lower_drill_down(&self, slot: usize) -> Option<Vec<A::Aggregate>> {
-        let aggregator = A::default();
         self.drill_down(slot).map(|partial_aggs| {
             partial_aggs
                 .iter()
-                .map(|agg| aggregator.lower(*agg))
+                .map(|agg| self.aggregator.lower(*agg))
                 .collect()
         })
     }
@@ -286,22 +307,18 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         })
     }
 
-    /// Drill downs a range of wheel slots and their combines aggregates
+    /// Drill downs a range of wheel slots and combines their aggregates
     ///
     /// # Panics
     ///
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the wheel.
-    pub fn drill_down_range<R>(&self, range: R) -> Option<Vec<A::PartialAggregate>>
+    pub fn combine_drill_down_range<R>(&self, range: R) -> Option<Vec<A::PartialAggregate>>
     where
         R: RangeBounds<usize>,
     {
-        // TODO: range should go from head to tail (check interval)
-        let (tail, head) = self.range_tail_head(range);
-        let binding = self.drill_down_slots.as_ref().unwrap();
-        let drill_iter = DrillIter::<CAP, A>::new(binding, tail, head);
         let mut res = Vec::new();
-        for slot in drill_iter.flatten() {
+        for slot in self.drill_down_range(range).flatten() {
             if res.is_empty() {
                 res.extend_from_slice(slot);
             } else {
@@ -343,12 +360,34 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             .map(|res| self.aggregator.lower(res))
     }
     /// Returns an iterator going from tail to head in the given range
-    fn range<R>(&self, range: R) -> Iter<'_, CAP, A>
+    ///
+    /// # Panics
+    ///
+    /// Panics if the starting point is greater than the end point or if
+    /// the end point is greater than the length of the wheel.
+    pub fn range<R>(&self, range: R) -> Iter<'_, CAP, A>
     where
         R: RangeBounds<usize>,
     {
         let (tail, head) = self.range_tail_head(range);
         Iter::new(&self.slots, tail, head)
+    }
+
+    /// Returns an iterator going from tail to head in the given range
+    ///
+    /// # Panics
+    ///
+    /// Panics if the starting point is greater than the end point or if
+    /// the end point is greater than the length of the wheel.
+    ///
+    /// Panics if the wheel has not been configured with drill-down or
+    /// if drill down slots has yet been allocated.
+    pub fn drill_down_range<R>(&self, range: R) -> DrillIter<'_, CAP, A>
+    where
+        R: RangeBounds<usize>,
+    {
+        let (tail, head) = self.range_tail_head(range);
+        DrillIter::new(self.drill_down_slots.as_ref().unwrap(), tail, head)
     }
 
     /// Shift the tail and clear any old entry
@@ -376,7 +415,11 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
 
     /// Clears the wheel
     pub fn clear(&mut self) {
-        let mut new = Self::new(self.num_slots);
+        let mut new = if self.drill_down {
+            Self::with_capacity_and_drill_down(self.num_slots)
+        } else {
+            Self::with_capacity(self.num_slots)
+        };
         core::mem::swap(self, &mut new);
     }
 
@@ -561,60 +604,6 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         } else {
             None
         }
-    }
-
-    pub fn from_be_bytes(&self, _bytes: &[u8]) -> Self {
-        unimplemented!();
-    }
-    pub fn to_be_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        let empty: u8 = 0xFF;
-
-        // # Safety
-        // We know that these fields do not exceed a byte
-        let num_slots: u8 = self.num_slots.try_into().unwrap();
-        let head: u8 = self.head.try_into().unwrap();
-        let tail: u8 = self.tail.try_into().unwrap();
-        let rotation_count: u8 = self.rotation_count.try_into().unwrap();
-
-        bytes.push(num_slots.to_be());
-        bytes.push(head.to_be());
-        bytes.push(tail.to_be());
-        bytes.push(rotation_count.to_be());
-
-        if let Some(tot) = self.total {
-            bytes.extend_from_slice(tot.to_be_bytes().as_ref());
-        } else {
-            bytes.push(empty);
-        }
-        let mut count: u16 = 0;
-        let mut prev_value: Option<A::PartialAggregate> = None;
-
-        // Apply RLE on `None` values
-        for value in self.slots.iter() {
-            if value.is_none() && prev_value.is_none() {
-                // If the current value is the same as the previous one, increase the count
-                count += 1;
-            } else {
-                // Serialize the count and the previous value when encountering a new value
-                bytes.extend_from_slice(&count.to_be_bytes());
-
-                if let Some(prev) = prev_value {
-                    bytes.extend_from_slice(prev.to_be_bytes().as_ref());
-                }
-
-                // Update the count and previous value
-                count = 1;
-                prev_value = *value;
-            }
-        }
-        // Serialize the final count and previous value
-        bytes.extend_from_slice(&count.to_be_bytes());
-        if let Some(prev) = prev_value {
-            bytes.extend_from_slice(prev.to_be_bytes().as_ref());
-        }
-
-        bytes
     }
 
     #[cfg(feature = "rkyv")]

@@ -30,7 +30,7 @@ use rkyv::{
 use rkyv::{with::Skip, Archive, Deserialize, Infallible, Serialize};
 
 #[cfg(not(feature = "std"))]
-use alloc::{boxed::Box, vec::Vec};
+use alloc::boxed::Box;
 
 use super::{Entry, Error};
 use crate::{agg_wheel::AggregationWheel, aggregator::Aggregator, time, waw::Waw};
@@ -141,12 +141,12 @@ where
             aggregator: A::default(),
             watermark: time,
             waw: Waw::with_capacity(Self::MAX_WRITE_AHEAD_SLOTS),
-            seconds_wheel: MaybeWheel::with_drill_down(SECONDS),
-            minutes_wheel: MaybeWheel::with_drill_down(MINUTES),
-            hours_wheel: MaybeWheel::with_drill_down(HOURS),
-            days_wheel: MaybeWheel::with_drill_down(DAYS),
-            weeks_wheel: MaybeWheel::with_drill_down(WEEKS),
-            years_wheel: MaybeWheel::with_drill_down(YEARS),
+            seconds_wheel: MaybeWheel::with_capacity_and_drill_down(SECONDS),
+            minutes_wheel: MaybeWheel::with_capacity_and_drill_down(MINUTES),
+            hours_wheel: MaybeWheel::with_capacity_and_drill_down(HOURS),
+            days_wheel: MaybeWheel::with_capacity_and_drill_down(DAYS),
+            weeks_wheel: MaybeWheel::with_capacity_and_drill_down(WEEKS),
+            years_wheel: MaybeWheel::with_capacity_and_drill_down(YEARS),
             #[cfg(feature = "rkyv")]
             _marker: Default::default(),
         }
@@ -160,12 +160,12 @@ where
             aggregator: A::default(),
             watermark: time,
             waw: Waw::with_capacity(Self::MAX_WRITE_AHEAD_SLOTS),
-            seconds_wheel: MaybeWheel::new(SECONDS),
-            minutes_wheel: MaybeWheel::new(MINUTES),
-            hours_wheel: MaybeWheel::new(HOURS),
-            days_wheel: MaybeWheel::new(DAYS),
-            weeks_wheel: MaybeWheel::new(WEEKS),
-            years_wheel: MaybeWheel::new(YEARS),
+            seconds_wheel: MaybeWheel::with_capacity(SECONDS),
+            minutes_wheel: MaybeWheel::with_capacity(MINUTES),
+            hours_wheel: MaybeWheel::with_capacity(HOURS),
+            days_wheel: MaybeWheel::with_capacity(DAYS),
+            weeks_wheel: MaybeWheel::with_capacity(WEEKS),
+            years_wheel: MaybeWheel::with_capacity(YEARS),
             #[cfg(feature = "rkyv")]
             _marker: Default::default(),
         }
@@ -288,10 +288,7 @@ where
         } else {
             let diff = entry.timestamp - self.watermark;
             let seconds = Duration::from_millis(diff).as_secs();
-            // if can write into waw, otherwise overflow...
             if self.waw.can_write_ahead(seconds) {
-                // lift the entry to a partial aggregate and insert
-                //let partial_agg = self.aggregator.lift(entry.data);
                 self.waw.write_ahead(seconds, entry.data, &self.aggregator);
                 Ok(())
             } else {
@@ -466,40 +463,6 @@ where
         self.years_wheel.merge(&other.years_wheel);
     }
 
-    pub fn from_be_bytes(&self, _bytes: &[u8]) -> Self {
-        unimplemented!();
-    }
-    /// Converts the wheeel into bytes
-    pub fn to_be_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-
-        // watermark
-        bytes.extend_from_slice(&self.watermark.to_be_bytes());
-
-        if !self.seconds_wheel.is_empty() {
-            bytes.append(&mut self.seconds_wheel.as_deref().unwrap().to_be_bytes());
-            if !self.minutes_wheel.is_empty() {
-                bytes.append(&mut self.minutes_wheel.as_deref().unwrap().to_be_bytes());
-                if !self.hours_wheel.is_empty() {
-                    bytes.append(&mut self.hours_wheel.as_deref().unwrap().to_be_bytes());
-                    if !self.days_wheel.is_empty() {
-                        bytes.append(&mut self.days_wheel.as_deref().unwrap().to_be_bytes());
-                        if !self.weeks_wheel.is_empty() {
-                            bytes.append(&mut self.weeks_wheel.as_deref().unwrap().to_be_bytes());
-                            if !self.years_wheel.is_empty() {
-                                bytes.append(
-                                    &mut self.years_wheel.as_deref().unwrap().to_be_bytes(),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        bytes
-    }
-
     #[cfg(feature = "rkyv")]
     /// Converts the wheel to bytes using the default serializer
     pub fn as_bytes(&self) -> AlignedVec
@@ -630,22 +593,19 @@ pub struct MaybeWheel<const CAP: usize, A: Aggregator> {
     wheel: Option<Box<AggregationWheel<CAP, A>>>,
 }
 impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
-    fn with_drill_down(slots: usize) -> Self {
+    fn with_capacity_and_drill_down(slots: usize) -> Self {
         Self {
             slots,
             drill_down: true,
             wheel: None,
         }
     }
-    fn new(slots: usize) -> Self {
+    fn with_capacity(slots: usize) -> Self {
         Self {
             slots,
             drill_down: false,
             wheel: None,
         }
-    }
-    fn is_empty(&self) -> bool {
-        self.wheel.is_none()
     }
     fn clear(&mut self) {
         if let Some(ref mut wheel) = self.wheel {
@@ -678,9 +638,9 @@ impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
         if self.wheel.is_none() {
             let agg_wheel = {
                 if self.drill_down {
-                    AggregationWheel::with_drill_down(self.slots)
+                    AggregationWheel::with_capacity_and_drill_down(self.slots)
                 } else {
-                    AggregationWheel::new(self.slots)
+                    AggregationWheel::with_capacity(self.slots)
                 }
             };
 
@@ -854,7 +814,10 @@ mod tests {
         assert_eq!(slots.iter().sum::<u64>(), 60u64 * 60 * 24);
 
         // drill down range of 3 and confirm combined aggregates
-        let decoded = wheel.minutes_unchecked().drill_down_range(..3).unwrap();
+        let decoded = wheel
+            .minutes_unchecked()
+            .combine_drill_down_range(..3)
+            .unwrap();
         assert_eq!(decoded[0], 3);
         assert_eq!(decoded[1], 3);
         assert_eq!(decoded[59], 3);
@@ -878,7 +841,10 @@ mod tests {
         assert_eq!(sum, 15u64);
 
         // drill down whole of minutes wheel
-        let decoded = wheel.minutes_unchecked().drill_down_range(..).unwrap();
+        let decoded = wheel
+            .minutes_unchecked()
+            .combine_drill_down_range(..)
+            .unwrap();
         let sum = decoded.iter().sum::<u64>();
         assert_eq!(sum, 3600u64);
     }
@@ -966,20 +932,6 @@ mod tests {
 
         assert_eq!(decoded[58], 2);
         assert_eq!(decoded[59], 0);
-    }
-    #[test]
-    fn to_bytes_test() {
-        let mut time = 1000;
-        let mut wheel: Wheel<U32SumAggregator> = Wheel::new(time);
-        let bytes = wheel.to_be_bytes();
-        dbg!(bytes.len());
-        // Fill the seconds wheel (60 slots)
-        for _ in 0..30 {
-            wheel.insert(Entry::new(1u32, time)).unwrap();
-            time += 1000;
-        }
-        let bytes = wheel.to_be_bytes();
-        dbg!(bytes.len());
     }
 
     #[cfg(all(feature = "rkyv", feature = "std"))]

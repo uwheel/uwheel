@@ -169,7 +169,7 @@ mod tests {
             time += 1000; // increase by 1 second
         }
 
-        let all: AggState = wheel.minutes().unwrap().lower(1).unwrap();
+        let all: AggState = wheel.minutes().unwrap().lower_at(1).unwrap();
         assert_eq!(all.sum(), 60.0);
         assert_eq!(all.count(), 60);
         assert_eq!(all.max_value(), 1.0);
