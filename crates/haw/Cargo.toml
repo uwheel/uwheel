@@ -42,6 +42,10 @@ name = "insert"
 harness = false
 
 [[bench]]
+name = "window"
+harness = false
+
+[[bench]]
 name = "advance"
 harness = false
 

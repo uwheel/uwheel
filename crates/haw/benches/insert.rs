@@ -13,7 +13,7 @@ use haw::{
 };
 use rand::prelude::*;
 
-const NUM_ELEMENTS: usize = 100000;
+const NUM_ELEMENTS: usize = 10000;
 
 pub fn insert_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("wheel-throughput");
