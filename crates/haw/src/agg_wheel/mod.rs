@@ -8,7 +8,6 @@ use core::{
         Option,
         Option::{None, Some},
     },
-    slice,
 };
 
 #[cfg(not(feature = "std"))]
@@ -39,8 +38,7 @@ where
     /// Range of partial aggregates within the drill down slots
     pub range: R,
 }
-
-// utility function for drill down cutting
+// NOTE: move to slice::range function once it is stable
 #[inline]
 fn into_range(range: &impl RangeBounds<usize>, len: usize) -> Range<usize> {
     let start = match range.start_bound() {
@@ -53,6 +51,8 @@ fn into_range(range: &impl RangeBounds<usize>, len: usize) -> Range<usize> {
         core::ops::Bound::Excluded(&n) => n,
         core::ops::Bound::Unbounded => len,
     };
+    assert!(start <= end, "lower bound was too large");
+    assert!(end <= len, "upper bound was too large");
     start..end
 }
 
@@ -168,7 +168,10 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             None
         } else {
             let tail = self.slot_idx_from_head(subtrahend);
-            self.combine_range(tail..self.head)
+            let partial_agg = Iter::<CAP, A>::new(&self.slots, tail, self.head)
+                .flatten()
+                .fold(Default::default(), |a, b| self.aggregator.combine(a, *b));
+            Some(partial_agg)
         }
     }
 
@@ -213,13 +216,38 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// - If given a position, returns the drill down slots based on that position,
     ///   or `None` if out of bounds
     /// - If `0` is specified, it will drill down the current head.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the wheel has not been configured with drill-down.
     pub fn drill_down_interval(&self, subtrahend: usize) -> Option<Vec<A::PartialAggregate>> {
         if subtrahend > self.len() {
             None
         } else {
             let tail = self.slot_idx_from_head(subtrahend);
-            self.combine_drill_down_range(tail..self.head)
+            let iter: DrillIter<CAP, A> =
+                DrillIter::new(self.drill_down_slots.as_ref().unwrap(), tail, self.head);
+            self.combine_drill_down_slots(iter)
         }
+    }
+
+    // helper method to combine drill-down N slots into 1 drill-down slot.
+    #[inline]
+    fn combine_drill_down_slots(
+        &self,
+        iter: DrillIter<CAP, A>,
+    ) -> Option<Vec<A::PartialAggregate>> {
+        let mut res = Vec::new();
+        for slot in iter.flatten() {
+            if res.is_empty() {
+                res.extend_from_slice(slot);
+            } else {
+                for (curr, other) in res.iter_mut().zip(slot) {
+                    *curr = self.aggregator.combine(*curr, *other);
+                }
+            }
+        }
+        Some(res)
     }
 
     /// Returns drill down slots from `slot` slots backwards from the head
@@ -317,17 +345,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     where
         R: RangeBounds<usize>,
     {
-        let mut res = Vec::new();
-        for slot in self.drill_down_range(range).flatten() {
-            if res.is_empty() {
-                res.extend_from_slice(slot);
-            } else {
-                for (curr, other) in res.iter_mut().zip(slot) {
-                    *curr = self.aggregator.combine(*curr, *other);
-                }
-            }
-        }
-        Some(res)
+        self.combine_drill_down_slots(self.drill_down_range(range))
     }
 
     /// Combines partial aggregates within the given range into a new partial aggregate
@@ -643,13 +661,30 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     pub fn len(&self) -> usize {
         count(self.tail, self.head, CAP)
     }
+    /// Returns a back-to-front iterator of regular wheel slots
+    pub fn iter(&self) -> Iter<'_, CAP, A> {
+        Iter::new(&self.slots, self.tail, self.head)
+    }
+
+    /// Returns a back-to-front iterator of drill-down slots
+    ///
+    /// # Panics
+    ///
+    /// Panics if the wheel has not been configured with drill-down capabilities.
+    pub fn drill_iter(&self) -> DrillIter<'_, CAP, A> {
+        DrillIter::new(
+            self.drill_down_slots.as_ref().unwrap(),
+            self.tail,
+            self.head,
+        )
+    }
 
     // Taken from Rust std
     fn range_tail_head<R>(&self, range: R) -> (usize, usize)
     where
         R: RangeBounds<usize>,
     {
-        let Range { start, end } = slice::range(range, ..self.len());
+        let Range { start, end } = into_range(&range, self.len());
         let tail = self.wrap_add(self.tail, start);
         let head = self.wrap_add(self.tail, end);
         (tail, head)

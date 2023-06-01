@@ -669,6 +669,9 @@ mod tests {
         assert_eq!(wheel.watermark(), 6000);
 
         let seconds_wheel = wheel.seconds_unchecked();
+        let expected: &[_] = &[&None, &Some(1u32), &None, &None, &None, &Some(5)];
+        let res: Vec<&Option<u32>> = seconds_wheel.iter().collect();
+        assert_eq!(&res[..], expected);
 
         assert_eq!(seconds_wheel.interval(5), Some(6u32));
         assert_eq!(seconds_wheel.interval(1), Some(5u32));
