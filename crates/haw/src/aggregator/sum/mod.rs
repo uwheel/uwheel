@@ -7,12 +7,12 @@ macro_rules! unsigned_sum_impl {
 
         impl Aggregator for $struct {
             type Input = $type;
+            type Window = $pa;
             type Aggregate = $type;
             type PartialAggregate = $pa;
-            type Window = $pa;
             #[inline]
             fn insert(&self, window: &mut Self::Window, input: Self::Input) {
-                *window = window.saturating_add(input);
+                *window += input;
             }
 
             fn init_window(&self, input: Self::Input) -> Self::Window {

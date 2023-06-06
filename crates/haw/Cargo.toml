@@ -28,6 +28,7 @@ fastrand = "1.8.0"
 rand = "0.8.5"
 criterion = "0.4"
 lz4_flex = "0.9.5"
+fiba_rs = { version = "0.1.0", path = "../fiba_rs"}
 
 clap = { version = "3.2", features = ["derive"] }
 zipf = "7.0.0"
