@@ -31,12 +31,32 @@ pub fn insert_benchmark(c: &mut Criterion) {
             );
             group.bench_with_input(
                 BenchmarkId::from_parameter(format!(
-                    "insert-fiba-out-of-order-interval-{}",
+                    "insert-fiba-bfinger2-out-of-order-interval-{}",
                     seconds
                 )),
                 seconds,
                 |b, &seconds| {
                     insert_fiba_random(seconds, b);
+                },
+            );
+            group.bench_with_input(
+                BenchmarkId::from_parameter(format!(
+                    "insert-fiba-bfinger4-out-of-order-interval-{}",
+                    seconds
+                )),
+                seconds,
+                |b, &seconds| {
+                    insert_fiba_bfinger4_random(seconds, b);
+                },
+            );
+            group.bench_with_input(
+                BenchmarkId::from_parameter(format!(
+                    "insert-fiba-bfinger8-out-of-order-interval-{}",
+                    seconds
+                )),
+                seconds,
+                |b, &seconds| {
+                    insert_fiba_bfinger8_random(seconds, b);
                 },
             );
         }
@@ -137,7 +157,7 @@ fn insert_out_of_order(percentage: f32, bencher: &mut Bencher) {
 fn insert_out_of_order_fiba(percentage: f32, bencher: &mut Bencher) {
     bencher.iter_batched(
         || {
-            let fiba = fiba_rs::create_fiba_with_sum();
+            let fiba = fiba_rs::bfinger_two::create_fiba_with_sum();
             let timestamps = generate_out_of_order_timestamps(NUM_ELEMENTS, percentage);
             (fiba, timestamps)
         },
@@ -152,13 +172,27 @@ fn insert_out_of_order_fiba(percentage: f32, bencher: &mut Bencher) {
 }
 
 fn insert_same_timestamp_fiba(bencher: &mut Bencher) {
-    let mut fiba = fiba_rs::create_fiba_with_sum();
+    let mut fiba = fiba_rs::bfinger_two::create_fiba_with_sum();
     bencher.iter(|| {
         fiba.pin_mut().insert(&1000, &1u64);
     });
 }
 fn insert_fiba_random(seconds: u64, bencher: &mut Bencher) {
-    let mut fiba = fiba_rs::create_fiba_with_sum();
+    let mut fiba = fiba_rs::bfinger_two::create_fiba_with_sum();
+    bencher.iter(|| {
+        let ts = fastrand::u64(1..=seconds) * 1000;
+        fiba.pin_mut().insert(&ts, &1u64);
+    });
+}
+fn insert_fiba_bfinger4_random(seconds: u64, bencher: &mut Bencher) {
+    let mut fiba = fiba_rs::bfinger_four::create_fiba_4_with_sum();
+    bencher.iter(|| {
+        let ts = fastrand::u64(1..=seconds) * 1000;
+        fiba.pin_mut().insert(&ts, &1u64);
+    });
+}
+fn insert_fiba_bfinger8_random(seconds: u64, bencher: &mut Bencher) {
+    let mut fiba = fiba_rs::bfinger_eight::create_fiba_8_with_sum();
     bencher.iter(|| {
         let ts = fastrand::u64(1..=seconds) * 1000;
         fiba.pin_mut().insert(&ts, &1u64);

@@ -381,6 +381,8 @@ private:
     }
 
     ostream& print(ostream& os, int const indent) const {
+        (void)indent;
+
       /*
        * Note: commented out so Scott can compile and test
        * locally.
