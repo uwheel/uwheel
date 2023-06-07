@@ -76,6 +76,8 @@ pub type WeeksWheel<A> = AggregationWheel<WEEKS_CAP, A>;
 /// Type alias for an AggregationWheel representing years
 pub type YearsWheel<A> = AggregationWheel<YEARS_CAP, A>;
 
+const WRITE_AHEAD_SLOTS: usize = 64;
+
 cfg_rkyv! {
     // Alias for an aggregators [`PartialAggregate`] type
     pub type PartialAggregate<A> = <A as Aggregator>::PartialAggregate;
@@ -100,8 +102,8 @@ where
     #[cfg_attr(feature = "rkyv", with(Skip))]
     aggregator: A,
     watermark: u64,
-    #[cfg_attr(feature = "rkyv", with(Skip))]
-    waw: Waw<A>,
+    #[cfg_attr(feature = "rkyv", with(Skip), omit_bounds)]
+    waw: Waw<WRITE_AHEAD_SLOTS, A>,
     #[cfg_attr(feature = "rkyv", omit_bounds)]
     seconds_wheel: MaybeWheel<SECONDS_CAP, A>,
     #[cfg_attr(feature = "rkyv", omit_bounds)]
@@ -131,7 +133,7 @@ where
     pub const CYCLE_LENGTH: time::Duration =
         time::Duration::seconds((Self::YEAR_AS_SECS * (YEARS as u64 + 1)) as i64); // need 1 extra to force full cycle rotation
     pub const TOTAL_WHEEL_SLOTS: usize = SECONDS + MINUTES + HOURS + DAYS + WEEKS + YEARS;
-    pub const MAX_WRITE_AHEAD_SLOTS: usize = 64;
+    pub const MAX_WRITE_AHEAD_SLOTS: usize = WRITE_AHEAD_SLOTS;
 
     /// Creates a new Wheel starting from the given time with drill-down capabilities
     ///
@@ -140,7 +142,7 @@ where
         Self {
             aggregator: A::default(),
             watermark: time,
-            waw: Waw::with_capacity(Self::MAX_WRITE_AHEAD_SLOTS),
+            waw: Waw::default(),
             seconds_wheel: MaybeWheel::with_capacity_and_drill_down(SECONDS),
             minutes_wheel: MaybeWheel::with_capacity_and_drill_down(MINUTES),
             hours_wheel: MaybeWheel::with_capacity_and_drill_down(HOURS),
@@ -159,7 +161,7 @@ where
         Self {
             aggregator: A::default(),
             watermark: time,
-            waw: Waw::with_capacity(Self::MAX_WRITE_AHEAD_SLOTS),
+            waw: Waw::default(),
             seconds_wheel: MaybeWheel::with_capacity(SECONDS),
             minutes_wheel: MaybeWheel::with_capacity(MINUTES),
             hours_wheel: MaybeWheel::with_capacity(HOURS),

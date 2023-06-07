@@ -2,47 +2,30 @@ use crate::aggregator::Aggregator;
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
 
-#[cfg(not(feature = "std"))]
-use alloc::{boxed::Box, vec::Vec};
-
 // Write-ahead Wheel with slots represented as seconds
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[derive(Debug, Clone)]
-pub struct Waw<A: Aggregator> {
+pub struct Waw<const CAP: usize, A: Aggregator> {
     capacity: usize,
-    slots: Box<[Option<A::Window>]>,
+    slots: [Option<A::Window>; CAP],
     tail: usize,
     head: usize,
 }
 
-impl<A: Aggregator> Default for Waw<A> {
+impl<const CAP: usize, A: Aggregator> Default for Waw<CAP, A> {
     fn default() -> Self {
+        assert!(CAP.is_power_of_two(), "Capacity must be power of two");
         Self {
-            capacity: 64,
-            slots: (0..64) // FIX
-                .map(|_| None)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
+            capacity: CAP,
+            slots: core::array::from_fn(|_| None),
             head: 0,
             tail: 0,
         }
     }
 }
 
-impl<A: Aggregator> Waw<A> {
-    pub fn with_capacity(capacity: usize) -> Self {
-        assert!(capacity.is_power_of_two(), "Capacity must be power of two");
-        Self {
-            capacity,
-            slots: (0..capacity)
-                .map(|_| None)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-            head: 0,
-            tail: 0,
-        }
-    }
+impl<const CAP: usize, A: Aggregator> Waw<CAP, A> {
     #[inline]
     pub fn tick(&mut self) -> Option<A::Window> {
         // bump head
@@ -77,15 +60,12 @@ impl<A: Aggregator> Waw<A> {
 
     /// Attempts to write `entry` into the Wheel
     #[inline]
-    pub fn write_ahead(&mut self, addend: u64, partial_agg: A::Input, aggregator: &A) {
+    pub fn write_ahead(&mut self, addend: u64, data: A::Input, aggregator: &A) {
         let slot_idx = self.slot_idx_forward_from_head(addend as usize);
         //dbg!(slot_idx);
-        self.insert_at(slot_idx, partial_agg, aggregator);
+        Self::insert(self.slot(slot_idx), data, aggregator);
     }
-    #[inline]
-    fn insert_at(&mut self, slot_idx: usize, entry: A::Input, aggregator: &A) {
-        Self::insert(self.slot(slot_idx), entry, aggregator);
-    }
+
     #[inline]
     fn slot(&mut self, idx: usize) -> &mut Option<A::Window> {
         &mut self.slots[idx]
@@ -99,6 +79,7 @@ impl<A: Aggregator> Waw<A> {
     }
 
     /// Locate slot id `addend` forward
+    #[inline]
     fn slot_idx_forward_from_head(&self, addend: usize) -> usize {
         self.wrap_add(self.head, addend)
     }

@@ -2,7 +2,8 @@
 members = [
     "crates/haw",
     "crates/haw_demo",
-    "crates/wheeldb",
+    "crates/fiba_rs"
+    #"crates/wheeldb",
 ]
 [profile.release]
 opt-level = 2 # fast and small wasm

@@ -8,7 +8,7 @@ use criterion::{
     Throughput,
 };
 use haw::{
-    aggregator::{Aggregator, AllAggregator, U32SumAggregator},
+    aggregator::{Aggregator, U64SumAggregator},
     *,
 };
 use rand::prelude::*;
@@ -16,7 +16,33 @@ use rand::prelude::*;
 const NUM_ELEMENTS: usize = 10000;
 
 pub fn insert_benchmark(c: &mut Criterion) {
-    let mut group = c.benchmark_group("wheel-throughput");
+    {
+        let mut group = c.benchmark_group("latency");
+        group.bench_function("insert-fiba-same-timestamp", insert_same_timestamp_fiba);
+        group.bench_function("insert-wheel-same-timestamp", insert_same_timestamp_wheel);
+
+        for seconds in [1u64, 10, 20, 30, 40, 50, 60].iter() {
+            group.bench_with_input(
+                BenchmarkId::from_parameter(format!("insert-out-of-order-interval-{}", seconds)),
+                seconds,
+                |b, &seconds| {
+                    insert_wheel_random(seconds, b);
+                },
+            );
+            group.bench_with_input(
+                BenchmarkId::from_parameter(format!(
+                    "insert-fiba-out-of-order-interval-{}",
+                    seconds
+                )),
+                seconds,
+                |b, &seconds| {
+                    insert_fiba_random(seconds, b);
+                },
+            );
+        }
+    }
+    let mut group = c.benchmark_group("throughput");
+
     group.throughput(Throughput::Elements(NUM_ELEMENTS as u64));
     group.bench_function("insert-no-wheel", insert_no_wheel);
 
@@ -25,6 +51,13 @@ pub fn insert_benchmark(c: &mut Criterion) {
     ]
     .iter()
     {
+        group.bench_with_input(
+            BenchmarkId::from_parameter(format!("insert-out-of-order-fiba_{}", out_of_order)),
+            out_of_order,
+            |b, &out_of_order| {
+                insert_out_of_order_fiba(out_of_order as f32, b);
+            },
+        );
         group.bench_with_input(
             BenchmarkId::from_parameter(format!("insert-out-of-order_{}", out_of_order)),
             out_of_order,
@@ -38,11 +71,11 @@ pub fn insert_benchmark(c: &mut Criterion) {
 
 fn insert_no_wheel(bencher: &mut Bencher) {
     bencher.iter_batched(
-        || U32SumAggregator,
+        || U64SumAggregator,
         |aggregator| {
-            let mut current = aggregator.lift(0u32);
+            let mut current = aggregator.lift(0u64);
             for _ in 0..NUM_ELEMENTS {
-                let entry = aggregator.lift(1u32);
+                let entry = aggregator.lift(1u64);
                 current = aggregator.combine(entry, current);
             }
             aggregator
@@ -61,6 +94,7 @@ fn generate_out_of_order_timestamps(size: usize, percent: f32) -> Vec<u64> {
             let end_timestamp = start_timestamp + 999;
             (start_timestamp..=end_timestamp)
                 .cycle()
+                .map(align_to_closest_thousand)
                 .take(timestamps_per_second)
         })
         .collect();
@@ -86,13 +120,13 @@ fn insert_out_of_order(percentage: f32, bencher: &mut Bencher) {
     bencher.iter_batched(
         || {
             let time = 0;
-            let wheel = Wheel::<AllAggregator>::new(time);
+            let wheel = Wheel::<U64SumAggregator>::new(time);
             let timestamps = generate_out_of_order_timestamps(NUM_ELEMENTS, percentage);
             (wheel, timestamps)
         },
         |(mut wheel, timestamps)| {
             for timestamp in timestamps {
-                wheel.insert(Entry::new(1.0, timestamp)).unwrap();
+                wheel.insert(Entry::new(1, timestamp)).unwrap();
             }
             wheel
         },
@@ -100,5 +134,59 @@ fn insert_out_of_order(percentage: f32, bencher: &mut Bencher) {
     );
 }
 
+fn insert_out_of_order_fiba(percentage: f32, bencher: &mut Bencher) {
+    bencher.iter_batched(
+        || {
+            let fiba = fiba_rs::create_fiba_with_sum();
+            let timestamps = generate_out_of_order_timestamps(NUM_ELEMENTS, percentage);
+            (fiba, timestamps)
+        },
+        |(mut fiba, timestamps)| {
+            for timestamp in timestamps {
+                fiba.pin_mut().insert(&timestamp, &1u64);
+            }
+            fiba
+        },
+        BatchSize::PerIteration,
+    );
+}
+
+fn insert_same_timestamp_fiba(bencher: &mut Bencher) {
+    let mut fiba = fiba_rs::create_fiba_with_sum();
+    bencher.iter(|| {
+        fiba.pin_mut().insert(&1000, &1u64);
+    });
+}
+fn insert_fiba_random(seconds: u64, bencher: &mut Bencher) {
+    let mut fiba = fiba_rs::create_fiba_with_sum();
+    bencher.iter(|| {
+        let ts = fastrand::u64(1..=seconds) * 1000;
+        fiba.pin_mut().insert(&ts, &1u64);
+    });
+}
+
+fn insert_wheel_random(seconds: u64, bencher: &mut Bencher) {
+    let mut wheel = Wheel::<U64SumAggregator>::new(0);
+    bencher.iter(|| {
+        let ts = fastrand::u64(1..=seconds) * 1000;
+        wheel.insert(Entry::new(1, ts)).unwrap();
+    });
+}
+
+fn insert_same_timestamp_wheel(bencher: &mut Bencher) {
+    let mut wheel = Wheel::<U64SumAggregator>::new(0);
+    bencher.iter(|| {
+        wheel.insert(Entry::new(1, 1000)).unwrap();
+    });
+}
+
+fn align_to_closest_thousand(timestamp: u64) -> u64 {
+    let remainder = timestamp % 1000;
+    if remainder < 500 {
+        timestamp - remainder
+    } else {
+        timestamp + (1000 - remainder)
+    }
+}
 criterion_group!(benches, insert_benchmark);
 criterion_main!(benches);

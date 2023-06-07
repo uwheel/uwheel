@@ -14,9 +14,24 @@ Features:
 
 ## How it works
 
-Similarly to Hierarchical Wheel Timers, we exploit the hierarchical nature of time and utilise several aggregation wheels,
+Similarly to Hierarchical Wheel Timers, HAW exploits the hierarchical nature of time and utilise several aggregation wheels,
 each with a different time granularity. This enables a compact representation of aggregates across time
-with a low memory footprint and makes it highly compressible and efficient to store on disk.
+with a low memory footprint and makes it highly compressible and efficient to store on disk. HAWs are event-time driven and uses the notion of a Watermark which means that no timestamps are stored as they are implicit in the wheel slots. It is up to the user of the wheel to advance the watermark and thus roll up aggregates continously up the time hierarchy.
+
+- `Aggregator` 
+    - Interface defining the aggregation on top of HAW
+    - HAW comes with pre-defined aggregators (e.g., SUM, AVG, ALL, TOP_K)
+- `Watermark`
+    - A u64 integer representing the current time
+    - Insertions below the watermark will be rejected
+- `Write-ahead Wheel`
+    - Mutable wheel slots ahead of the watermark
+    - Supports distributive, algebraic, and holistic aggregations.
+- `Aggregation Wheels`
+    - A hierarchy of wheels with immutable slots
+    - Supports distributive and algebraic aggregations
+
+
 For instance, to store aggregates with second granularity up to 10 years, we would need the following aggregation wheels:
 
 * Seconds wheel with 60 slots
@@ -29,9 +44,8 @@ For instance, to store aggregates with second granularity up to 10 years, we wou
 The above scheme results in a total of 213 wheel slots. This is the minimum number of slots
 required to support rolling up aggregates across 10 years with second granularity.
 
-Internally, a low watermark is maintained. Insertions with timestamps below the watermark will be ignored.
-It is up to the user of the wheel to advance the watermark and thus roll up aggregates continously up the time hierarchy.
-Note that the wheel may insert aggregates above the watermark, but state is only queryable below the watermark point.
+
+
 
 ## Feature Flags
 - `std` (_enabled by default_)
