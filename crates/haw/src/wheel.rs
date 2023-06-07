@@ -619,7 +619,11 @@ impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
     }
     #[inline]
     fn total(&self) -> Option<A::PartialAggregate> {
-        self.wheel.as_ref().and_then(|w| w.total())
+        if let Some(w) = self.wheel.as_ref() {
+            w.total()
+        } else {
+            None
+        }
     }
     #[inline]
     fn as_deref(&self) -> Option<&AggregationWheel<CAP, A>> {
@@ -817,10 +821,7 @@ mod tests {
         assert_eq!(slots.iter().sum::<u64>(), 60u64 * 60 * 24);
 
         // drill down range of 3 and confirm combined aggregates
-        let decoded = wheel
-            .minutes_unchecked()
-            .combine_drill_down_range(..3)
-            .unwrap();
+        let decoded = wheel.minutes_unchecked().combine_drill_down_range(..3);
         assert_eq!(decoded[0], 3);
         assert_eq!(decoded[1], 3);
         assert_eq!(decoded[59], 3);
@@ -844,10 +845,7 @@ mod tests {
         assert_eq!(sum, 15u64);
 
         // drill down whole of minutes wheel
-        let decoded = wheel
-            .minutes_unchecked()
-            .combine_drill_down_range(..)
-            .unwrap();
+        let decoded = wheel.minutes_unchecked().combine_drill_down_range(..);
         let sum = decoded.iter().sum::<u64>();
         assert_eq!(sum, 3600u64);
     }

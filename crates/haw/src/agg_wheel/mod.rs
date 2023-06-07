@@ -168,10 +168,8 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             None
         } else {
             let tail = self.slot_idx_from_head(subtrahend);
-            let partial_agg = Iter::<CAP, A>::new(&self.slots, tail, self.head)
-                .flatten()
-                .fold(Default::default(), |a, b| self.aggregator.combine(a, *b));
-            Some(partial_agg)
+            let iter = Iter::<CAP, A>::new(&self.slots, tail, self.head);
+            Some(self.combine_slots(iter))
         }
     }
 
@@ -227,18 +225,17 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             let tail = self.slot_idx_from_head(subtrahend);
             let iter: DrillIter<CAP, A> =
                 DrillIter::new(self.drill_down_slots.as_ref().unwrap(), tail, self.head);
-            self.combine_drill_down_slots(iter)
+            Some(self.combine_drill_down_slots(iter))
         }
     }
 
     // helper method to combine drill-down N slots into 1 drill-down slot.
     #[inline]
-    fn combine_drill_down_slots(
+    fn combine_drill_down_slots<'a>(
         &self,
-        iter: DrillIter<CAP, A>,
-    ) -> Option<Vec<A::PartialAggregate>> {
-        let mut res = Vec::new();
-        for slot in iter.flatten() {
+        iter: impl Iterator<Item = Option<&'a [A::PartialAggregate]>>,
+    ) -> Vec<A::PartialAggregate> {
+        iter.flatten().fold(Vec::new(), |mut res, slot| {
             if res.is_empty() {
                 res.extend_from_slice(slot);
             } else {
@@ -246,8 +243,17 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
                     *curr = self.aggregator.combine(*curr, *other);
                 }
             }
-        }
-        Some(res)
+            res
+        })
+    }
+    // helper method to combine partial aggregates in slots
+    #[inline]
+    fn combine_slots<'a>(
+        &self,
+        iter: impl Iterator<Item = &'a Option<A::PartialAggregate>>,
+    ) -> A::PartialAggregate {
+        iter.flatten()
+            .fold(Default::default(), |a, b| self.aggregator.combine(a, *b))
     }
 
     /// Returns drill down slots from `slot` slots backwards from the head
@@ -262,9 +268,12 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             None
         } else {
             let index = self.slot_idx_from_head(slot);
-            self.drill_down_slots
-                .as_ref()
-                .and_then(|slots| slots[index].as_deref())
+
+            if let Some(slots) = self.drill_down_slots.as_ref() {
+                slots[index].as_deref()
+            } else {
+                None
+            }
         }
     }
 
@@ -341,7 +350,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     ///
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the wheel.
-    pub fn combine_drill_down_range<R>(&self, range: R) -> Option<Vec<A::PartialAggregate>>
+    pub fn combine_drill_down_range<R>(&self, range: R) -> Vec<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
     {
@@ -358,11 +367,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     where
         R: RangeBounds<usize>,
     {
-        let mut res: Option<A::PartialAggregate> = None;
-        for slot in self.range(range).flatten() {
-            Self::insert(&mut res, *slot, &self.aggregator);
-        }
-        res
+        Some(self.combine_slots(self.range(range)))
     }
     /// Combines partial aggregates from the specified range and lowers it to a final aggregate value
     ///
