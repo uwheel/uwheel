@@ -48,3 +48,12 @@ pub trait Aggregator: Default + Debug + 'static {
     /// Convert a partial aggregate to a final result
     fn lower(&self, a: Self::PartialAggregate) -> Self::Aggregate;
 }
+
+/// An optional interface for supporting inverse operations
+pub trait Inverse: Aggregator {
+    fn inverse_combine(
+        &self,
+        a: Self::PartialAggregate,
+        b: Self::PartialAggregate,
+    ) -> Self::PartialAggregate;
+}

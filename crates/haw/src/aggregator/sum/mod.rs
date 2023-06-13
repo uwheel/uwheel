@@ -1,4 +1,5 @@
 use super::super::Aggregator;
+use crate::aggregator::Inverse;
 
 macro_rules! unsigned_sum_impl {
     ($struct:tt, $type:ty, $pa:tt) => {
@@ -34,6 +35,16 @@ macro_rules! unsigned_sum_impl {
             #[inline]
             fn lower(&self, a: Self::PartialAggregate) -> Self::Aggregate {
                 a
+            }
+        }
+        impl Inverse for $struct {
+            #[inline]
+            fn inverse_combine(
+                &self,
+                a: Self::PartialAggregate,
+                b: Self::PartialAggregate,
+            ) -> Self::PartialAggregate {
+                a - b
             }
         }
     };

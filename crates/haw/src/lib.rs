@@ -1,6 +1,9 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
+// temporary
+#![feature(generic_const_exprs)]
+#![allow(incomplete_features)]
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
@@ -36,6 +39,8 @@ pub mod time;
 /// Data types used in this crate
 pub mod types;
 
+pub mod inverse_wheel;
+pub mod sliding_wheel;
 mod waw;
 
 use aggregator::Aggregator;
