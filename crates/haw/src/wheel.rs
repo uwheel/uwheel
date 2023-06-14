@@ -311,6 +311,120 @@ where
     pub fn watermark(&self) -> u64 {
         self.watermark
     }
+    /// Returns a full aggregate in the given time interval
+    pub fn interval(&self, dur: time::Duration) -> Option<A::PartialAggregate> {
+        // closure that turns i64 to None if it is zero
+        let to_option = |num: i64| {
+            if num == 0 {
+                None
+            } else {
+                Some(num as usize)
+            }
+        };
+        let second = to_option(dur.whole_seconds() % SECONDS as i64);
+        let minute = to_option(dur.whole_minutes() % MINUTES as i64);
+        let hour = to_option(dur.whole_hours() % HOURS as i64);
+        let day = to_option(dur.whole_days() % DAYS as i64);
+        dbg!((second, minute, hour, day));
+        // TODO: integrate week and year.
+        //let week = to_option(dur.whole_weeks() % WEEKS as i64);
+        //let year = to_option((dur.whole_weeks() / ?) % YEARS as i64);
+        //dbg!((second, minute, hour, day, week, year));
+        self.combine_time(second, minute, hour, day)
+    }
+
+    #[inline]
+    pub fn combine_time(
+        &self,
+        second: Option<usize>,
+        minute: Option<usize>,
+        hour: Option<usize>,
+        day: Option<usize>,
+    ) -> Option<A::PartialAggregate> {
+        // Single-Wheel Query => time must be lower than wheel.len() otherwise it wil panic as range out of bound
+        // Multi-Wheel Query => Need to make sure we don't duplicate data across granularities.
+        let aggregator = &self.aggregator;
+        use core::cmp;
+
+        // TODO: fix type conversions
+        match (day, hour, minute, second) {
+            // dhms
+            (Some(day), Some(hour), Some(minute), Some(second)) => {
+                // Do not query below rotation count
+                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
+                let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
+                let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
+
+                let sec = self.seconds_wheel.interval(second);
+                let min = self.minutes_wheel.interval(minute);
+                let hr = self.hours_wheel.interval(hour);
+                let day = self.days_wheel.interval(day);
+
+                Self::reduce([sec, min, hr, day], aggregator)
+            }
+            // dhm
+            (Some(day), Some(hour), Some(minute), None) => {
+                // Do not query below rotation count
+                let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
+                let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
+
+                let min = self.minutes_wheel.interval(minute);
+                let hr = self.hours_wheel.interval(hour);
+                let day = self.days_wheel.interval(day);
+                Self::reduce([min, hr, day], aggregator)
+            }
+            // dh
+            (Some(day), Some(hour), None, None) => {
+                let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
+                let hr = self.hours_wheel.interval(hour);
+                let day = self.days_wheel.interval(day);
+                Self::reduce([hr, day], aggregator)
+            }
+            // d
+            (Some(day), None, None, None) => {
+                let day = self.days_wheel.interval(day);
+                Self::reduce([day], aggregator)
+            }
+            // hms
+            (None, Some(hour), Some(minute), Some(second)) => {
+                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
+                let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
+
+                let sec = self.seconds_wheel.interval(second);
+                let min = self.minutes_wheel.interval(minute);
+                let hr = self.hours_wheel.interval(hour);
+                Self::reduce([sec, min, hr], aggregator)
+            }
+            // hm
+            (None, Some(hour), Some(minute), None) => {
+                let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
+                let min = self.minutes_wheel.interval(minute);
+
+                let hr = self.hours_wheel.interval(hour);
+                Self::reduce([min, hr], aggregator)
+            }
+            // h
+            (None, Some(hour), None, None) => {
+                let hr = self.hours_wheel.interval(hour);
+                Self::reduce([hr], aggregator)
+            }
+            // ms
+            (None, None, Some(minute), Some(second)) => {
+                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
+                let sec = self.seconds_wheel.interval(second);
+                let min = self.minutes_wheel.interval(minute);
+                Self::reduce([min, sec], aggregator)
+            }
+            // m
+            (None, None, Some(minute), None) => self.minutes_wheel.interval(minute),
+            // s
+            (None, None, None, Some(second)) => self.seconds_wheel.interval(second),
+            (_, _, _, _) => {
+                panic!("combine_time was given invalid Time arguments");
+            }
+        }
+    }
+
     /// Executes a Landmark Window that combines total partial aggregates across all wheels
     #[inline]
     pub fn landmark(&self) -> Option<A::Aggregate> {
@@ -617,6 +731,14 @@ impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
     fn merge(&mut self, other: &Self) {
         if let Some(ref mut wheel) = self.wheel {
             wheel.merge(other.as_deref().unwrap());
+        }
+    }
+    #[inline]
+    fn interval(&self, interval: usize) -> Option<A::PartialAggregate> {
+        if let Some(w) = self.wheel.as_ref() {
+            w.interval(interval)
+        } else {
+            None
         }
     }
     #[inline]

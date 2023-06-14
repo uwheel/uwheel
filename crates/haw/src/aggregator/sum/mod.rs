@@ -44,7 +44,7 @@ macro_rules! unsigned_sum_impl {
                 a: Self::PartialAggregate,
                 b: Self::PartialAggregate,
             ) -> Self::PartialAggregate {
-                a - b
+                a.saturating_sub(b)
             }
         }
     };

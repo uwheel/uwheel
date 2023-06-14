@@ -2,6 +2,9 @@ use crate::aggregator::Aggregator;
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
 
+#[cfg(not(feature = "std"))]
+use alloc::{boxed::Box, vec::Vec};
+
 /// A fixed-sized wheel used to maintain partial aggregates for slides that can later
 /// be used to inverse windows.
 #[repr(C)]
@@ -31,9 +34,6 @@ impl<A: Aggregator> InverseWheel<A> {
     }
     #[inline]
     pub fn tick(&mut self) -> Option<A::PartialAggregate> {
-        // bump head
-        self.head = self.wrap_add(self.head, 1);
-
         if !self.is_empty() {
             let tail = self.tail;
             self.tail = self.wrap_add(self.tail, 1);
@@ -58,13 +58,10 @@ impl<A: Aggregator> InverseWheel<A> {
     pub fn clear_current_tail(&mut self) {
         *self.slot(self.tail) = Some(Default::default());
     }
-
-    /// Attempts to write `entry` into the Wheel
     #[inline]
-    pub fn write_ahead(&mut self, addend: u64, data: A::PartialAggregate, aggregator: &A) {
-        let slot_idx = self.slot_idx_forward_from_head(addend as usize);
-        //dbg!(slot_idx);
-        Self::insert(self.slot(slot_idx), data, aggregator);
+    pub fn push(&mut self, data: A::PartialAggregate, aggregator: &A) {
+        Self::insert(self.slot(self.head), data, aggregator);
+        self.head = self.wrap_add(self.head, 1);
     }
 
     #[inline]
@@ -84,11 +81,6 @@ impl<A: Aggregator> InverseWheel<A> {
         }
     }
 
-    /// Locate slot id `addend` forward
-    #[inline]
-    fn slot_idx_forward_from_head(&self, addend: usize) -> usize {
-        self.wrap_add(self.head, addend)
-    }
     /// Returns the current number of used slots (includes empty NONE slots as well)
     pub fn len(&self) -> usize {
         count(self.tail, self.head, self.capacity)
@@ -126,10 +118,9 @@ mod tests {
     fn inverse_wheel_test() {
         let mut iwheel: InverseWheel<U64SumAggregator> = InverseWheel::with_capacity(64);
         let aggregator = U64SumAggregator::default();
-
-        iwheel.write_ahead(0, 2u64, &aggregator);
-        iwheel.write_ahead(1, 3u64, &aggregator);
-        iwheel.write_ahead(2, 10u64, &aggregator);
+        iwheel.push(2u64, &aggregator);
+        iwheel.push(3u64, &aggregator);
+        iwheel.push(10u64, &aggregator);
 
         assert_eq!(iwheel.tick().unwrap(), 2u64);
         assert_eq!(iwheel.tick().unwrap(), 5u64);

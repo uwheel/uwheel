@@ -1,10 +1,13 @@
 use crate::{
     aggregator::{Aggregator, Inverse},
     inverse_wheel::InverseWheel,
+    time::Duration,
     Entry,
     Error,
     Wheel,
 };
+#[cfg(not(feature = "std"))]
+use alloc::{boxed::Box, vec::Vec};
 
 /*
 #[derive(Debug, Clone, Copy)]
@@ -201,45 +204,105 @@ pub const fn capacity(range: usize, slide: usize) -> usize {
 }
 
 // Wrapper on top of HAW to implement Sliding Window Aggregation
-// Idea: Support Sliding Window Aggregation using HAW + Support OLAP queries
 #[allow(dead_code)]
-pub struct WindowWheel<const RANGE: usize, const SLIDE: usize, A: Aggregator + Inverse>
-where
-    [(); capacity(RANGE, SLIDE)]: Sized,
-{
-    // Inverse Wheel maintaing partial aggregates per slide
+pub struct WindowWheel<const RANGE: usize, const SLIDE: usize, A: Aggregator + Inverse> {
+    // Inverse Wheel maintaining partial aggregates per slide
     inverse_wheel: InverseWheel<A>,
     // Regular HAW used together with inverse_wheel to answer a specific Sliding Window
     wheel: Wheel<A>,
     // When the next window starts
     next_window_start: u64,
+    // When the next window ends
+    next_window_end: u64,
     // When next full rotation has happend
     next_full_rotation: u64,
+    // How many seconds we are in the current rotation of ``RANGE``
+    current_secs_rotation: u64,
+    window_results: Vec<A::PartialAggregate>,
+    first_window: bool,
     aggregator: A,
 }
 
-impl<const RANGE: usize, const SLIDE: usize, A: Aggregator + Inverse> WindowWheel<RANGE, SLIDE, A>
-where
-    [(); capacity(RANGE, SLIDE)]: Sized,
-{
+impl<const RANGE: usize, const SLIDE: usize, A: Aggregator + Inverse> WindowWheel<RANGE, SLIDE, A> {
+    const SLIDE_INTERVAL_DUR: Duration = Duration::seconds((SLIDE / 1000) as i64);
+    const RANGE_INTERVAL_DUR: Duration = Duration::seconds((RANGE / 1000) as i64);
+
     pub fn new(time: u64) -> Self {
-        let capacity = capacity(RANGE, SLIDE);
-        dbg!(capacity);
         Self {
-            inverse_wheel: InverseWheel::with_capacity(capacity),
+            inverse_wheel: InverseWheel::with_capacity(capacity(RANGE, SLIDE)),
             wheel: Wheel::new(time),
             next_window_start: time + SLIDE as u64,
+            next_window_end: time + RANGE as u64,
             next_full_rotation: time + RANGE as u64,
+            current_secs_rotation: 0,
+            window_results: Vec::new(),
+            first_window: true,
             aggregator: Default::default(),
         }
     }
-    // should it return Window results? i.e. Vec<A::Aggregate>
-    pub fn advance_to(&mut self, watermark: u64) {
-        // Here we need to introduce our logic
-        // If we reach a new window start, then we add last X slide into InverseWheel
-        // Partial aggregates between [WBegin - WBegin']
-        // For example the last 10 seconds, last 2 hours. Depends on slide granularity
-        self.wheel.advance_to(watermark);
+    // Currently assumes per SLIDE advance call
+    pub fn advance_to(&mut self, new_watermark: u64) {
+        //let diff = new_watermark.saturating_sub(self.wheel.watermark());
+        //let ticks = diff / SLIDE as u64;
+
+        if new_watermark >= self.next_window_start {
+            self.wheel.advance_to(self.next_window_start);
+
+            self.next_window_start += SLIDE as u64;
+            // Take partial aggregates from SLIDE interval and insert into InverseWheel
+            let partial = self
+                .wheel
+                .interval(Self::SLIDE_INTERVAL_DUR)
+                .unwrap_or_default();
+            self.inverse_wheel.push(partial, &self.aggregator);
+        }
+        if new_watermark >= self.next_window_end {
+            self.wheel.advance_to(self.next_window_end);
+
+            if self.next_window_end == self.next_full_rotation {
+                // Window has rolled up fully so we can access the results directly
+                let window_result = self.wheel.interval(Self::RANGE_INTERVAL_DUR).unwrap();
+                dbg!(window_result);
+                self.window_results.push(window_result);
+                self.next_full_rotation += RANGE as u64;
+                self.current_secs_rotation = 0;
+                if !self.first_window {
+                    self.inverse_wheel.clear_current_tail();
+                    let _ = self.inverse_wheel.tick();
+                } else {
+                    self.first_window = false;
+                }
+            } else {
+                // bump the current rotation
+                self.current_secs_rotation +=
+                    Duration::seconds((SLIDE / 1000) as i64).whole_seconds() as u64;
+                let inverse = self.inverse_wheel.tick().unwrap_or_default();
+
+                let last_rotation = self.wheel.interval(Self::RANGE_INTERVAL_DUR).unwrap();
+                let current_rotation = self
+                    .wheel
+                    .interval(Duration::seconds(self.current_secs_rotation as i64))
+                    .unwrap_or_default();
+                dbg!((last_rotation, current_rotation, inverse));
+
+                // Function: combine(inverse_combine(last_rotation, slice), current_rotation);
+                // ⊕((⊖(last_rotation, slice)), current_rotation)
+                let window_result = self.aggregator.combine(
+                    self.aggregator.inverse_combine(last_rotation, inverse),
+                    current_rotation,
+                );
+
+                self.window_results.push(window_result);
+                dbg!(window_result);
+            }
+            self.next_window_end += SLIDE as u64;
+        }
+
+        // Make sure we have advanced to the new watermark
+        self.wheel.advance_to(new_watermark);
+    }
+    pub fn results(&self) -> &[A::PartialAggregate] {
+        &self.window_results
     }
     #[inline]
     pub fn query(&mut self) -> Option<A::Aggregate> {
@@ -305,28 +368,29 @@ mod tests {
         let aggregator = U64SumAggregator::default();
         // w1
         wheel.insert(Entry::new(1, 9000)).unwrap();
-        iwheel.write_ahead(0, 1, &Default::default());
+        iwheel.push(1, &Default::default());
         // w2
         wheel.insert(Entry::new(1, 15000)).unwrap();
-        iwheel.write_ahead(1, 1, &Default::default());
+        iwheel.push(1, &Default::default());
         // w3
         wheel.insert(Entry::new(1, 25000)).unwrap();
-        iwheel.write_ahead(2, 1, &Default::default());
+        iwheel.push(1, &Default::default());
         // w3
         wheel.insert(Entry::new(1, 35000)).unwrap();
-        iwheel.write_ahead(3, 1, &Default::default());
+        iwheel.push(1, &Default::default());
 
-        iwheel.write_ahead(4, 0, &Default::default());
+        iwheel.push(0, &Default::default());
+
         // w4
         wheel.insert(Entry::new(1, 59000)).unwrap();
-        iwheel.write_ahead(5, 1, &Default::default());
+        iwheel.push(1, &Default::default());
 
         // advance to 60s
         wheel.advance_to(60000);
 
         // w4
         wheel.insert(Entry::new(3, 69000)).unwrap();
-        iwheel.write_ahead(6, 3, &Default::default());
+        iwheel.push(3, &Default::default());
 
         // [0-60]
         let w1_result = wheel.minutes_unchecked().interval(1);
@@ -338,19 +402,20 @@ mod tests {
 
         // w5
         wheel.insert(Entry::new(5, 75000)).unwrap();
-        iwheel.write_ahead(7, 5, &Default::default());
-        iwheel.write_ahead(8, 0, &Default::default());
-        iwheel.write_ahead(9, 0, &Default::default());
-        iwheel.write_ahead(10, 0, &Default::default());
+        iwheel.push(5, &Default::default());
+        iwheel.push(0, &Default::default());
+        iwheel.push(0, &Default::default());
+        iwheel.push(0, &Default::default());
 
         // w6
         wheel.insert(Entry::new(10, 110000)).unwrap();
-        iwheel.write_ahead(11, 10, &Default::default());
+        iwheel.push(10, &Default::default());
 
         let last_min = wheel.minutes_unchecked().interval(1).unwrap();
         //let last_ten = wheel.seconds_unchecked().interval(10).unwrap();
         let last_ten = wheel.seconds_unchecked().total().unwrap();
         let inverse = iwheel.tick().unwrap(); // data within [0-10]
+        dbg!((last_min, last_ten, inverse));
         let inversed_min = aggregator.inverse_combine(last_min, inverse);
         let w2_result = aggregator.combine(inversed_min, last_ten);
         // 4 + 3
@@ -435,7 +500,7 @@ mod tests {
     #[test]
     fn window_wheel_real_test() {
         // 60s range, 10s slide
-        let mut wheel: WindowWheel<60, 10, U64SumAggregator> = WindowWheel::new(0);
+        let mut wheel: WindowWheel<60000, 10000, U64SumAggregator> = WindowWheel::new(0);
         // w1
         wheel.insert(Entry::new(1, 9000)).unwrap();
         // w2
@@ -448,7 +513,153 @@ mod tests {
         // w4
         wheel.insert(Entry::new(1, 59000)).unwrap();
 
-        // advance to 60s
+        wheel.advance_to(10000);
+        wheel.advance_to(20000);
+        wheel.advance_to(30000);
+        wheel.advance_to(40000);
+        wheel.advance_to(50000);
         wheel.advance_to(60000);
+
+        wheel.insert(Entry::new(3, 69000)).unwrap();
+
+        wheel.advance_to(70000);
+
+        wheel.insert(Entry::new(5, 75000)).unwrap();
+
+        wheel.insert(Entry::new(10, 110000)).unwrap();
+
+        wheel.advance_to(80000);
+        wheel.advance_to(90000);
+        wheel.advance_to(100000);
+        wheel.advance_to(110000);
+        wheel.advance_to(120000);
+        wheel.advance_to(130000);
+
+        let results = wheel.results();
+        let expected = &[5, 7, 11, 10, 9, 9, 18, 15];
+        assert_eq!(results, expected);
+    }
+    #[test]
+    fn window_wheel_range_120_slide_10() {
+        // 120s range, 10s slide
+        let mut wheel: WindowWheel<120000, 10000, U64SumAggregator> = WindowWheel::new(0);
+        // w1
+        wheel.insert(Entry::new(1, 9000)).unwrap();
+        // w2
+        wheel.insert(Entry::new(1, 15000)).unwrap();
+        // w3
+        wheel.insert(Entry::new(1, 25000)).unwrap();
+        // w3
+        wheel.insert(Entry::new(1, 35000)).unwrap();
+
+        // w4
+        wheel.insert(Entry::new(1, 59000)).unwrap();
+
+        wheel.advance_to(10000);
+        wheel.advance_to(20000);
+        wheel.advance_to(30000);
+        wheel.advance_to(40000);
+        wheel.advance_to(50000);
+        wheel.advance_to(60000);
+
+        wheel.insert(Entry::new(3, 69000)).unwrap();
+
+        wheel.advance_to(70000);
+
+        wheel.insert(Entry::new(5, 75000)).unwrap();
+
+        wheel.insert(Entry::new(10, 110000)).unwrap();
+
+        wheel.advance_to(80000);
+        wheel.advance_to(90000);
+        wheel.advance_to(100000);
+        wheel.advance_to(110000);
+        // First window triggered
+        wheel.advance_to(120000);
+
+        wheel.insert(Entry::new(3, 125000)).unwrap();
+
+        // 2nd window triggered [10-130] -> should be (23 - 1) + 3 = 25
+        wheel.advance_to(130000);
+
+        // 3nd window triggered [20-140] -> should be (25 -1)
+        wheel.advance_to(140000);
+
+        // 4nd window triggered [30-150] -> should be (24-1) = 23
+        wheel.advance_to(150000);
+
+        // 5nd window triggered [40-160] -> should be (23 -1 ) = 22
+        wheel.advance_to(160000);
+
+        let results = wheel.results();
+        let expected = &[23, 25, 24, 23, 22];
+        assert_eq!(results, expected);
+    }
+
+    #[test]
+    fn window_wheel_range_1hr_slide_10_secs() {
+        let mut wheel: WindowWheel<3600000, 10000, U64SumAggregator> = WindowWheel::new(0);
+        // w1
+        wheel.insert(Entry::new(1, 9000)).unwrap();
+        // w2
+        wheel.insert(Entry::new(1, 15000)).unwrap();
+        // w3
+        wheel.insert(Entry::new(1, 25000)).unwrap();
+        // w3
+        wheel.insert(Entry::new(1, 35000)).unwrap();
+
+        // w4
+        wheel.insert(Entry::new(1, 59000)).unwrap();
+
+        wheel.advance_to(10000);
+        wheel.advance_to(20000);
+        wheel.advance_to(30000);
+        wheel.advance_to(40000);
+        wheel.advance_to(50000);
+        wheel.advance_to(60000);
+
+        wheel.insert(Entry::new(3, 69000)).unwrap();
+
+        wheel.advance_to(70000);
+
+        wheel.insert(Entry::new(5, 75000)).unwrap();
+
+        wheel.insert(Entry::new(10, 110000)).unwrap();
+
+        wheel.advance_to(80000);
+        wheel.advance_to(90000);
+        wheel.advance_to(100000);
+        wheel.advance_to(110000);
+        // First window triggered
+        wheel.advance_to(120000);
+
+        wheel.insert(Entry::new(3, 125000)).unwrap();
+
+        // 2nd window triggered [10-130] -> should be (23 - 1) + 3 = 25
+        wheel.advance_to(130000);
+
+        // 3nd window triggered [20-140] -> should be (25 -1)
+        wheel.advance_to(140000);
+
+        // 4nd window triggered [30-150] -> should be (24-1) = 23
+        wheel.advance_to(150000);
+
+        // 5nd window triggered [40-160] -> should be (23 -1 ) = 22
+        wheel.advance_to(160000);
+
+        let mut time = 170000u64;
+        while time < 3600000 {
+            wheel.advance_to(time);
+            time += 10000;
+        }
+        wheel.advance_to(3600000 + 10000);
+
+        wheel.advance_to(3600000 + 20000);
+
+        wheel.advance_to(3600000 + 30000);
+        wheel.advance_to(3600000 + 40000);
+        let results = wheel.results();
+        let expected = &[26, 25, 24, 23];
+        assert_eq!(results, expected);
     }
 }
