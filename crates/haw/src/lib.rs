@@ -19,32 +19,23 @@ use core::{
     write,
 };
 
-/// Aggregation Wheel based on a fixed-sized circular buffer
-///
-/// This is the core data structure that is reused between different hierarchies (e.g., seconds, minutes, hours, days)
-pub mod agg_wheel;
 /// Aggregation Interface adopted from the work of [Tangwongsan et al.](http://www.vldb.org/pvldb/vol8/p702-tangwongsan.pdf)
 ///
-/// This module also contains a number of pre-defined aggregators (e.g., SUM)
+/// This module also contains a number of pre-defined aggregators (e.g., SUM, ALL, TopK)
 pub mod aggregator;
 /// A Map maintaining a [Wheel] per key
+#[cfg(feature = "map")]
 pub mod map;
 /// Time utilities
 ///
 /// Heavily borrowed from the [time](https://docs.rs/time/latest/time/) crate
 pub mod time;
-/// Data types used in this crate
-pub mod types;
-
-pub mod inverse_wheel;
-pub mod sliding_wheel;
-mod waw;
+/// Module containing various wheel implementations
+pub mod wheels;
 
 use aggregator::Aggregator;
 
-mod wheel;
-
-pub use wheel::{
+pub use wheels::wheel::{
     DaysWheel,
     HoursWheel,
     MinutesWheel,

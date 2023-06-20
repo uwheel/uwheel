@@ -1,5 +1,5 @@
 use super::{entry::TopKEntry, map::TopKMap};
-use crate::{aggregator::AggState, types::PartialAggregateType};
+use crate::aggregator::{AggState, PartialAggregateType};
 use core::fmt::Debug;
 
 #[cfg(feature = "rkyv")]
@@ -39,19 +39,4 @@ impl<const K: usize, const KEY_BYTES: usize> TopKState<K, KEY_BYTES> {
         *self = map.to_state();
     }
 }
-impl<const K: usize, const KEY_BYTES: usize> PartialAggregateType for TopKState<K, KEY_BYTES> {
-    type Bytes = [u8; 32];
-    fn to_be_bytes(&self) -> Self::Bytes {
-        unimplemented!();
-    }
-    fn to_le_bytes(&self) -> Self::Bytes {
-        unimplemented!();
-    }
-    #[inline]
-    fn from_le_bytes(_: Self::Bytes) -> Self {
-        unimplemented!();
-    }
-    fn from_be_bytes(_: Self::Bytes) -> Self {
-        unimplemented!();
-    }
-}
+impl<const K: usize, const KEY_BYTES: usize> PartialAggregateType for TopKState<K, KEY_BYTES> {}

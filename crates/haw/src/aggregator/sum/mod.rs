@@ -1,5 +1,5 @@
 use super::super::Aggregator;
-use crate::aggregator::Inverse;
+use crate::aggregator::InverseExt;
 
 macro_rules! unsigned_sum_impl {
     ($struct:tt, $type:ty, $pa:tt) => {
@@ -37,7 +37,7 @@ macro_rules! unsigned_sum_impl {
                 a
             }
         }
-        impl Inverse for $struct {
+        impl InverseExt for $struct {
             #[inline]
             fn inverse_combine(
                 &self,

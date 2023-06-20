@@ -3,6 +3,7 @@ pub mod all;
 /// Incremental Sum aggregation
 pub mod sum;
 
+#[cfg(feature = "top_k")]
 pub mod top_k;
 
 pub use all::{AggState, AllAggregator};
@@ -13,8 +14,6 @@ use core::{
     fmt::Debug,
     marker::{Copy, Send},
 };
-
-use crate::types::PartialAggregateType;
 
 /// Aggregation interface that library users must implement to use Hierarchical Aggregation Wheels
 pub trait Aggregator: Default + Debug + 'static {
@@ -49,11 +48,37 @@ pub trait Aggregator: Default + Debug + 'static {
     fn lower(&self, a: Self::PartialAggregate) -> Self::Aggregate;
 }
 
-/// An optional interface for supporting inverse operations
-pub trait Inverse: Aggregator {
+/// Extension trait for inverse combine operations
+pub trait InverseExt: Aggregator {
+    /// Inverse combine two partial aggregates to a new partial aggregate
     fn inverse_combine(
         &self,
         a: Self::PartialAggregate,
         b: Self::PartialAggregate,
     ) -> Self::PartialAggregate;
 }
+
+/// Bounds required for a PartialAggregateType
+pub trait PartialAggregateBounds: Default + Debug + Clone + Copy + Send {}
+impl<T> PartialAggregateBounds for T where T: Clone + Copy + Debug + Sync + Send + Default + 'static {}
+
+pub trait PartialAggregateType: PartialAggregateBounds {}
+
+macro_rules! partial_agg {
+    ($type:ty) => {
+        impl PartialAggregateType for $type {}
+    };
+}
+
+partial_agg!(u8);
+partial_agg!(u16);
+partial_agg!(u32);
+partial_agg!(u64);
+partial_agg!(i8);
+partial_agg!(i16);
+partial_agg!(i32);
+partial_agg!(i64);
+partial_agg!(f32);
+partial_agg!(f64);
+partial_agg!(i128);
+partial_agg!(u128);

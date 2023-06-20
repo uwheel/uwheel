@@ -76,13 +76,13 @@ for _ in 0..60 {
 wheel.advance(60.seconds());
 
 // interval of last 1 minute
-assert_eq!(wheel.minutes_unchecked().interval(1), Some(60));
+assert_eq!(wheel.interval(1.minutes()), Some(60));
 
 // full range of data
 assert_eq!(wheel.landmark(), Some(60));
 
 // interval of last 15 seconds
-assert_eq!(wheel.seconds_unchecked().interval(15), Some(15));
+assert_eq!(wheel.interval(15.seconds()), Some(15));
 ```
 
 ## License

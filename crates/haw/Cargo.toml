@@ -18,9 +18,11 @@ std = ["rkyv?/std"]
 years_size_10 = []
 years_size_100 = []
 rkyv = ["dep:rkyv"]
+top_k = ["dep:hashbrown"]
+map = ["dep:hashbrown"]
 
 [dependencies]
-hashbrown = "0.13"
+hashbrown = { version = "0.13", optional = true }
 rkyv = { version = "0.7.39", features = ["copy", "copy_unsafe"], optional = true }
 
 [dev-dependencies]
@@ -37,6 +39,11 @@ zipf = "7.0.0"
 name = "serde"
 path = "examples/serde.rs"
 required-features = ["rkyv", "std"]
+
+[[example]]
+name = "map_bench"
+path = "examples/map_bench.rs"
+required-features = ["map"]
 
 [[bench]]
 name = "insert"

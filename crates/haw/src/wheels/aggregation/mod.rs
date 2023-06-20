@@ -17,13 +17,16 @@ use alloc::{boxed::Box, vec::Vec};
 use rkyv::{ser::Serializer, with::Skip, AlignedVec, Archive, Deserialize, Serialize};
 
 #[cfg(feature = "rkyv")]
-use crate::wheel::{DefaultSerializer, PartialAggregate};
+use crate::wheels::wheel::{DefaultSerializer, PartialAggregate};
 
 mod iter;
+mod maybe;
+
+pub use maybe::MaybeWheel;
 
 use iter::Iter;
 
-use crate::agg_wheel::iter::DrillIter;
+use crate::wheels::aggregation::iter::DrillIter;
 
 /// Type alias for drill down slots
 type DrillDownSlots<A, const CAP: usize> = Option<Box<[Option<Vec<A>>; CAP]>>;
@@ -170,6 +173,17 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             let tail = self.slot_idx_from_head(subtrahend);
             let iter = Iter::<CAP, A>::new(&self.slots, tail, self.head);
             Some(self.combine_slots(iter))
+        }
+    }
+
+    /// This function takes the current rotation into context and if the interval is equal to the rotation count,
+    /// then it will return the total for the rotation otherwise call the regular interval function.
+    #[inline]
+    pub fn interval_or_total(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
+        if subtrahend == self.rotation_count {
+            self.total
+        } else {
+            self.interval(subtrahend)
         }
     }
 
