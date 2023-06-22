@@ -1,7 +1,7 @@
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::{types::PartialAggregateType, Aggregator, Option::Some};
+use crate::{aggregator::PartialAggregateType, Aggregator, Option::Some};
 use core::{
     clone::Clone,
     cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd},
@@ -53,50 +53,7 @@ impl AggState {
         self.sum / self.count as f64
     }
 }
-impl PartialAggregateType for AggState {
-    type Bytes = [u8; 32];
-    fn to_be_bytes(&self) -> Self::Bytes {
-        let mut bytes = [0; 32];
-        bytes[0..8].copy_from_slice(&self.min.to_be_bytes());
-        bytes[8..16].copy_from_slice(&self.max.to_be_bytes());
-        bytes[16..24].copy_from_slice(&self.count.to_be_bytes());
-        bytes[24..32].copy_from_slice(&self.sum.to_be_bytes());
-        bytes
-    }
-    fn to_le_bytes(&self) -> Self::Bytes {
-        let mut bytes = [0; 32];
-        bytes[0..8].copy_from_slice(&self.min.to_le_bytes());
-        bytes[8..16].copy_from_slice(&self.max.to_le_bytes());
-        bytes[16..24].copy_from_slice(&self.count.to_le_bytes());
-        bytes[24..32].copy_from_slice(&self.sum.to_le_bytes());
-        bytes
-    }
-    #[inline]
-    fn from_le_bytes(bytes: Self::Bytes) -> Self {
-        let min = f64::from_le_bytes(bytes[0..8].try_into().unwrap());
-        let max = f64::from_le_bytes(bytes[8..16].try_into().unwrap());
-        let count = u64::from_le_bytes(bytes[16..24].try_into().unwrap());
-        let sum = f64::from_le_bytes(bytes[24..32].try_into().unwrap());
-        AggState {
-            min,
-            max,
-            count,
-            sum,
-        }
-    }
-    fn from_be_bytes(bytes: Self::Bytes) -> Self {
-        let min = f64::from_be_bytes(bytes[0..8].try_into().unwrap());
-        let max = f64::from_be_bytes(bytes[8..16].try_into().unwrap());
-        let count = u64::from_be_bytes(bytes[16..24].try_into().unwrap());
-        let sum = f64::from_be_bytes(bytes[24..32].try_into().unwrap());
-        AggState {
-            min,
-            max,
-            count,
-            sum,
-        }
-    }
-}
+impl PartialAggregateType for AggState {}
 
 impl Ord for AggState {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -175,29 +132,5 @@ mod tests {
         assert_eq!(all.max_value(), 1.0);
         assert_eq!(all.min_value(), 1.0);
         assert_eq!(all.avg(), 1.0);
-    }
-    #[test]
-    fn test_be_bytes() {
-        let agg_state = AggState {
-            min: 0.0,
-            max: 1.0,
-            count: 10,
-            sum: 5.0,
-        };
-        let bytes = agg_state.to_be_bytes();
-        let decoded = AggState::from_be_bytes(bytes);
-        assert_eq!(agg_state, decoded);
-    }
-    #[test]
-    fn test_le_bytes() {
-        let agg_state = AggState {
-            min: 0.0,
-            max: 1.0,
-            count: 10,
-            sum: 5.0,
-        };
-        let bytes = agg_state.to_le_bytes();
-        let decoded = AggState::from_le_bytes(bytes);
-        assert_eq!(agg_state, decoded);
     }
 }
