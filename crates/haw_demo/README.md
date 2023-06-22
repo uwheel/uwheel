@@ -1,9 +1,8 @@
 ## HAW Demo
 
-Gui Demo Application of HAW using [egui](https://github.com/emilk/egui/).
+<img src="assets/haw_demo.gif">
 
-
-Based on the [eframe_template](https://github.com/emilk/eframe_template).
+Demo Application of HAW using [egui](https://github.com/emilk/egui/). Based on the [eframe_template](https://github.com/emilk/eframe_template).
 
 ### Testing locally
 
