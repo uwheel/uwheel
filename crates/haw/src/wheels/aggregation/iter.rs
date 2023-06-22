@@ -58,7 +58,6 @@ impl<'a, const CAP: usize, A: Aggregator> DrillIter<'a, CAP, A> {
 }
 impl<'a, const CAP: usize, A: Aggregator> Iterator for DrillIter<'a, CAP, A> {
     type Item = Option<&'a [A::PartialAggregate]>;
-    //type Item = &'a Option<A::PartialAggregate>;
 
     #[inline]
     fn next(&mut self) -> Option<Option<&'a [A::PartialAggregate]>> {

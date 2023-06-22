@@ -6,14 +6,14 @@ use rkyv::{Archive, Deserialize, Serialize};
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[derive(Debug, Clone)]
-pub struct Waw<const CAP: usize, A: Aggregator> {
+pub struct WriteAheadWheel<const CAP: usize, A: Aggregator> {
     capacity: usize,
     slots: [Option<A::Window>; CAP],
     tail: usize,
     head: usize,
 }
 
-impl<const CAP: usize, A: Aggregator> Default for Waw<CAP, A> {
+impl<const CAP: usize, A: Aggregator> Default for WriteAheadWheel<CAP, A> {
     fn default() -> Self {
         assert!(CAP.is_power_of_two(), "Capacity must be power of two");
         Self {
@@ -25,7 +25,7 @@ impl<const CAP: usize, A: Aggregator> Default for Waw<CAP, A> {
     }
 }
 
-impl<const CAP: usize, A: Aggregator> Waw<CAP, A> {
+impl<const CAP: usize, A: Aggregator> WriteAheadWheel<CAP, A> {
     #[inline]
     pub fn tick(&mut self) -> Option<A::Window> {
         // bump head
