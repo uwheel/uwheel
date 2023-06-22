@@ -4,7 +4,7 @@
 pub mod aggregation;
 /// Hierarchical Aggregation Wheel (HAW)
 pub mod wheel;
-/// Wheels that are tailored towards windowing
+/// Wheels that are tailored for Sliding Window Aggregation
 pub mod window;
 /// Write-ahead Wheel
 pub mod write_ahead;

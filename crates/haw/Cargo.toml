@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 categories = ["index", "temporal warehousing", "streaming", "no-std"]
 authors = ["Max Meldrum <max@meldrum.se>"]
-readme = "README.md"
+readme = "../../README.md"
 license = "Apache-2.0 & MIT"
 
 [package.metadata.docs.rs]
@@ -29,7 +29,7 @@ rkyv = { version = "0.7.39", features = ["copy", "copy_unsafe"], optional = true
 fastrand = "1.8.0"
 rand = "0.8.5"
 criterion = "0.4"
-lz4_flex = "0.9.5"
+lz4_flex = { version = "0.11", default-features = false }
 fiba_rs = { version = "0.1.0", path = "../fiba_rs"}
 
 clap = { version = "3.2", features = ["derive"] }
