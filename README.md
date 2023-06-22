@@ -1,7 +1,7 @@
 # Hierarchical Aggregation Wheel (HAW)
 
 ## What it is
-HAW is a lightweight index that pre-computes and maintains aggregates across stream event time.
+HAW is a lightweight index for unified stream and temporal warehousing.
 
 Features:
 
@@ -9,14 +9,28 @@ Features:
 - Compact and highly compressible
 - Event-time driven using low watermarking
 - Bounded query latency
-- Roll-ups & drill-downs
 - Compatible with `#[no_std]` with the ``alloc`` crate
+- Zero dependencies with default features enabled.
 
 ## How it works
 
 Similarly to Hierarchical Wheel Timers, HAW exploits the hierarchical nature of time and utilise several aggregation wheels,
 each with a different time granularity. This enables a compact representation of aggregates across time
 with a low memory footprint and makes it highly compressible and efficient to store on disk. HAWs are event-time driven and uses the notion of a Watermark which means that no timestamps are stored as they are implicit in the wheel slots. It is up to the user of the wheel to advance the watermark and thus roll up aggregates continously up the time hierarchy.
+
+For instance, to store aggregates with second granularity up to 10 years, we would need the following aggregation wheels:
+
+* Seconds wheel with 60 slots
+* Minutes wheel with 60 slots
+* Hours wheel with 24 slots
+* Days wheel with 7 slots
+* Weeks wheel with 52 slots
+* Years wheel with 10 slots
+
+The above scheme results in a total of 213 wheel slots. This is the minimum number of slots
+required to support rolling up aggregates across 10 years with second granularity.
+
+## Components
 
 - `Aggregator` 
     - Interface defining the aggregation on top of HAW
@@ -31,20 +45,6 @@ with a low memory footprint and makes it highly compressible and efficient to st
     - A hierarchy of wheels with immutable slots
     - Supports distributive and algebraic aggregations
 
-
-For instance, to store aggregates with second granularity up to 10 years, we would need the following aggregation wheels:
-
-* Seconds wheel with 60 slots
-* Minutes wheel with 60 slots
-* Hours wheel with 24 slots
-* Days wheel with 7 slots
-* Weeks wheel with 52 slots
-* Years wheel with 10 slots
-
-The above scheme results in a total of 213 wheel slots. This is the minimum number of slots
-required to support rolling up aggregates across 10 years with second granularity.
-
-
 ## Feature Flags
 - `std` (_enabled by default_)
     - Enables features that rely on the standard library
@@ -52,6 +52,8 @@ required to support rolling up aggregates across 10 years with second granularit
     - Enables rolling up aggregates across 10 years
 - `years_size_100`
     - Enables rolling up aggregates across 100 years
+- `top_k`
+    - Enables top_k aggregation using the [hashbrown](https://github.com/rust-lang/hashbrown) crate.
 - `rkyv`
     - Enables serialisation & deserialisation using the [rkyv](https://docs.rs/rkyv/latest/rkyv/) framework.
 

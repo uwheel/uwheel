@@ -331,12 +331,10 @@ where
         let minute = to_option(dur.whole_minutes() % MINUTES as i64);
         let hour = to_option(dur.whole_hours() % HOURS as i64);
         let day = to_option(dur.whole_days() % DAYS as i64);
-        //dbg!((second, minute, hour, day));
-        // TODO: integrate week and year.
-        //let week = to_option(dur.whole_weeks() % WEEKS as i64);
-        //let year = to_option((dur.whole_weeks() / WEEKS as i64) % YEARS as i64);
+        let week = to_option(dur.whole_weeks() % WEEKS as i64);
+        let year = to_option((dur.whole_weeks() / WEEKS as i64) % YEARS as i64);
         //dbg!((second, minute, hour, day, week, year));
-        self.combine_time(second, minute, hour, day)
+        self.combine_time(second, minute, hour, day, week, year)
     }
 
     #[inline]
@@ -346,14 +344,47 @@ where
         minute: Option<usize>,
         hour: Option<usize>,
         day: Option<usize>,
+        week: Option<usize>,
+        year: Option<usize>,
     ) -> Option<A::PartialAggregate> {
         // Multi-Wheel Query => Need to make sure we don't duplicate data across granularities.
         let aggregator = &self.aggregator;
 
-        match (day, hour, minute, second) {
+        match (year, week, day, hour, minute, second) {
+            // ywdhms
+            (Some(year), Some(week), Some(day), Some(hour), Some(minute), Some(second)) => {
+                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
+                let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
+                let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
+                let day = cmp::min(self.days_wheel.rotation_count(), day);
+                let week = cmp::min(self.weeks_wheel.rotation_count(), week);
+
+                let sec = self.seconds_wheel.interval_or_total(second);
+                let min = self.minutes_wheel.interval_or_total(minute);
+                let hr = self.hours_wheel.interval_or_total(hour);
+                let day = self.days_wheel.interval_or_total(day);
+                let week = self.weeks_wheel.interval_or_total(week);
+                let year = self.years_wheel.interval(year);
+
+                Self::reduce([sec, min, hr, day, week, year], aggregator)
+            }
+            // wdhms
+            (None, Some(week), Some(day), Some(hour), Some(minute), Some(second)) => {
+                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
+                let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
+                let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
+                let day = cmp::min(self.days_wheel.rotation_count(), day);
+
+                let sec = self.seconds_wheel.interval_or_total(second);
+                let min = self.minutes_wheel.interval_or_total(minute);
+                let hr = self.hours_wheel.interval_or_total(hour);
+                let day = self.days_wheel.interval_or_total(day);
+                let week = self.days_wheel.interval(week);
+
+                Self::reduce([sec, min, hr, day, week], aggregator)
+            }
             // dhms
-            (Some(day), Some(hour), Some(minute), Some(second)) => {
-                // Do not query below rotation count
+            (None, None, Some(day), Some(hour), Some(minute), Some(second)) => {
                 let second = cmp::min(self.seconds_wheel.rotation_count(), second);
                 let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
                 let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
@@ -366,7 +397,7 @@ where
                 Self::reduce([sec, min, hr, day], aggregator)
             }
             // dhm
-            (Some(day), Some(hour), Some(minute), None) => {
+            (None, None, Some(day), Some(hour), Some(minute), None) => {
                 // Do not query below rotation count
                 let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
                 let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
@@ -377,16 +408,16 @@ where
                 Self::reduce([min, hr, day], aggregator)
             }
             // dh
-            (Some(day), Some(hour), None, None) => {
+            (None, None, Some(day), Some(hour), None, None) => {
                 let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
                 let hr = self.hours_wheel.interval_or_total(hour);
                 let day = self.days_wheel.interval(day);
                 Self::reduce([hr, day], aggregator)
             }
             // d
-            (Some(day), None, None, None) => self.days_wheel.interval(day),
+            (None, None, Some(day), None, None, None) => self.days_wheel.interval(day),
             // hms
-            (None, Some(hour), Some(minute), Some(second)) => {
+            (None, None, None, Some(hour), Some(minute), Some(second)) => {
                 let second = cmp::min(self.seconds_wheel.rotation_count(), second);
                 let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
 
@@ -396,27 +427,42 @@ where
                 Self::reduce([sec, min, hr], aggregator)
             }
             // hm
-            (None, Some(hour), Some(minute), None) => {
+            (None, None, None, Some(hour), Some(minute), None) => {
                 let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
                 let min = self.minutes_wheel.interval_or_total(minute);
 
                 let hr = self.hours_wheel.interval(hour);
                 Self::reduce([min, hr], aggregator)
             }
+            // yw
+            (Some(year), Some(week), None, None, None, None) => {
+                let week = cmp::min(self.weeks_wheel.rotation_count(), week);
+                let week = self.weeks_wheel.interval_or_total(week);
+                let year = self.years_wheel.interval(year);
+                Self::reduce([year, week], aggregator)
+            }
+            // y
+            (Some(year), None, None, None, None, None) => self.years_wheel.interval_or_total(year),
+            // w
+            (None, Some(week), None, None, None, None) => self.weeks_wheel.interval_or_total(week),
             // h
-            (None, Some(hour), None, None) => self.hours_wheel.interval(hour),
+            (None, None, None, Some(hour), None, None) => self.hours_wheel.interval_or_total(hour),
             // ms
-            (None, None, Some(minute), Some(second)) => {
+            (None, None, None, None, Some(minute), Some(second)) => {
                 let second = cmp::min(self.seconds_wheel.rotation_count(), second);
                 let sec = self.seconds_wheel.interval_or_total(second);
                 let min = self.minutes_wheel.interval(minute);
                 Self::reduce([min, sec], aggregator)
             }
             // m
-            (None, None, Some(minute), None) => self.minutes_wheel.interval_or_total(minute),
+            (None, None, None, None, Some(minute), None) => {
+                self.minutes_wheel.interval_or_total(minute)
+            }
             // s
-            (None, None, None, Some(second)) => self.seconds_wheel.interval_or_total(second),
-            (_, _, _, _) => {
+            (None, None, None, None, None, Some(second)) => {
+                self.seconds_wheel.interval_or_total(second)
+            }
+            (_, _, _, _, _, _) => {
                 panic!("combine_time was given invalid Time arguments");
             }
         }
