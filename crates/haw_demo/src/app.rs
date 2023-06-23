@@ -12,7 +12,6 @@ use egui::{
 };
 use haw::{aggregator::U64SumAggregator, time::NumericalDuration, Entry, Wheel};
 use hdrhistogram::Histogram;
-use instant::Instant;
 use time::OffsetDateTime;
 
 thread_local! {
@@ -21,16 +20,22 @@ thread_local! {
 
 #[inline]
 fn measure<T>(query: impl Fn() -> T) -> T {
-    let now = Instant::now();
-    let res = query();
-    let elapsed = now.elapsed();
-    QUERY_LATENCY.with(|hist| {
-        hist.borrow_mut()
-            .record(elapsed.as_micros() as u64)
-            .unwrap();
-    });
+    // When running natively
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let now = std::time::Instant::now();
+        let res = query();
+        let elapsed = now.elapsed();
+        QUERY_LATENCY.with(|hist| {
+            hist.borrow_mut()
+                .record(elapsed.as_micros() as u64)
+                .unwrap();
+        });
 
-    res
+        res
+    }
+    #[cfg(target_arch = "wasm32")]
+    query()
 }
 
 fn to_offset_datetime(time_ms: u64) -> OffsetDateTime {
@@ -226,19 +231,10 @@ impl Default for TemplateApp {
 
 impl TemplateApp {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
-        cc.egui_ctx.set_visuals(egui::Visuals::dark()); // Switch to dark mode
-
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
-        /*
-        if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        }
-        */
-
+        //cc.egui_ctx.set_visuals(egui::Visuals::dark()); // Switch to dark mode
         Default::default()
     }
     // TODO: optimise
@@ -638,6 +634,7 @@ impl eframe::App for TemplateApp {
             });
         });
 
+        #[cfg(not(target_arch = "wasm32"))]
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Query Latencies: ");
