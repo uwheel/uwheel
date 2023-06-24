@@ -172,7 +172,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         } else {
             let tail = self.slot_idx_from_head(subtrahend);
             let iter = Iter::<CAP, A>::new(&self.slots, tail, self.head);
-            Some(self.combine_slots(iter))
+            self.combine_partials(iter)
         }
     }
 
@@ -262,12 +262,15 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     }
     // helper method to combine partial aggregates in slots
     #[inline]
-    fn combine_slots<'a>(
+    fn combine_partials<'a>(
         &self,
         iter: impl Iterator<Item = &'a Option<A::PartialAggregate>>,
-    ) -> A::PartialAggregate {
-        iter.flatten()
-            .fold(Default::default(), |a, b| self.aggregator.combine(a, *b))
+    ) -> Option<A::PartialAggregate> {
+        let mut res: Option<A::PartialAggregate> = None;
+        for partial in iter.flatten() {
+            Self::insert(&mut res, *partial, &self.aggregator);
+        }
+        res
     }
 
     /// Returns drill down slots from `slot` slots backwards from the head
@@ -381,7 +384,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     where
         R: RangeBounds<usize>,
     {
-        Some(self.combine_slots(self.range(range)))
+        self.combine_partials(self.range(range))
     }
     /// Combines partial aggregates from the specified range and lowers it to a final aggregate value
     ///

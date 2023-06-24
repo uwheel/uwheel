@@ -1,6 +1,12 @@
 /// An All Aggregator enabling the following functions (MAX, MIN, SUM, COUNT, AVG).
 pub mod all;
-/// Incremental Sum aggregation
+/// Incremental AVG aggregation
+pub mod avg;
+/// Incremental MAX aggregation
+pub mod max;
+/// Incremental MIN aggregation
+pub mod min;
+/// Incremental SUM aggregation
 pub mod sum;
 
 #[cfg(feature = "top_k")]
@@ -58,27 +64,45 @@ pub trait InverseExt: Aggregator {
     ) -> Self::PartialAggregate;
 }
 
-/// Bounds required for a PartialAggregateType
-pub trait PartialAggregateBounds: Default + Debug + Clone + Copy + Send {}
-impl<T> PartialAggregateBounds for T where T: Clone + Copy + Debug + Sync + Send + Default + 'static {}
+/// A Partial Aggregate Type which is used by an Aggregator
+pub trait PartialAggregateType: Default + Debug + Clone + Copy + Send {}
 
-pub trait PartialAggregateType: PartialAggregateBounds {}
-
-macro_rules! partial_agg {
+macro_rules! primitive_partial {
     ($type:ty) => {
         impl PartialAggregateType for $type {}
     };
 }
 
-partial_agg!(u8);
-partial_agg!(u16);
-partial_agg!(u32);
-partial_agg!(u64);
-partial_agg!(i8);
-partial_agg!(i16);
-partial_agg!(i32);
-partial_agg!(i64);
-partial_agg!(f32);
-partial_agg!(f64);
-partial_agg!(i128);
-partial_agg!(u128);
+primitive_partial!(u8);
+primitive_partial!(u16);
+primitive_partial!(u32);
+primitive_partial!(u64);
+primitive_partial!(i8);
+primitive_partial!(i16);
+primitive_partial!(i32);
+primitive_partial!(i64);
+primitive_partial!(f32);
+primitive_partial!(f64);
+primitive_partial!(i128);
+primitive_partial!(u128);
+
+macro_rules! tuple_partial {
+    ( $( $name:ident )+ ) => {
+        impl<$($name: PartialAggregateType),+> PartialAggregateType for ($($name,)+)
+        {
+        }
+    };
+}
+
+tuple_partial!(A);
+tuple_partial!(A B);
+tuple_partial!(A B C);
+tuple_partial!(A B C D);
+tuple_partial!(A B C D E);
+tuple_partial!(A B C D E F);
+tuple_partial!(A B C D E F G);
+tuple_partial!(A B C D E F G H);
+tuple_partial!(A B C D E F G H I);
+tuple_partial!(A B C D E F G H I J);
+tuple_partial!(A B C D E F G H I J K);
+tuple_partial!(A B C D E F G H I J K L);
