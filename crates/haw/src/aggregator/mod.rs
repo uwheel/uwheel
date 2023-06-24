@@ -1,3 +1,9 @@
+use core::{
+    default::Default,
+    fmt::Debug,
+    marker::{Copy, Send},
+};
+
 /// An All Aggregator enabling the following functions (MAX, MIN, SUM, COUNT, AVG).
 pub mod all;
 /// Incremental AVG aggregation
@@ -10,16 +16,11 @@ pub mod min;
 pub mod sum;
 
 #[cfg(feature = "top_k")]
+/// Top-K Aggregation using a nested Aggregator which has a PartialAggregate that implements `Ord`
 pub mod top_k;
 
 pub use all::{AggState, AllAggregator};
 pub use sum::*;
-
-use core::{
-    default::Default,
-    fmt::Debug,
-    marker::{Copy, Send},
-};
 
 /// Aggregation interface that library users must implement to use Hierarchical Aggregation Wheels
 pub trait Aggregator: Default + Debug + 'static {
