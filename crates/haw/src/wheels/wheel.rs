@@ -317,7 +317,12 @@ where
     pub fn watermark(&self) -> u64 {
         self.watermark
     }
-    /// Returns a full aggregate in the given time interval
+    /// Returns the aggregate in the given time interval
+    pub fn interval_and_lower(&self, dur: time::Duration) -> Option<A::Aggregate> {
+        self.interval(dur)
+            .map(|partial| self.aggregator.lower(partial))
+    }
+    /// Returns the partial aggregate in the given time interval
     pub fn interval(&self, dur: time::Duration) -> Option<A::PartialAggregate> {
         // closure that turns i64 to None if it is zero
         let to_option = |num: i64| {
