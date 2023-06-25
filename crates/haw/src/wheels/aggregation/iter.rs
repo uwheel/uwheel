@@ -3,22 +3,27 @@
 use super::*;
 use core::iter::Iterator;
 
-pub struct Iter<'a, const CAP: usize, A: Aggregator> {
-    ring: &'a [Option<A::PartialAggregate>; CAP],
+pub struct Iter<'a, A: Aggregator> {
+    ring: &'a [Option<A::PartialAggregate>],
     tail: usize,
     head: usize,
 }
 
-impl<'a, const CAP: usize, A: Aggregator> Iter<'a, CAP, A> {
-    pub(super) fn new(
-        ring: &'a [Option<A::PartialAggregate>; CAP],
-        tail: usize,
-        head: usize,
-    ) -> Self {
+impl<'a, A: Aggregator> Iter<'a, A> {
+    pub fn new(ring: &'a [Option<A::PartialAggregate>], tail: usize, head: usize) -> Self {
         Iter { ring, tail, head }
     }
+    #[inline]
+    pub fn combine(self) -> Option<A::PartialAggregate> {
+        let aggregator = A::default();
+        let mut res: Option<A::PartialAggregate> = None;
+        for partial in self.flatten() {
+            combine_or_insert(&mut res, *partial, &aggregator);
+        }
+        res
+    }
 }
-impl<'a, const CAP: usize, A: Aggregator> Iterator for Iter<'a, CAP, A> {
+impl<'a, A: Aggregator> Iterator for Iter<'a, A> {
     type Item = &'a Option<A::PartialAggregate>;
 
     #[inline]

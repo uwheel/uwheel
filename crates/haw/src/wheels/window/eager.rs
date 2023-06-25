@@ -2,6 +2,7 @@ use super::util::capacity;
 use crate::{
     aggregator::{Aggregator, InverseExt},
     time::Duration,
+    wheels::aggregation::combine_or_insert,
     Entry,
     Error,
     Wheel,
@@ -50,7 +51,7 @@ impl<A: Aggregator> InverseWheel<A> {
             // 1: [0-10] 2: [10-20] -> need that to be [0-20] so we combine
             let partial_agg = self.slot(tail).take();
             if let Some(agg) = partial_agg {
-                Self::insert(self.slot(self.tail), agg, &Default::default());
+                combine_or_insert::<A>(self.slot(self.tail), agg, &Default::default());
             }
             partial_agg
         } else {
@@ -64,8 +65,9 @@ impl<A: Aggregator> InverseWheel<A> {
         self.tail == self.head
     }
 
-    pub fn clear_current_tail(&mut self) {
-        *self.slot(self.tail) = Some(Default::default());
+    pub fn clear_tail_and_tick(&mut self) {
+        *self.slot(self.tail) = None;
+        let _ = self.tick();
     }
     #[inline]
     pub fn push(&mut self, data: A::PartialAggregate, aggregator: &A) {
@@ -268,11 +270,10 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
                 self.window_results.push(window_result);
                 self.next_full_rotation += self.range as u64;
                 self.current_secs_rotation = 0;
-                if !self.first_window {
-                    self.inverse_wheel.clear_current_tail();
-                    let _ = self.inverse_wheel.tick();
-                } else {
-                    self.first_window = false;
+
+                // If we have already completed a full RANGE
+                if (self.wheel.current_time_in_cycle().whole_milliseconds() as usize) > self.range {
+                    self.inverse_wheel.clear_tail_and_tick();
                 }
             } else {
                 // bump the current rotation

@@ -42,7 +42,7 @@ pub trait Aggregator: Default + Debug + 'static {
     /// Initiates a new Window
     fn init_window(&self, input: Self::Input) -> Self::Window;
 
-    /// lifts a Window into an immutable PartialAggregate
+    /// Lifts a Window into an immutable PartialAggregate
     fn lift(&self, window: Self::Window) -> Self::PartialAggregate;
 
     /// Combine two partial aggregates and produce new output

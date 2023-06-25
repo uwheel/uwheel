@@ -19,7 +19,7 @@ use rkyv::{ser::Serializer, with::Skip, AlignedVec, Archive, Deserialize, Serial
 #[cfg(feature = "rkyv")]
 use crate::wheels::wheel::{DefaultSerializer, PartialAggregate};
 
-mod iter;
+pub(crate) mod iter;
 mod maybe;
 
 pub use maybe::MaybeWheel;
@@ -27,6 +27,24 @@ pub use maybe::MaybeWheel;
 use iter::Iter;
 
 use crate::wheels::aggregation::iter::DrillIter;
+
+/// Combine partial aggregates or insert new entry
+#[inline]
+pub fn combine_or_insert<A: Aggregator>(
+    dest: &mut Option<A::PartialAggregate>,
+    entry: A::PartialAggregate,
+    aggregator: &A,
+) {
+    match dest {
+        Some(curr) => {
+            let new_curr = aggregator.combine(*curr, entry);
+            *curr = new_curr;
+        }
+        None => {
+            *dest = Some(entry);
+        }
+    }
+}
 
 /// Type alias for drill down slots
 type DrillDownSlots<A, const CAP: usize> = Option<Box<[Option<Vec<A>>; CAP]>>;
@@ -171,8 +189,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             None
         } else {
             let tail = self.slot_idx_from_head(subtrahend);
-            let iter = Iter::<CAP, A>::new(&self.slots, tail, self.head);
-            self.combine_partials(iter)
+            Iter::<A>::new(&self.slots, tail, self.head).combine()
         }
     }
 
@@ -259,18 +276,6 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             }
             res
         })
-    }
-    // helper method to combine partial aggregates in slots
-    #[inline]
-    fn combine_partials<'a>(
-        &self,
-        iter: impl Iterator<Item = &'a Option<A::PartialAggregate>>,
-    ) -> Option<A::PartialAggregate> {
-        let mut res: Option<A::PartialAggregate> = None;
-        for partial in iter.flatten() {
-            Self::insert(&mut res, *partial, &self.aggregator);
-        }
-        res
     }
 
     /// Returns drill down slots from `slot` slots backwards from the head
@@ -384,7 +389,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     where
         R: RangeBounds<usize>,
     {
-        self.combine_partials(self.range(range))
+        self.range(range).combine()
     }
     /// Combines partial aggregates from the specified range and lowers it to a final aggregate value
     ///
@@ -405,7 +410,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     ///
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the wheel.
-    pub fn range<R>(&self, range: R) -> Iter<'_, CAP, A>
+    pub fn range<R>(&self, range: R) -> Iter<'_, A>
     where
         R: RangeBounds<usize>,
     {
@@ -486,21 +491,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// Insert PartialAggregate into the head of the wheel
     #[inline]
     pub fn insert_head(&mut self, entry: A::PartialAggregate, aggregator: &A) {
-        Self::insert(self.slot(self.head), entry, aggregator);
-    }
-
-    /// Combine partial aggregates or insert new entry
-    #[inline]
-    fn insert(slot: &mut Option<A::PartialAggregate>, entry: A::PartialAggregate, aggregator: &A) {
-        match slot {
-            Some(curr) => {
-                let new_curr = aggregator.combine(*curr, entry);
-                *curr = new_curr;
-            }
-            None => {
-                *slot = Some(entry);
-            }
-        }
+        combine_or_insert(self.slot(self.head), entry, aggregator);
     }
 
     #[inline]
@@ -519,13 +510,13 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     pub(crate) fn merge(&mut self, other: &Self) {
         // merge current total
         if let Some(other_total) = other.total {
-            Self::insert(&mut self.total, other_total, &self.aggregator)
+            combine_or_insert(&mut self.total, other_total, &self.aggregator)
         }
 
         // Merge regular wheel slots
         for (self_slot, other_slot) in self.slots.iter_mut().zip(other.slots) {
             if let Some(other_agg) = other_slot {
-                Self::insert(self_slot, other_agg, &self.aggregator);
+                combine_or_insert(self_slot, other_agg, &self.aggregator);
             }
         }
         match (&mut self.drill_down_slots, &other.drill_down_slots) {
@@ -604,7 +595,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     pub fn tick(&mut self) -> Option<RotationData<A>> {
         // Possibly update the partial aggregate for the current rotation
         if let Some(curr) = &self.slots[self.head] {
-            Self::insert(&mut self.total, *curr, &self.aggregator);
+            combine_or_insert(&mut self.total, *curr, &self.aggregator);
         }
 
         // If the wheel is full, we clear the oldest entry
@@ -684,7 +675,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         count(self.tail, self.head, CAP)
     }
     /// Returns a back-to-front iterator of regular wheel slots
-    pub fn iter(&self) -> Iter<'_, CAP, A> {
+    pub fn iter(&self) -> Iter<'_, A> {
         Iter::new(&self.slots, self.tail, self.head)
     }
 
