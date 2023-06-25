@@ -5,10 +5,12 @@ HAW is a lightweight index for unified stream and temporal warehousing.
 
 Features:
 
-- Fast insertions
-- Compact and highly compressible
+- Streaming Window Aggregation (Sliding, Tumbling, Landmark)
+- OLAP (Roll-ups, Drill-downs)
 - Event-time driven using low watermarking
-- Bounded query latency
+- Compact and highly compressible
+- High-throughput ingestion
+- Low-latency query execution
 - Compatible with `#[no_std]` with the ``alloc`` crate
 - Zero dependencies with default features enabled.
 
