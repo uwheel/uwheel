@@ -10,6 +10,7 @@ use crate::{
     Wheel,
 };
 
+use crate::wheels::aggregation::iter::Iter;
 use core::iter::Iterator;
 
 #[cfg(not(feature = "std"))]
@@ -101,17 +102,7 @@ impl<A: Aggregator> PairsWheel<A> {
     pub fn interval(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
         let tail = self.slot_idx_from_head(subtrahend);
         let iter = Iter::<A>::new(&self.slots, tail, self.head);
-        Some(self.combine_slots(iter))
-    }
-    // helper method to combine partial aggregates in slots
-    // TODO: duplicate of AggregationWheel
-    #[inline]
-    fn combine_slots<'a>(
-        &self,
-        iter: impl Iterator<Item = &'a Option<A::PartialAggregate>>,
-    ) -> A::PartialAggregate {
-        iter.flatten()
-            .fold(Default::default(), |a, b| self.aggregator.combine(a, *b))
+        iter.combine()
     }
 
     /// Returns the current number of used slots (includes empty NONE slots as well)
@@ -139,40 +130,6 @@ fn wrap_index(index: usize, size: usize) -> usize {
 fn count(tail: usize, head: usize, size: usize) -> usize {
     // size is always a power of 2
     (head.wrapping_sub(tail)) & (size - 1)
-}
-
-pub struct Iter<'a, A: Aggregator> {
-    ring: &'a [Option<A::PartialAggregate>],
-    tail: usize,
-    head: usize,
-}
-
-impl<'a, A: Aggregator> Iter<'a, A> {
-    pub(super) fn new(ring: &'a [Option<A::PartialAggregate>], tail: usize, head: usize) -> Self {
-        Iter { ring, tail, head }
-    }
-}
-impl<'a, A: Aggregator> Iterator for Iter<'a, A> {
-    type Item = &'a Option<A::PartialAggregate>;
-
-    #[inline]
-    fn next(&mut self) -> Option<&'a Option<A::PartialAggregate>> {
-        if self.tail == self.head {
-            return None;
-        }
-        let tail = self.tail;
-        self.tail = wrap_index(self.tail.wrapping_add(1), self.ring.len());
-        // Safety:
-        // - `self.tail` in a ring buffer is always a valid index.
-        // - `self.head` and `self.tail` equality is checked above.
-        Some(&self.ring[tail])
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = count(self.tail, self.head, self.ring.len());
-        (len, Some(len))
-    }
 }
 
 #[derive(Default, Copy, Clone)]

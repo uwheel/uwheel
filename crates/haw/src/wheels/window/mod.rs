@@ -6,7 +6,7 @@ mod util;
 
 pub trait WindowWheel<A: Aggregator> {
     fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>>;
-    fn advance_to(&mut self, new_watermark: u64);
+    fn advance_to(&mut self, watermark: u64);
     /// Returns a reference to the underlying HAW
     fn wheel(&self) -> &Wheel<A>;
     fn results(&self) -> &[A::PartialAggregate];
@@ -312,9 +312,7 @@ mod tests {
         // advance to 120s
         // Don't need to inverse when we caused a full rotation again into minutes wheel
         wheel.advance_to(120000);
-        iwheel.clear_current_tail();
-        let inverse = iwheel.tick().unwrap();
-        dbg!(inverse);
+        iwheel.clear_tail_and_tick();
         let last_min = wheel.minutes_unchecked().interval(1).unwrap();
         let w6_result = last_min;
         assert_eq!(w6_result, 18);
