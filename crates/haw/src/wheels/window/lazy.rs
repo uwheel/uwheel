@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     aggregator::{Aggregator, InverseExt},
-    time::Duration,
+    time::{Duration, NumericalDuration},
     Entry,
     Error,
     Wheel,
@@ -19,8 +19,6 @@ use alloc::{boxed::Box, vec::Vec};
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
 
-/// A fixed-sized wheel used to maintain partial aggregates for slides that can later
-/// be used to inverse windows.
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[derive(Debug, Clone)]
@@ -177,7 +175,6 @@ pub struct LazyWindowWheel<A: Aggregator> {
     next_pair_start: u64,
     next_pair_end: u64,
     in_p1: bool,
-    window_results: Vec<A::PartialAggregate>,
     aggregator: A,
 }
 
@@ -195,8 +192,8 @@ impl<A: Aggregator> LazyWindowWheel<A> {
             range,
             slide,
             current_pair_len,
-            pair_ticks_remaining: current_pair_len,
-            pair_type: create_pair_type(range, slide),
+            pair_ticks_remaining: current_pair_len / 1000,
+            pair_type,
             pairs_wheel: PairsWheel::with_capacity(pairs_capacity(range, slide)),
             wheel: Wheel::new(time),
             next_window_start,
@@ -204,7 +201,6 @@ impl<A: Aggregator> LazyWindowWheel<A> {
             next_pair_start,
             next_pair_end,
             in_p1: false,
-            window_results: Vec::new(),
             aggregator: Default::default(),
         }
     }
@@ -222,9 +218,6 @@ impl<A: Aggregator> LazyWindowWheel<A> {
             }
         }
     }
-    fn _range_interval_duration(&self) -> Duration {
-        Duration::seconds((self.range / 1000) as i64)
-    }
     // Combines aggregates from the Pairs Wheel in worst-case [2r/s] or best-case [r/s]
     #[inline]
     fn compute_window(&self) -> A::PartialAggregate {
@@ -234,61 +227,55 @@ impl<A: Aggregator> LazyWindowWheel<A> {
 }
 
 impl<A: Aggregator> WindowWheel<A> for LazyWindowWheel<A> {
-    fn advance_to(&mut self, new_watermark: u64) {
-        //let diff = new_watermark.saturating_sub(self.wheel.watermark());
-        //let ticks = diff / self.slide as u64;
-        /*
-        dbg!((
-            self.wheel.watermark(),
-            self.next_pair_end,
-            self.next_window_end,
-            self.current_pair_len
-        ));
-        */
+    fn advance(&mut self, duration: Duration) -> Vec<(u64, Option<A::Aggregate>)> {
+        let ticks = duration.whole_seconds();
+        let mut window_results = Vec::new();
+        for _tick in 0..ticks {
+            self.wheel.advance(1.seconds());
+            self.pair_ticks_remaining -= 1;
 
-        // "Intuitively, pairs break slicing only when a stream window starts or ends"
+            if self.pair_ticks_remaining == 0 {
+                // pair ended
+                let partial = self
+                    .wheel
+                    .interval(self.current_pair_duration())
+                    .unwrap_or_default();
 
-        // if we passed a pair slice then we need to store it in the Pairs Wheel
-        if new_watermark >= self.next_pair_end {
-            self.wheel.advance_to(self.next_pair_end);
-            // take partial aggregate for this pair and insert into Pairs Wheel?
+                self.pairs_wheel.push(partial, &self.aggregator);
 
-            let partial = self
-                .wheel
-                .interval(self.current_pair_duration())
-                .unwrap_or_default();
+                // Update pair metadata
+                self.update_pair_len();
 
-            // Update pair metadata
-            self.update_pair_len();
+                self.next_pair_end = self.wheel.watermark() + self.current_pair_len as u64;
+                self.pair_ticks_remaining = self.current_pair_duration().whole_seconds() as usize;
 
-            self.next_pair_end = self.wheel.watermark() + self.current_pair_len as u64;
+                if self.wheel.watermark() == self.next_window_end {
+                    // Window computation:
+                    let window = self.compute_window();
 
-            self.pairs_wheel.push(partial, &self.aggregator);
-        }
+                    // how many "pairs" we need to pop off from the Pairs wheel
+                    let removals = match self.pair_type {
+                        PairType::Even(_) => 1,
+                        PairType::Uneven(_, _) => 2,
+                    };
+                    for _i in 0..removals {
+                        let _ = self.pairs_wheel.tick();
+                    }
 
-        if new_watermark >= self.next_window_end {
-            self.wheel.advance_to(self.next_window_end);
+                    window_results
+                        .push((self.wheel.watermark(), Some(self.aggregator.lower(window))));
 
-            // Window computation:
-            let window = self.compute_window();
-
-            // how many "pairs" we need to pop off from the Pairs wheel
-            let removals = match self.pair_type {
-                PairType::Even(_) => 1,
-                PairType::Uneven(_, _) => 2,
-            };
-            for _i in 0..removals {
-                let _ = self.pairs_wheel.tick();
+                    // next window ends at next slide (p1+p2)
+                    self.next_window_end += self.slide as u64;
+                }
             }
-
-            self.window_results.push(window);
-
-            // next window ends at next slide (p1+p2)
-            self.next_window_end += self.slide as u64;
         }
-        self.wheel.advance_to(new_watermark);
+        window_results
     }
-
+    fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)> {
+        let diff = watermark.saturating_sub(self.wheel.watermark());
+        self.advance(Duration::milliseconds(diff as i64))
+    }
     #[inline]
     fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
         self.wheel.insert(entry)
@@ -296,9 +283,5 @@ impl<A: Aggregator> WindowWheel<A> for LazyWindowWheel<A> {
     /// Returns a reference to the underlying HAW
     fn wheel(&self) -> &Wheel<A> {
         &self.wheel
-    }
-    // just for testing now
-    fn results(&self) -> &[A::PartialAggregate] {
-        &self.window_results
     }
 }

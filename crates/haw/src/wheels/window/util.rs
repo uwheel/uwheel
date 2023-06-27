@@ -5,6 +5,11 @@ pub enum PairType {
     /// Two pairs (p1, p2) when range % slide != 0
     Uneven(usize, usize),
 }
+impl PairType {
+    pub fn is_uneven(&self) -> bool {
+        matches!(self, PairType::Uneven { .. })
+    }
+}
 
 pub fn create_pair_type(range: usize, slide: usize) -> PairType {
     let p2 = range % slide;
@@ -13,28 +18,6 @@ pub fn create_pair_type(range: usize, slide: usize) -> PairType {
     } else {
         let p1 = slide - p2;
         PairType::Uneven(p1, p2)
-    }
-}
-pub const fn panes_space(range: usize, slide: usize) -> usize {
-    assert!(range >= slide, "Range needs to be larger than slide");
-    range / gcd(range, slide)
-}
-pub const fn gcd(mut a: usize, mut b: usize) -> usize {
-    while b != 0 {
-        let temp = b;
-        b = a % b;
-        a = temp;
-    }
-    a
-}
-
-// Verifies that returned capacity is a power of two
-pub const fn capacity(range: usize, slide: usize) -> usize {
-    let space = panes_space(range, slide);
-    if space.is_power_of_two() {
-        space
-    } else {
-        space.next_power_of_two()
     }
 }
 

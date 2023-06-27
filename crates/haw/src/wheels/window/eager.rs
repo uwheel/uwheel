@@ -1,7 +1,7 @@
-use super::util::capacity;
+use super::util::{create_pair_type, pairs_capacity, PairType};
 use crate::{
     aggregator::{Aggregator, InverseExt},
-    time::Duration,
+    time::{Duration, NumericalDuration},
     wheels::aggregation::combine_or_insert,
     Entry,
     Error,
@@ -44,19 +44,19 @@ impl<A: Aggregator> InverseWheel<A> {
     }
     #[inline]
     pub fn tick(&mut self) -> Option<A::PartialAggregate> {
-        if !self.is_empty() {
-            let tail = self.tail;
-            self.tail = self.wrap_add(self.tail, 1);
-            // Tick next partial agg to be inversed
-            // 1: [0-10] 2: [10-20] -> need that to be [0-20] so we combine
-            let partial_agg = self.slot(tail).take();
-            if let Some(agg) = partial_agg {
-                combine_or_insert::<A>(self.slot(self.tail), agg, &Default::default());
-            }
-            partial_agg
-        } else {
-            None
+        let tail = self.tail;
+        self.tail = self.wrap_add(self.tail, 1);
+        // Tick next partial agg to be inversed
+        // 1: [0-10] 2: [10-20] -> need that to be [0-20] so we combine
+        let partial_agg = self.slot(tail).take();
+        if let Some(agg) = partial_agg {
+            combine_or_insert::<A>(self.slot(self.tail), agg, &Default::default());
         }
+
+        partial_agg
+    }
+    pub fn tail(&self) -> (usize, Option<A::PartialAggregate>) {
+        (self.tail, self.slots[self.tail].as_ref().copied())
     }
 
     /// Returns `true` if the wheel is empty or `false` if it contains slots
@@ -69,9 +69,12 @@ impl<A: Aggregator> InverseWheel<A> {
         *self.slot(self.tail) = None;
         let _ = self.tick();
     }
+    pub fn reset_tail(&mut self) {
+        *self.slot(self.tail) = None;
+    }
     #[inline]
     pub fn push(&mut self, data: A::PartialAggregate, aggregator: &A) {
-        Self::insert(self.slot(self.head), data, aggregator);
+        combine_or_insert(self.slot(self.head), data, aggregator);
         self.head = self.wrap_add(self.head, 1);
     }
 
@@ -79,19 +82,6 @@ impl<A: Aggregator> InverseWheel<A> {
     fn slot(&mut self, idx: usize) -> &mut Option<A::PartialAggregate> {
         &mut self.slots[idx]
     }
-    #[inline]
-    fn insert(slot: &mut Option<A::PartialAggregate>, entry: A::PartialAggregate, aggregator: &A) {
-        match slot {
-            Some(curr) => {
-                let new_curr = aggregator.combine(*curr, entry);
-                *curr = new_curr;
-            }
-            None => {
-                *slot = Some(entry);
-            }
-        }
-    }
-
     /// Returns the current number of used slots (includes empty NONE slots as well)
     pub fn len(&self) -> usize {
         count(self.tail, self.head, self.capacity)
@@ -118,49 +108,6 @@ fn count(tail: usize, head: usize, size: usize) -> usize {
     // size is always a power of 2
     (head.wrapping_sub(tail)) & (size - 1)
 }
-
-/*
-/// WIP: Function that takes a range and slide duration and calculates the upper bound of ⊕ operations required to compute a window.
-pub fn wheels_cost(range: Duration, slide: Duration) {
-    // If RANGE and SLIDE same granularity (e.g., range 10 sec, slide 2 sec).
-    // then cost: RANGE.
-
-    // let d = |RANGE.g - SLIDE.g|;
-
-    // 1. last_rotation(RANGE) cached
-    // 2. inverse_combine(1, inverse_slice) (1 ⊕)
-    // 3. current_rotation(d + RANGE-1⊕)
-    // 4.  (2) ⊕ (3)
-    // First window worst-case: RANGE ⊕
-    // Worst case: Upper bound of ⊕ operations: 2 + d + R-1
-    // Best case: 2 + d
-    // worst case with HAW: 2 + 4 + 50 = 56 aggregate calls
-
-    let range_as_secs = range.whole_seconds();
-    let slide_as_secs = slide.whole_seconds();
-    // closure that turns i64 to None if it is zero
-    let to_option = |num: i64| {
-        if num == 0 {
-            None
-        } else {
-            Some(num as usize)
-        }
-    };
-
-    // if largest granularity = 1 then best case
-    // let dur = Duration::seconds(range_as_secs);
-
-    //let dur = Duration::seconds(range_as_secs - slide_as_secs);
-
-    //let second = to_option(dur.whole_seconds() % crate::SECONDS as i64);
-    //let minute = to_option(dur.whole_minutes() % crate::MINUTES as i64);
-    //let hour = to_option(dur.whole_hours() % crate::HOURS as i64);
-    //let day = to_option(dur.whole_days() % crate::DAYS as i64);
-    //let week = to_option(dur.whole_weeks() % crate::WEEKS as i64);
-    //let year = to_option((dur.whole_weeks() / crate::WEEKS as i64) % crate::YEARS as i64);
-    //dbg!((second, minute, hour, day, week, year));
-}
-*/
 
 #[derive(Default, Copy, Clone)]
 pub struct Builder {
@@ -195,6 +142,12 @@ impl Builder {
 pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
     range: usize,
     slide: usize,
+    pair_ticks_remaining: usize,
+    current_pair_len: usize,
+    pair_type: PairType,
+    next_pair_end: u64,
+    in_p1: bool,
+
     // Inverse Wheel maintaining partial aggregates per slide
     inverse_wheel: InverseWheel<A>,
     // Regular HAW used together with inverse_wheel to answer a specific Sliding Window
@@ -209,103 +162,154 @@ pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
     current_secs_rotation: u64,
     // a cached partial aggregate holding data for last full rotation (RANGE)
     last_rotation: Option<A::PartialAggregate>,
-    window_results: Vec<A::PartialAggregate>,
-    first_window: bool,
     aggregator: A,
 }
 
 impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
     pub fn new(time: u64, range: usize, slide: usize) -> Self {
+        let pair_type = create_pair_type(range, slide);
+        let current_pair_len = match pair_type {
+            PairType::Even(slide) => slide,
+            PairType::Uneven(_, p2) => p2,
+        };
+        let next_pair_end = time + current_pair_len as u64;
+        let pair_slots = pairs_capacity(range, slide);
         Self {
             range,
             slide,
-            inverse_wheel: InverseWheel::with_capacity(capacity(range, slide)),
+            pair_type,
+            next_pair_end,
+            current_pair_len,
+            pair_ticks_remaining: current_pair_len / 1000,
+            in_p1: false,
+            inverse_wheel: InverseWheel::with_capacity(pair_slots),
             wheel: Wheel::new(time),
             next_window_start: time + slide as u64,
             next_window_end: time + range as u64,
             next_full_rotation: time + range as u64,
             current_secs_rotation: 0,
             last_rotation: None,
-            window_results: Vec::new(),
-            first_window: true,
             aggregator: Default::default(),
         }
-    }
-    fn slide_interval_duration(&self) -> Duration {
-        Duration::seconds((self.slide / 1000) as i64)
     }
     fn range_interval_duration(&self) -> Duration {
         Duration::seconds((self.range / 1000) as i64)
     }
+    fn current_pair_duration(&self) -> Duration {
+        Duration::milliseconds(self.current_pair_len as i64)
+    }
+    fn update_pair_len(&mut self) {
+        if let PairType::Uneven(p1, p2) = self.pair_type {
+            if self.in_p1 {
+                self.current_pair_len = p2;
+                self.in_p1 = false;
+            } else {
+                self.current_pair_len = p1;
+                self.in_p1 = true;
+            }
+        }
+    }
+    fn merge_pairs(&mut self) {
+        // how many "pairs" we need to pop off from the Pairs wheel
+        let removals = match self.pair_type {
+            PairType::Even(_) => 1,
+            PairType::Uneven(_, _) => 2,
+        };
+        for _i in 0..removals - 1 {
+            let _ = self.inverse_wheel.tick();
+        }
+    }
     #[inline]
-    pub fn query(&mut self) -> Option<A::Aggregate> {
-        None
+    fn compute_window(&mut self) -> A::PartialAggregate {
+        let inverse = self.inverse_wheel.tick().unwrap_or_default();
+        let last_rotation = self.last_rotation.unwrap();
+        let current_rotation = self
+            .wheel
+            .interval(Duration::seconds(self.current_secs_rotation as i64))
+            .unwrap_or_default();
+
+        self.merge_pairs();
+
+        // Function: combine(inverse_combine(last_rotation, slice), current_rotation);
+        // ⊕((⊖(last_rotation, slice)), current_rotation)
+        // last_rotation: worst-case RANGE ⊕ operations required (at most 51 weeks)
+        // current_rotation: worst-case d + RANGE-1 ⊕ ops where d is granularity distance between RANGE and SLIDE. (at most 4 + 51 = 55)
+        self.aggregator.combine(
+            self.aggregator.inverse_combine(last_rotation, inverse),
+            current_rotation,
+        )
     }
 }
 impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
-    // Currently assumes per SLIDE advance call
-    fn advance_to(&mut self, new_watermark: u64) {
-        //let diff = new_watermark.saturating_sub(self.wheel.watermark());
-        //let ticks = diff / self.slide as u64;
+    fn advance(&mut self, duration: Duration) -> Vec<(u64, Option<A::Aggregate>)> {
+        let ticks = duration.whole_seconds();
+        let mut window_results = Vec::new();
+        for _tick in 0..ticks {
+            self.wheel.advance(1.seconds());
+            self.current_secs_rotation += 1;
+            self.pair_ticks_remaining -= 1;
 
-        if new_watermark >= self.next_window_start {
-            self.wheel.advance_to(self.next_window_start);
+            if self.pair_ticks_remaining == 0 {
+                // pair ended
 
-            self.next_window_start += self.slide as u64;
-            // Take partial aggregates from SLIDE interval and insert into InverseWheel
-            let partial = self
-                .wheel
-                .interval(self.slide_interval_duration())
-                .unwrap_or_default();
-            self.inverse_wheel.push(partial, &self.aggregator);
-        }
-        if new_watermark >= self.next_window_end {
-            self.wheel.advance_to(self.next_window_end);
-
-            if self.next_window_end == self.next_full_rotation {
-                // Window has rolled up fully so we can access the results directly
-                let window_result = self.wheel.interval(self.range_interval_duration()).unwrap();
-                self.last_rotation = Some(window_result);
-
-                self.window_results.push(window_result);
-                self.next_full_rotation += self.range as u64;
-                self.current_secs_rotation = 0;
-
-                // If we have already completed a full RANGE
-                if (self.wheel.current_time_in_cycle().whole_milliseconds() as usize) > self.range {
-                    self.inverse_wheel.clear_tail_and_tick();
-                }
-            } else {
-                // bump the current rotation
-                self.current_secs_rotation +=
-                    Duration::seconds((self.slide / 1000) as i64).whole_seconds() as u64;
-                let inverse = self.inverse_wheel.tick().unwrap_or_default();
-
-                // Optimization: Keep around Partial Aggregate for last rotation? Direct Access instead of potential scan
-                // Otherwise N ⊕ calls will be required to calculate the RANGE interval. For example RANGE 5 DAYS -> combine 5 last slots in days wheel.
-                let last_rotation = self.last_rotation.unwrap();
-                let current_rotation = self
+                // Take partial aggregates from SLIDE interval and insert into InverseWheel
+                let partial = self
                     .wheel
-                    .interval(Duration::seconds(self.current_secs_rotation as i64))
+                    .interval(self.current_pair_duration())
                     .unwrap_or_default();
-                //dbg!((last_rotation, current_rotation, inverse));
 
-                // Function: combine(inverse_combine(last_rotation, slice), current_rotation);
-                // ⊕((⊖(last_rotation, slice)), current_rotation)
-                // last_rotation: worst-case RANGE ⊕ operations required (at most 51 weeks)
-                // current_rotation: worst-case d + RANGE-1 ⊕ ops where d is granularity distance between RANGE and SLIDE. (at most 4 + 51 = 55)
-                let window_result = self.aggregator.combine(
-                    self.aggregator.inverse_combine(last_rotation, inverse),
-                    current_rotation,
-                );
+                self.inverse_wheel.push(partial, &self.aggregator);
 
-                self.window_results.push(window_result);
+                // Update pair metadata
+                self.update_pair_len();
+
+                self.next_pair_end = self.wheel.watermark() + self.current_pair_len as u64;
+                self.pair_ticks_remaining = self.current_pair_duration().whole_seconds() as usize;
+
+                if self.wheel.watermark() == self.next_window_end {
+                    if self.next_window_end == self.next_full_rotation {
+                        let window_result =
+                            self.wheel.interval(self.range_interval_duration()).unwrap();
+                        self.last_rotation = Some(window_result);
+
+                        window_results.push((
+                            self.wheel.watermark(),
+                            Some(self.aggregator.lower(window_result)),
+                        ));
+
+                        // If we are working with uneven pairs, we need to adjust range.
+                        let next_rotation_distance = if self.pair_type.is_uneven() {
+                            self.range as u64 - 1000
+                        } else {
+                            self.range as u64
+                        };
+
+                        self.next_full_rotation += next_rotation_distance;
+                        self.current_secs_rotation = 0;
+
+                        // If we have already completed a full RANGE
+                        if (self.wheel.current_time_in_cycle().whole_milliseconds() as usize)
+                            > self.range
+                        {
+                            self.inverse_wheel.clear_tail_and_tick();
+                        }
+
+                        self.merge_pairs();
+                    } else {
+                        let window = self.compute_window();
+                        window_results
+                            .push((self.wheel.watermark(), Some(self.aggregator.lower(window))));
+                    }
+                    // next window ends at next slide (p1+p2)
+                    self.next_window_end += self.slide as u64;
+                }
             }
-            self.next_window_end += self.slide as u64;
         }
-
-        // Make sure we have advanced to the new watermark
-        self.wheel.advance_to(new_watermark);
+        window_results
+    }
+    fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)> {
+        let diff = watermark.saturating_sub(self.wheel.watermark());
+        self.advance(Duration::milliseconds(diff as i64))
     }
     #[inline]
     fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
@@ -314,10 +318,6 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
     /// Returns a reference to the underlying HAW
     fn wheel(&self) -> &Wheel<A> {
         &self.wheel
-    }
-    // just for testing now
-    fn results(&self) -> &[A::PartialAggregate] {
-        &self.window_results
     }
 }
 
