@@ -6,6 +6,8 @@ pub mod eager;
 pub mod lazy;
 mod util;
 
+pub use util::{eager_window_query_cost, lazy_window_query_cost, window_wheel};
+
 /// Interface a Window Wheel must implement
 pub trait WindowWheel<A: Aggregator> {
     /// Inserts an entry to the Window Wheel
