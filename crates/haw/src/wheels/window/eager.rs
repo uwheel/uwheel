@@ -232,8 +232,6 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
 
         // Function: combine(inverse_combine(last_rotation, slice), current_rotation);
         // ⊕((⊖(last_rotation, slice)), current_rotation)
-        // last_rotation: worst-case RANGE ⊕ operations required (at most 51 weeks)
-        // current_rotation: worst-case d + RANGE-1 ⊕ ops where d is granularity distance between RANGE and SLIDE. (at most 4 + 51 = 55)
         self.aggregator.combine(
             self.aggregator.inverse_combine(last_rotation, inverse),
             current_rotation,
@@ -288,6 +286,7 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
                         self.current_secs_rotation = 0;
 
                         // If we have already completed a full RANGE
+                        // then we need to reset the current inverse tail
                         if (self.wheel.current_time_in_cycle().whole_milliseconds() as usize)
                             > self.range
                         {
