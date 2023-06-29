@@ -24,11 +24,11 @@ pub use sum::*;
 
 /// Aggregation interface that library users must implement to use Hierarchical Aggregation Wheels
 pub trait Aggregator: Default + Debug + 'static {
-    /// Input type that can be inserted into [Self::Window]
+    /// Input type that can be inserted into [Self::MutablePartialAggregate]
     type Input: Debug + Copy + Send;
 
-    /// Mutable Window type
-    type Window: Debug + Clone;
+    /// Mutable Partial Aggregate type
+    type MutablePartialAggregate: Debug + Clone;
 
     /// Partial Aggregate type
     type PartialAggregate: PartialAggregateType;
@@ -36,14 +36,14 @@ pub trait Aggregator: Default + Debug + 'static {
     /// Final Aggregate type
     type Aggregate: Send;
 
-    /// Inserts an entry into the window
-    fn insert(&self, window: &mut Self::Window, input: Self::Input);
+    /// Lifts input into a MutablePartialAggregate
+    fn lift(&self, input: Self::Input) -> Self::MutablePartialAggregate;
 
-    /// Initiates a new Window
-    fn init_window(&self, input: Self::Input) -> Self::Window;
+    /// Combine an input into a mutable partial aggregate
+    fn combine_mutable(&self, a: &mut Self::MutablePartialAggregate, input: Self::Input);
 
-    /// Lifts a Window into an immutable PartialAggregate
-    fn lift(&self, window: Self::Window) -> Self::PartialAggregate;
+    /// Freeze a mutable partial aggregate into an immutable one
+    fn freeze(&self, a: Self::MutablePartialAggregate) -> Self::PartialAggregate;
 
     /// Combine two partial aggregates and produce new output
     fn combine(
@@ -51,6 +51,7 @@ pub trait Aggregator: Default + Debug + 'static {
         a: Self::PartialAggregate,
         b: Self::PartialAggregate,
     ) -> Self::PartialAggregate;
+
     /// Convert a partial aggregate to a final result
     fn lower(&self, a: Self::PartialAggregate) -> Self::Aggregate;
 }

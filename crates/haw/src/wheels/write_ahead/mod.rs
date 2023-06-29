@@ -8,7 +8,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 #[derive(Debug, Clone)]
 pub struct WriteAheadWheel<const CAP: usize, A: Aggregator> {
     capacity: usize,
-    slots: [Option<A::Window>; CAP],
+    slots: [Option<A::MutablePartialAggregate>; CAP],
     tail: usize,
     head: usize,
 }
@@ -27,7 +27,7 @@ impl<const CAP: usize, A: Aggregator> Default for WriteAheadWheel<CAP, A> {
 
 impl<const CAP: usize, A: Aggregator> WriteAheadWheel<CAP, A> {
     #[inline]
-    pub fn tick(&mut self) -> Option<A::Window> {
+    pub fn tick(&mut self) -> Option<A::MutablePartialAggregate> {
         // bump head
         self.head = self.wrap_add(self.head, 1);
 
@@ -67,14 +67,14 @@ impl<const CAP: usize, A: Aggregator> WriteAheadWheel<CAP, A> {
     }
 
     #[inline]
-    fn slot(&mut self, idx: usize) -> &mut Option<A::Window> {
+    fn slot(&mut self, idx: usize) -> &mut Option<A::MutablePartialAggregate> {
         &mut self.slots[idx]
     }
     #[inline]
-    fn insert(slot: &mut Option<A::Window>, entry: A::Input, aggregator: &A) {
+    fn insert(slot: &mut Option<A::MutablePartialAggregate>, entry: A::Input, aggregator: &A) {
         match slot {
-            Some(window) => aggregator.insert(window, entry),
-            None => *slot = Some(aggregator.init_window(entry)),
+            Some(window) => aggregator.combine_mutable(window, entry),
+            None => *slot = Some(aggregator.lift(entry)),
         }
     }
 

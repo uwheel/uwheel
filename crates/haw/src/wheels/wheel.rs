@@ -513,7 +513,7 @@ where
 
         // Tick the Write-ahead wheel, if new entry insert into head of seconds wheel
         if let Some(window) = self.waw.tick() {
-            let partial_agg = self.aggregator.lift(window);
+            let partial_agg = self.aggregator.freeze(window);
             seconds.insert_head(partial_agg, &self.aggregator)
         }
 

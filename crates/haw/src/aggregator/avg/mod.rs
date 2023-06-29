@@ -8,22 +8,21 @@ macro_rules! avg_impl {
 
         impl Aggregator for $struct {
             type Input = $type;
-            type Window = $pa;
+            type MutablePartialAggregate = $pa;
             type Aggregate = $type;
             type PartialAggregate = $pa;
+            fn lift(&self, input: Self::Input) -> Self::MutablePartialAggregate {
+                (input, 1 as $type)
+            }
             #[inline]
-            fn insert(&self, window: &mut Self::Window, input: Self::Input) {
-                let (ref mut sum, ref mut count) = window;
+            fn combine_mutable(&self, a: &mut Self::MutablePartialAggregate, input: Self::Input) {
+                let (ref mut sum, ref mut count) = a;
                 *sum += input;
                 *count += 1 as $type;
             }
 
-            fn init_window(&self, input: Self::Input) -> Self::Window {
-                (input, 1 as $type)
-            }
-
-            fn lift(&self, window: Self::Window) -> Self::PartialAggregate {
-                window.into()
+            fn freeze(&self, mutable: Self::MutablePartialAggregate) -> Self::PartialAggregate {
+                mutable.into()
             }
 
             #[inline]

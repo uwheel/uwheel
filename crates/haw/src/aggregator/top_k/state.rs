@@ -38,7 +38,7 @@ where
         &self.top_k
     }
     pub fn merge(&mut self, other: Self) {
-        let mut map = TopKMap::<KEY_BYTES, A>::with_capacity(K);
+        let mut map = TopKMap::<KEY_BYTES, A>::default();
         for entry in self.top_k.iter().flatten() {
             map.insert(entry.key, entry.data);
         }

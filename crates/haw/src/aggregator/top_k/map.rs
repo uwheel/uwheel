@@ -8,7 +8,7 @@ use alloc::collections::BinaryHeap;
 #[cfg(feature = "std")]
 use std::collections::BinaryHeap;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct TopKMap<const KEY_BYTES: usize, A: Aggregator>
 where
     A::PartialAggregate: Ord,
@@ -21,12 +21,6 @@ impl<const KEY_BYTES: usize, A: Aggregator> TopKMap<KEY_BYTES, A>
 where
     A::PartialAggregate: Ord,
 {
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            table: HashMap::with_capacity(capacity),
-            aggregator: Default::default(),
-        }
-    }
     #[inline]
     pub fn insert(&mut self, key: [u8; KEY_BYTES], delta: A::PartialAggregate) {
         self.table
