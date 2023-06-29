@@ -1,39 +1,51 @@
 use crate::aggregator::Aggregator;
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
+use smallvec::SmallVec;
+
+use super::{len, slot_idx_forward_from_head, wrap_add};
+
+/// Number of write ahead slots
+pub const DEFAULT_WRITE_AHEAD_SLOTS: usize = INLINE_WRITE_AHEAD_SLOTS;
+
+/// Number of slots that will be inlined
+const INLINE_WRITE_AHEAD_SLOTS: usize = 64;
 
 // Write-ahead Wheel with slots represented as seconds
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[derive(Debug, Clone)]
-pub struct WriteAheadWheel<const CAP: usize, A: Aggregator> {
+pub struct WriteAheadWheel<A: Aggregator> {
     capacity: usize,
-    slots: [Option<A::MutablePartialAggregate>; CAP],
+    slots: SmallVec<[Option<A::MutablePartialAggregate>; INLINE_WRITE_AHEAD_SLOTS]>,
     tail: usize,
     head: usize,
 }
 
-impl<const CAP: usize, A: Aggregator> Default for WriteAheadWheel<CAP, A> {
+impl<A: Aggregator> Default for WriteAheadWheel<A> {
     fn default() -> Self {
-        assert!(CAP.is_power_of_two(), "Capacity must be power of two");
+        Self::with_capacity(DEFAULT_WRITE_AHEAD_SLOTS)
+    }
+}
+
+impl<A: Aggregator> WriteAheadWheel<A> {
+    pub fn with_capacity(capacity: usize) -> Self {
+        assert_capacity!(capacity);
         Self {
-            capacity: CAP,
-            slots: core::array::from_fn(|_| None),
+            capacity,
+            slots: (0..capacity).map(|_| None).collect::<SmallVec<_>>(),
             head: 0,
             tail: 0,
         }
     }
-}
-
-impl<const CAP: usize, A: Aggregator> WriteAheadWheel<CAP, A> {
     #[inline]
     pub fn tick(&mut self) -> Option<A::MutablePartialAggregate> {
         // bump head
-        self.head = self.wrap_add(self.head, 1);
+        self.head = wrap_add(self.head, 1, self.capacity);
 
         if !self.is_empty() {
             let tail = self.tail;
-            self.tail = self.wrap_add(self.tail, 1);
+            self.tail = wrap_add(self.tail, 1, self.capacity);
             self.slot(tail).take()
         } else {
             None
@@ -54,15 +66,17 @@ impl<const CAP: usize, A: Aggregator> WriteAheadWheel<CAP, A> {
     /// How many write ahead slots are available
     #[inline]
     pub(crate) fn write_ahead_len(&self) -> usize {
-        let diff = self.len();
+        let diff = len(self.tail, self.head, self.capacity);
         self.capacity - diff
+    }
+    pub fn capacity(&self) -> usize {
+        self.capacity
     }
 
     /// Attempts to write `entry` into the Wheel
     #[inline]
     pub fn write_ahead(&mut self, addend: u64, data: A::Input, aggregator: &A) {
-        let slot_idx = self.slot_idx_forward_from_head(addend as usize);
-        //dbg!(slot_idx);
+        let slot_idx = slot_idx_forward_from_head(self.head, addend as usize, self.capacity);
         Self::insert(self.slot(slot_idx), data, aggregator);
     }
 
@@ -77,35 +91,4 @@ impl<const CAP: usize, A: Aggregator> WriteAheadWheel<CAP, A> {
             None => *slot = Some(aggregator.lift(entry)),
         }
     }
-
-    /// Locate slot id `addend` forward
-    #[inline]
-    fn slot_idx_forward_from_head(&self, addend: usize) -> usize {
-        self.wrap_add(self.head, addend)
-    }
-    /// Returns the current number of used slots (includes empty NONE slots as well)
-    pub fn len(&self) -> usize {
-        count(self.tail, self.head, self.capacity)
-    }
-    /// Returns the index in the underlying buffer for a given logical element
-    /// index + addend.
-    #[inline]
-    fn wrap_add(&self, idx: usize, addend: usize) -> usize {
-        wrap_index(idx.wrapping_add(addend), self.capacity)
-    }
-}
-
-/// Returns the index in the underlying buffer for a given logical element index.
-#[inline]
-fn wrap_index(index: usize, size: usize) -> usize {
-    // size is always a power of 2
-    debug_assert!(size.is_power_of_two());
-    index & (size - 1)
-}
-
-/// Calculate the number of elements left to be read in the buffer
-#[inline]
-fn count(tail: usize, head: usize, size: usize) -> usize {
-    // size is always a power of 2
-    (head.wrapping_sub(tail)) & (size - 1)
 }

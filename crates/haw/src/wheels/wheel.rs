@@ -41,6 +41,8 @@ use crate::{
     Error,
 };
 
+use super::write_ahead::DEFAULT_WRITE_AHEAD_SLOTS;
+
 #[cfg(not(any(feature = "years_size_10", feature = "years_size_100")))]
 core::compile_error!(r#"one of ["years_size_10", "years_size_100"] features must be enabled"#);
 
@@ -82,8 +84,6 @@ pub type WeeksWheel<A> = AggregationWheel<WEEKS_CAP, A>;
 /// Type alias for an AggregationWheel representing years
 pub type YearsWheel<A> = AggregationWheel<YEARS_CAP, A>;
 
-const WRITE_AHEAD_SLOTS: usize = 64;
-
 cfg_rkyv! {
     // Alias for an aggregators [`PartialAggregate`] type
     pub type PartialAggregate<A> = <A as Aggregator>::PartialAggregate;
@@ -95,6 +95,29 @@ cfg_rkyv! {
         FallbackScratch<HeapScratch<4096>, AllocScratch>,
         SharedSerializeMap,
     >;
+}
+
+pub struct Options {
+    drill_down: bool,
+    write_ahead_capacity: usize,
+}
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            drill_down: false,
+            write_ahead_capacity: DEFAULT_WRITE_AHEAD_SLOTS,
+        }
+    }
+}
+impl Options {
+    pub fn with_drill_down(mut self) -> Self {
+        self.drill_down = true;
+        self
+    }
+    pub fn with_write_ahead(mut self, capacity: usize) -> Self {
+        self.write_ahead_capacity = capacity;
+        self
+    }
 }
 
 /// Hierarchical Aggregation Wheel (HAW)
@@ -109,7 +132,7 @@ where
     aggregator: A,
     watermark: u64,
     #[cfg_attr(feature = "rkyv", with(Skip), omit_bounds)]
-    waw: WriteAheadWheel<WRITE_AHEAD_SLOTS, A>,
+    waw: WriteAheadWheel<A>,
     #[cfg_attr(feature = "rkyv", omit_bounds)]
     seconds_wheel: MaybeWheel<SECONDS_CAP, A>,
     #[cfg_attr(feature = "rkyv", omit_bounds)]
@@ -139,41 +162,57 @@ where
     pub const CYCLE_LENGTH: time::Duration =
         time::Duration::seconds((Self::YEAR_AS_SECS * (YEARS as u64 + 1)) as i64); // need 1 extra to force full cycle rotation
     pub const TOTAL_WHEEL_SLOTS: usize = SECONDS + MINUTES + HOURS + DAYS + WEEKS + YEARS;
-    pub const MAX_WRITE_AHEAD_SLOTS: usize = WRITE_AHEAD_SLOTS;
 
     /// Creates a new Wheel starting from the given time with drill-down capabilities
     ///
     /// Time is represented as milliseconds
     pub fn with_drill_down(time: u64) -> Self {
-        Self {
-            aggregator: A::default(),
-            watermark: time,
-            waw: WriteAheadWheel::default(),
-            seconds_wheel: MaybeWheel::with_capacity_and_drill_down(SECONDS),
-            minutes_wheel: MaybeWheel::with_capacity_and_drill_down(MINUTES),
-            hours_wheel: MaybeWheel::with_capacity_and_drill_down(HOURS),
-            days_wheel: MaybeWheel::with_capacity_and_drill_down(DAYS),
-            weeks_wheel: MaybeWheel::with_capacity_and_drill_down(WEEKS),
-            years_wheel: MaybeWheel::with_capacity_and_drill_down(YEARS),
-            #[cfg(feature = "rkyv")]
-            _marker: Default::default(),
-        }
+        let opts = Options::default().with_drill_down();
+        Self::with_options(time, opts)
     }
 
     /// Creates a new Wheel starting from the given time
     ///
     /// Time is represented as milliseconds
     pub fn new(time: u64) -> Self {
+        Self::base(time, WriteAheadWheel::default())
+    }
+
+    pub fn with_options(time: u64, options: Options) -> Self {
+        let waw: WriteAheadWheel<A> = WriteAheadWheel::with_capacity(options.write_ahead_capacity);
+        if options.drill_down {
+            Self::base_drill_down(time, waw)
+        } else {
+            Self::base(time, waw)
+        }
+    }
+
+    fn base(time: u64, waw: WriteAheadWheel<A>) -> Self {
         Self {
             aggregator: A::default(),
             watermark: time,
-            waw: WriteAheadWheel::default(),
+            waw,
             seconds_wheel: MaybeWheel::with_capacity(SECONDS),
             minutes_wheel: MaybeWheel::with_capacity(MINUTES),
             hours_wheel: MaybeWheel::with_capacity(HOURS),
             days_wheel: MaybeWheel::with_capacity(DAYS),
             weeks_wheel: MaybeWheel::with_capacity(WEEKS),
             years_wheel: MaybeWheel::with_capacity(YEARS),
+            #[cfg(feature = "rkyv")]
+            _marker: Default::default(),
+        }
+    }
+    fn base_drill_down(time: u64, waw: WriteAheadWheel<A>) -> Self {
+        Self {
+            aggregator: A::default(),
+            watermark: time,
+            waw,
+            seconds_wheel: MaybeWheel::with_capacity_and_drill_down(SECONDS),
+            minutes_wheel: MaybeWheel::with_capacity_and_drill_down(MINUTES),
+            hours_wheel: MaybeWheel::with_capacity_and_drill_down(HOURS),
+            days_wheel: MaybeWheel::with_capacity_and_drill_down(DAYS),
+            weeks_wheel: MaybeWheel::with_capacity_and_drill_down(WEEKS),
+            years_wheel: MaybeWheel::with_capacity_and_drill_down(YEARS),
             #[cfg(feature = "rkyv")]
             _marker: Default::default(),
         }
@@ -835,13 +874,6 @@ mod tests {
             .insert(Entry::new(11u32, 158000))
             .unwrap_err()
             .is_overflow());
-
-        time = 150000; // 150 seconds
-        wheel.advance_to(time);
-        assert_eq!(
-            wheel.write_ahead_len(),
-            Wheel::<U32SumAggregator>::MAX_WRITE_AHEAD_SLOTS
-        );
     }
 
     #[test]

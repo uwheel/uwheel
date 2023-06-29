@@ -1,5 +1,7 @@
 // Taken from Rust's VecDeque Iter
 
+use crate::wheels::{count, wrap_index};
+
 use super::*;
 use core::iter::Iterator;
 

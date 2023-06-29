@@ -218,6 +218,34 @@ mod tests {
         assert_eq!(granularity_distance(1.hours(), 10.minutes()), 1);
     }
     #[test]
+    fn cost_plot_test() {
+        dbg!(lazy_window_query_cost(10.seconds(), 5.seconds()));
+        dbg!(lazy_window_query_cost(30.seconds(), 5.seconds()));
+        dbg!(lazy_window_query_cost(59.seconds(), 5.seconds()));
+        dbg!(lazy_window_query_cost(1.minutes(), 5.seconds()));
+        dbg!(lazy_window_query_cost(59.minutes(), 5.seconds()));
+        dbg!(lazy_window_query_cost(1.hours(), 5.seconds()));
+        dbg!(lazy_window_query_cost(23.hours(), 5.seconds()));
+        dbg!(lazy_window_query_cost(1.days(), 5.seconds()));
+        dbg!(lazy_window_query_cost(6.days(), 5.seconds()));
+        dbg!(lazy_window_query_cost(1.weeks(), 5.seconds()));
+        dbg!(lazy_window_query_cost(51.weeks(), 5.seconds()));
+        dbg!(lazy_window_query_cost(1.years(), 5.seconds()));
+
+        dbg!(eager_window_query_cost(10.seconds(), 5.seconds()));
+        dbg!(eager_window_query_cost(30.seconds(), 5.seconds()));
+        dbg!(eager_window_query_cost(59.seconds(), 5.seconds()));
+        dbg!(eager_window_query_cost(1.minutes(), 5.seconds()));
+        dbg!(eager_window_query_cost(59.minutes(), 5.seconds()));
+        dbg!(eager_window_query_cost(1.hours(), 5.seconds()));
+        dbg!(eager_window_query_cost(23.hours(), 5.seconds()));
+        dbg!(eager_window_query_cost(1.days(), 5.seconds()));
+        dbg!(eager_window_query_cost(6.days(), 5.seconds()));
+        dbg!(eager_window_query_cost(1.weeks(), 5.seconds()));
+        dbg!(eager_window_query_cost(51.weeks(), 5.seconds()));
+        dbg!(eager_window_query_cost(1.years(), 5.seconds()));
+    }
+    #[test]
     fn window_aggregation_cost_test() {
         assert_eq!(eager_window_query_cost(2.minutes(), 10.seconds()), 3);
         assert_eq!(eager_window_query_cost(3.minutes(), 10.seconds()), 4);
