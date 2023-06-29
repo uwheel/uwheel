@@ -13,7 +13,6 @@ Features:
 - High-throughput ingestion
 - Low-latency query execution
 - Compatible with `#[no_std]` with the ``alloc`` crate
-- Zero dependencies with ``default-features = true ``
 
 ## How it works
 
