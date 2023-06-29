@@ -2,7 +2,7 @@ use super::util::{create_pair_type, pairs_capacity, PairType};
 use crate::{
     aggregator::{Aggregator, InverseExt},
     time::{Duration, NumericalDuration},
-    wheels::{aggregation::combine_or_insert, wrap_add},
+    wheels::{aggregation::combine_or_insert, WheelExt},
     Entry,
     Error,
     Wheel,
@@ -45,7 +45,7 @@ impl<A: Aggregator> InverseWheel<A> {
     #[inline]
     pub fn tick(&mut self) -> Option<A::PartialAggregate> {
         let tail = self.tail;
-        self.tail = wrap_add(self.tail, 1, self.capacity);
+        self.tail = self.wrap_add(self.tail, 1);
         // Tick next partial agg to be inversed
         // 1: [0-10] 2: [10-20] -> need that to be [0-20] so we combine
         let partial_agg = self.slot(tail).take();
@@ -59,12 +59,6 @@ impl<A: Aggregator> InverseWheel<A> {
         (self.tail, self.slots[self.tail].as_ref().copied())
     }
 
-    /// Returns `true` if the wheel is empty or `false` if it contains slots
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.tail == self.head
-    }
-
     pub fn clear_tail_and_tick(&mut self) {
         *self.slot(self.tail) = None;
         let _ = self.tick();
@@ -75,12 +69,24 @@ impl<A: Aggregator> InverseWheel<A> {
     #[inline]
     pub fn push(&mut self, data: A::PartialAggregate, aggregator: &A) {
         combine_or_insert(self.slot(self.head), data, aggregator);
-        self.head = wrap_add(self.head, 1, self.capacity);
+        self.head = self.wrap_add(self.head, 1);
     }
 
     #[inline]
     fn slot(&mut self, idx: usize) -> &mut Option<A::PartialAggregate> {
         &mut self.slots[idx]
+    }
+}
+
+impl<A: Aggregator> WheelExt for InverseWheel<A> {
+    fn capacity(&self) -> usize {
+        self.capacity
+    }
+    fn head(&self) -> usize {
+        self.head
+    }
+    fn tail(&self) -> usize {
+        self.tail
     }
 }
 
