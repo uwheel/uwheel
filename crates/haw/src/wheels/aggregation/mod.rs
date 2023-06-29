@@ -27,7 +27,7 @@ use iter::Iter;
 
 use crate::wheels::aggregation::iter::DrillIter;
 
-use super::{len, wrap_add, wrap_sub};
+use super::WheelExt;
 
 /// Combine partial aggregates or insert new entry
 #[inline]
@@ -185,11 +185,10 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     ///   or `None` if out of bounds
     #[inline]
     pub fn interval(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
-        let len = len(self.tail, self.head, CAP);
-        if subtrahend > len {
+        if subtrahend > self.len() {
             None
         } else {
-            let tail = self.slot_idx_from_head(subtrahend);
+            let tail = self.slot_idx_backward_from_head(subtrahend);
             Iter::<A>::new(&self.slots, tail, self.head).combine()
         }
     }
@@ -222,11 +221,10 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// - If `0` is specified, it will return the current head.
     #[inline]
     pub fn at(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
-        let len = len(self.tail, self.head, CAP);
-        if subtrahend > len {
+        if subtrahend > self.len() {
             None
         } else {
-            let index = self.slot_idx_from_head(subtrahend);
+            let index = self.slot_idx_backward_from_head(subtrahend);
             Some(self.slots[index].unwrap_or_default())
         }
     }
@@ -252,11 +250,10 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     ///
     /// Panics if the wheel has not been configured with drill-down.
     pub fn drill_down_interval(&self, subtrahend: usize) -> Option<Vec<A::PartialAggregate>> {
-        let len = len(self.tail, self.head, CAP);
-        if subtrahend > len {
+        if subtrahend > self.len() {
             None
         } else {
-            let tail = self.slot_idx_from_head(subtrahend);
+            let tail = self.slot_idx_backward_from_head(subtrahend);
             let iter: DrillIter<CAP, A> =
                 DrillIter::new(self.drill_down_slots.as_ref().unwrap(), tail, self.head);
             Some(self.combine_drill_down_slots(iter))
@@ -289,11 +286,10 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// - If `0` is specified, it will drill down the current head.
     #[inline]
     pub fn drill_down(&self, slot: usize) -> Option<&[A::PartialAggregate]> {
-        let len = len(self.tail, self.head, CAP);
-        if slot > len {
+        if slot > self.len() {
             None
         } else {
-            let index = self.slot_idx_from_head(slot);
+            let index = self.slot_idx_backward_from_head(slot);
 
             if let Some(slots) = self.drill_down_slots.as_ref() {
                 slots[index].as_deref()
@@ -444,7 +440,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     fn clear_tail(&mut self) {
         if !self.is_empty() {
             let tail = self.tail;
-            self.tail = wrap_add(self.tail, 1, CAP);
+            self.tail = self.wrap_add(self.tail, 1);
             self.slots[tail] = None;
             if let Some(ref mut drill_down_slots) = &mut self.drill_down_slots {
                 drill_down_slots[tail] = None;
@@ -460,9 +456,6 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     #[inline]
     pub fn ticks_remaining(&self) -> usize {
         self.num_slots - self.rotation_count
-    }
-    pub fn len(&self) -> usize {
-        len(self.tail, self.head, CAP)
     }
 
     /// Clears the wheel
@@ -557,11 +550,6 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         }
     }
 
-    /// Locate slot id `subtrahend` back
-    pub(crate) fn slot_idx_from_head(&self, subtrahend: usize) -> usize {
-        wrap_sub(self.head, subtrahend, CAP)
-    }
-
     #[inline]
     fn slot(&mut self, idx: usize) -> &mut Option<A::PartialAggregate> {
         &mut self.slots[idx]
@@ -593,7 +581,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         }
 
         // prepare fast tick
-        self.head = wrap_add(self.head, skips, CAP);
+        self.head = self.wrap_add(self.head, skips);
         self.rotation_count = skips;
     }
 
@@ -611,7 +599,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         }
 
         // shift head of slots
-        self.head = wrap_add(self.head, 1, CAP);
+        self.head = self.wrap_add(self.head, 1);
 
         self.rotation_count += 1;
 
@@ -686,8 +674,20 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         R: RangeBounds<usize>,
     {
         let Range { start, end } = into_range(&range, self.len());
-        let tail = wrap_add(self.tail, start, CAP);
-        let head = wrap_add(self.tail, end, CAP);
+        let tail = self.wrap_add(self.tail, start);
+        let head = self.wrap_add(self.tail, end);
         (tail, head)
+    }
+}
+
+impl<const CAP: usize, A: Aggregator> WheelExt for AggregationWheel<CAP, A> {
+    fn capacity(&self) -> usize {
+        CAP
+    }
+    fn head(&self) -> usize {
+        self.head
+    }
+    fn tail(&self) -> usize {
+        self.tail
     }
 }

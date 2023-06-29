@@ -1,6 +1,7 @@
 use crate::aggregator::Aggregator;
 
 use super::AggregationWheel;
+use crate::wheels::WheelExt;
 
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;

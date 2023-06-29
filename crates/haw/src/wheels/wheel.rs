@@ -43,15 +43,6 @@ use crate::{
 
 use super::write_ahead::DEFAULT_WRITE_AHEAD_SLOTS;
 
-#[cfg(not(any(feature = "years_size_10", feature = "years_size_100")))]
-core::compile_error!(r#"one of ["years_size_10", "years_size_100"] features must be enabled"#);
-
-#[cfg(all(feature = "years_size_10", feature = "years_size_100"))]
-core::compile_error!(
-    "\"years_size_10\" and \"years_size_100\" are mutually-exclusive features. You may need to set \
-    `default-features = false` or compile with `--no-default-features`."
-);
-
 pub const SECONDS: usize = 60;
 pub const MINUTES: usize = 60;
 pub const HOURS: usize = 24;
@@ -789,7 +780,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{aggregator::U32SumAggregator, time::*, *};
+    use crate::{aggregator::U32SumAggregator, time::*, wheels::WheelExt, *};
 
     #[test]
     fn interval_test() {

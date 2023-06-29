@@ -3,7 +3,7 @@ use crate::aggregator::Aggregator;
 use rkyv::{Archive, Deserialize, Serialize};
 use smallvec::SmallVec;
 
-use super::{len, slot_idx_forward_from_head, wrap_add};
+use super::WheelExt;
 
 /// Number of write ahead slots
 pub const DEFAULT_WRITE_AHEAD_SLOTS: usize = INLINE_WRITE_AHEAD_SLOTS;
@@ -11,7 +11,7 @@ pub const DEFAULT_WRITE_AHEAD_SLOTS: usize = INLINE_WRITE_AHEAD_SLOTS;
 /// Number of slots that will be inlined
 const INLINE_WRITE_AHEAD_SLOTS: usize = 64;
 
-// Write-ahead Wheel with slots represented as seconds
+/// A fixed-sized Write-ahead Wheel where slots are represented as seconds
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[derive(Debug, Clone)]
@@ -41,11 +41,11 @@ impl<A: Aggregator> WriteAheadWheel<A> {
     #[inline]
     pub fn tick(&mut self) -> Option<A::MutablePartialAggregate> {
         // bump head
-        self.head = wrap_add(self.head, 1, self.capacity);
+        self.head = self.wrap_add(self.head, 1);
 
         if !self.is_empty() {
             let tail = self.tail;
-            self.tail = wrap_add(self.tail, 1, self.capacity);
+            self.tail = self.wrap_add(self.tail, 1);
             self.slot(tail).take()
         } else {
             None
@@ -66,17 +66,13 @@ impl<A: Aggregator> WriteAheadWheel<A> {
     /// How many write ahead slots are available
     #[inline]
     pub(crate) fn write_ahead_len(&self) -> usize {
-        let diff = len(self.tail, self.head, self.capacity);
-        self.capacity - diff
-    }
-    pub fn capacity(&self) -> usize {
-        self.capacity
+        self.capacity - self.len()
     }
 
     /// Attempts to write `entry` into the Wheel
     #[inline]
     pub fn write_ahead(&mut self, addend: u64, data: A::Input, aggregator: &A) {
-        let slot_idx = slot_idx_forward_from_head(self.head, addend as usize, self.capacity);
+        let slot_idx = self.slot_idx_forward_from_head(addend as usize);
         Self::insert(self.slot(slot_idx), data, aggregator);
     }
 
@@ -90,5 +86,17 @@ impl<A: Aggregator> WriteAheadWheel<A> {
             Some(window) => aggregator.combine_mutable(window, entry),
             None => *slot = Some(aggregator.lift(entry)),
         }
+    }
+}
+
+impl<A: Aggregator> WheelExt for WriteAheadWheel<A> {
+    fn capacity(&self) -> usize {
+        self.capacity
+    }
+    fn head(&self) -> usize {
+        self.head
+    }
+    fn tail(&self) -> usize {
+        self.tail
     }
 }

@@ -12,8 +12,6 @@ pub mod write_ahead;
 pub use aggregation::{AggregationWheel, MaybeWheel};
 pub use wheel::Wheel;
 
-// Helper functions for common wheel operations
-
 /// Returns the index in the underlying buffer for a given logical element index.
 #[inline]
 fn wrap_index(index: usize, size: usize) -> usize {
@@ -28,33 +26,45 @@ fn count(tail: usize, head: usize, size: usize) -> usize {
     // size is always a power of 2
     (head.wrapping_sub(tail)) & (size - 1)
 }
-/// Locate slot id `addend` forward
-#[inline]
-fn slot_idx_forward_from_head(head: usize, addend: usize, capacity: usize) -> usize {
-    wrap_add(head, addend, capacity)
-}
 
-/// Locate slot id `subtrahend` backward
-#[inline]
-fn slot_idx_backward_from_head(head: usize, subtrahend: usize, capacity: usize) -> usize {
-    wrap_sub(head, subtrahend, capacity)
-}
+/// Extension trait for becoming a wheel
+pub trait WheelExt {
+    fn head(&self) -> usize;
+    fn tail(&self) -> usize;
+    fn capacity(&self) -> usize;
 
-/// Returns the index in the underlying buffer for a given logical element
-/// index + addend.
-#[inline]
-fn wrap_add(idx: usize, addend: usize, capacity: usize) -> usize {
-    wrap_index(idx.wrapping_add(addend), capacity)
-}
+    fn is_empty(&self) -> bool {
+        self.tail() == self.head()
+    }
 
-/// Returns the index in the underlying buffer for a given logical element
-/// index - subtrahend.
-#[inline]
-fn wrap_sub(idx: usize, subtrahend: usize, capacity: usize) -> usize {
-    wrap_index(idx.wrapping_sub(subtrahend), capacity)
-}
+    /// Returns the current number of used slots (includes empty NONE slots as well)
+    fn len(&self) -> usize {
+        count(self.tail(), self.head(), self.capacity())
+    }
 
-/// Returns the current number of used slots (includes empty NONE slots as well)
-fn len(tail: usize, head: usize, capacity: usize) -> usize {
-    count(tail, head, capacity)
+    /// Locate slot id `addend` forward
+    #[inline]
+    fn slot_idx_forward_from_head(&self, addend: usize) -> usize {
+        self.wrap_add(self.head(), addend)
+    }
+
+    /// Locate slot id `subtrahend` backward
+    #[inline]
+    fn slot_idx_backward_from_head(&self, subtrahend: usize) -> usize {
+        self.wrap_sub(self.head(), subtrahend)
+    }
+
+    /// Returns the index in the underlying buffer for a given logical element
+    /// index + addend.
+    #[inline]
+    fn wrap_add(&self, idx: usize, addend: usize) -> usize {
+        wrap_index(idx.wrapping_add(addend), self.capacity())
+    }
+
+    /// Returns the index in the underlying buffer for a given logical element
+    /// index - subtrahend.
+    #[inline]
+    fn wrap_sub(&self, idx: usize, subtrahend: usize) -> usize {
+        wrap_index(idx.wrapping_sub(subtrahend), self.capacity())
+    }
 }

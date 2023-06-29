@@ -5,7 +5,7 @@ use super::{
 use crate::{
     aggregator::{Aggregator, InverseExt},
     time::{Duration, NumericalDuration},
-    wheels::{slot_idx_backward_from_head, wrap_add},
+    wheels::WheelExt,
     Entry,
     Error,
     Wheel,
@@ -49,7 +49,7 @@ impl<A: Aggregator> PairsWheel<A> {
     pub fn tick(&mut self) -> Option<A::PartialAggregate> {
         if !self.is_empty() {
             let tail = self.tail;
-            self.tail = wrap_add(self.tail, 1, self.capacity);
+            self.tail = self.wrap_add(self.tail, 1);
             self.slot(tail).take()
         } else {
             None
@@ -65,7 +65,7 @@ impl<A: Aggregator> PairsWheel<A> {
     #[inline]
     pub fn push(&mut self, data: A::PartialAggregate, aggregator: &A) {
         Self::insert(self.slot(self.head), data, aggregator);
-        self.head = wrap_add(self.head, 1, self.capacity);
+        self.head = self.wrap_add(self.head, 1);
     }
 
     #[inline]
@@ -90,9 +90,21 @@ impl<A: Aggregator> PairsWheel<A> {
     ///   or `None` if out of bounds
     #[inline]
     pub fn interval(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
-        let tail = slot_idx_backward_from_head(self.head, subtrahend, self.capacity);
+        let tail = self.slot_idx_backward_from_head(subtrahend);
         let iter = Iter::<A>::new(&self.slots, tail, self.head);
         iter.combine()
+    }
+}
+
+impl<A: Aggregator> WheelExt for PairsWheel<A> {
+    fn capacity(&self) -> usize {
+        self.capacity
+    }
+    fn head(&self) -> usize {
+        self.head
+    }
+    fn tail(&self) -> usize {
+        self.tail
     }
 }
 
