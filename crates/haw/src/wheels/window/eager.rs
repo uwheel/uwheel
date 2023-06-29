@@ -2,7 +2,7 @@ use super::util::{create_pair_type, pairs_capacity, PairType};
 use crate::{
     aggregator::{Aggregator, InverseExt},
     time::{Duration, NumericalDuration},
-    wheels::aggregation::combine_or_insert,
+    wheels::{aggregation::combine_or_insert, wrap_add},
     Entry,
     Error,
     Wheel,
@@ -30,7 +30,7 @@ pub struct InverseWheel<A: Aggregator> {
 
 impl<A: Aggregator> InverseWheel<A> {
     pub fn with_capacity(capacity: usize) -> Self {
-        assert!(capacity.is_power_of_two(), "Capacity must be power of two");
+        assert_capacity!(capacity);
         Self {
             capacity,
             aggregator: Default::default(),
@@ -45,7 +45,7 @@ impl<A: Aggregator> InverseWheel<A> {
     #[inline]
     pub fn tick(&mut self) -> Option<A::PartialAggregate> {
         let tail = self.tail;
-        self.tail = self.wrap_add(self.tail, 1);
+        self.tail = wrap_add(self.tail, 1, self.capacity);
         // Tick next partial agg to be inversed
         // 1: [0-10] 2: [10-20] -> need that to be [0-20] so we combine
         let partial_agg = self.slot(tail).take();
@@ -75,38 +75,13 @@ impl<A: Aggregator> InverseWheel<A> {
     #[inline]
     pub fn push(&mut self, data: A::PartialAggregate, aggregator: &A) {
         combine_or_insert(self.slot(self.head), data, aggregator);
-        self.head = self.wrap_add(self.head, 1);
+        self.head = wrap_add(self.head, 1, self.capacity);
     }
 
     #[inline]
     fn slot(&mut self, idx: usize) -> &mut Option<A::PartialAggregate> {
         &mut self.slots[idx]
     }
-    /// Returns the current number of used slots (includes empty NONE slots as well)
-    pub fn len(&self) -> usize {
-        count(self.tail, self.head, self.capacity)
-    }
-    /// Returns the index in the underlying buffer for a given logical element
-    /// index + addend.
-    #[inline]
-    fn wrap_add(&self, idx: usize, addend: usize) -> usize {
-        wrap_index(idx.wrapping_add(addend), self.capacity)
-    }
-}
-
-/// Returns the index in the underlying buffer for a given logical element index.
-#[inline]
-fn wrap_index(index: usize, size: usize) -> usize {
-    // size is always a power of 2
-    debug_assert!(size.is_power_of_two());
-    index & (size - 1)
-}
-
-/// Calculate the number of elements left to be read in the buffer
-#[inline]
-fn count(tail: usize, head: usize, size: usize) -> usize {
-    // size is always a power of 2
-    (head.wrapping_sub(tail)) & (size - 1)
 }
 
 #[derive(Default, Copy, Clone)]

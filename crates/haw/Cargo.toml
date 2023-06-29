@@ -22,6 +22,7 @@ top_k = ["dep:hashbrown"]
 map = ["dep:hashbrown"]
 
 [dependencies]
+smallvec = "1.10.0"
 hashbrown = { version = "0.13", optional = true }
 rkyv = { version = "0.7.39", features = ["copy", "copy_unsafe"], optional = true }
 

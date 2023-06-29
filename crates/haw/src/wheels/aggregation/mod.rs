@@ -1,7 +1,6 @@
 use crate::aggregator::Aggregator;
 use core::{
     assert,
-    debug_assert,
     fmt::Debug,
     ops::{Range, RangeBounds},
     option::{
@@ -27,6 +26,8 @@ pub use maybe::MaybeWheel;
 use iter::Iter;
 
 use crate::wheels::aggregation::iter::DrillIter;
+
+use super::{len, wrap_add, wrap_sub};
 
 /// Combine partial aggregates or insert new entry
 #[inline]
@@ -140,6 +141,7 @@ pub struct AggregationWheel<const CAP: usize, A: Aggregator> {
     #[cfg(test)]
     pub(crate) total_ticks: usize,
 }
+
 impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     const INIT_VALUE: Option<A::PartialAggregate> = None;
     const INIT_DRILL_DOWN_VALUE: Option<Vec<A::PartialAggregate>> = None;
@@ -153,9 +155,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
 
     /// Creates a new AggregationWheel using `num_slots`
     pub fn with_capacity(num_slots: usize) -> Self {
-        assert!(CAP != 0, "Capacity is not allowed to be zero");
-        assert!(CAP.is_power_of_two(), "Capacity must be a power of two");
-
+        assert_capacity!(CAP);
         let slots: [Option<A::PartialAggregate>; CAP] = [Self::INIT_VALUE; CAP];
 
         Self {
@@ -185,7 +185,8 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     ///   or `None` if out of bounds
     #[inline]
     pub fn interval(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
-        if subtrahend > self.len() {
+        let len = len(self.tail, self.head, CAP);
+        if subtrahend > len {
             None
         } else {
             let tail = self.slot_idx_from_head(subtrahend);
@@ -221,7 +222,8 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// - If `0` is specified, it will return the current head.
     #[inline]
     pub fn at(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
-        if subtrahend > self.len() {
+        let len = len(self.tail, self.head, CAP);
+        if subtrahend > len {
             None
         } else {
             let index = self.slot_idx_from_head(subtrahend);
@@ -250,7 +252,8 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     ///
     /// Panics if the wheel has not been configured with drill-down.
     pub fn drill_down_interval(&self, subtrahend: usize) -> Option<Vec<A::PartialAggregate>> {
-        if subtrahend > self.len() {
+        let len = len(self.tail, self.head, CAP);
+        if subtrahend > len {
             None
         } else {
             let tail = self.slot_idx_from_head(subtrahend);
@@ -286,7 +289,8 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// - If `0` is specified, it will drill down the current head.
     #[inline]
     pub fn drill_down(&self, slot: usize) -> Option<&[A::PartialAggregate]> {
-        if slot > self.len() {
+        let len = len(self.tail, self.head, CAP);
+        if slot > len {
             None
         } else {
             let index = self.slot_idx_from_head(slot);
@@ -440,7 +444,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     fn clear_tail(&mut self) {
         if !self.is_empty() {
             let tail = self.tail;
-            self.tail = self.wrap_add(self.tail, 1);
+            self.tail = wrap_add(self.tail, 1, CAP);
             self.slots[tail] = None;
             if let Some(ref mut drill_down_slots) = &mut self.drill_down_slots {
                 drill_down_slots[tail] = None;
@@ -456,6 +460,9 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     #[inline]
     pub fn ticks_remaining(&self) -> usize {
         self.num_slots - self.rotation_count
+    }
+    pub fn len(&self) -> usize {
+        len(self.tail, self.head, CAP)
     }
 
     /// Clears the wheel
@@ -552,7 +559,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
 
     /// Locate slot id `subtrahend` back
     pub(crate) fn slot_idx_from_head(&self, subtrahend: usize) -> usize {
-        self.wrap_sub(self.head, subtrahend)
+        wrap_sub(self.head, subtrahend, CAP)
     }
 
     #[inline]
@@ -586,7 +593,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         }
 
         // prepare fast tick
-        self.head = self.wrap_add(self.head, skips);
+        self.head = wrap_add(self.head, skips, CAP);
         self.rotation_count = skips;
     }
 
@@ -604,7 +611,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         }
 
         // shift head of slots
-        self.head = self.wrap_add(self.head, 1);
+        self.head = wrap_add(self.head, 1, CAP);
 
         self.rotation_count += 1;
 
@@ -650,30 +657,11 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
 
     /// Check whether this wheel is utilising all its slots
     pub fn is_full(&self) -> bool {
+        let len = self.len();
         // + 1 as we want to maintain num_slots of history at all times
-        (self.num_slots + 1) - self.len() == 1
+        (self.num_slots + 1) - len == 1
     }
 
-    // NOTE: Methods below are based on Rust's VecDeque impl
-
-    /// Returns the index in the underlying buffer for a given logical element
-    /// index + addend.
-    #[inline]
-    fn wrap_add(&self, idx: usize, addend: usize) -> usize {
-        wrap_index(idx.wrapping_add(addend), CAP)
-    }
-
-    /// Returns the index in the underlying buffer for a given logical element
-    /// index - subtrahend.
-    #[inline]
-    fn wrap_sub(&self, idx: usize, subtrahend: usize) -> usize {
-        wrap_index(idx.wrapping_sub(subtrahend), CAP)
-    }
-
-    /// Returns the current number of used slots (includes empty NONE slots as well)
-    pub fn len(&self) -> usize {
-        count(self.tail, self.head, CAP)
-    }
     /// Returns a back-to-front iterator of regular wheel slots
     pub fn iter(&self) -> Iter<'_, A> {
         Iter::new(&self.slots, self.tail, self.head)
@@ -698,25 +686,8 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         R: RangeBounds<usize>,
     {
         let Range { start, end } = into_range(&range, self.len());
-        let tail = self.wrap_add(self.tail, start);
-        let head = self.wrap_add(self.tail, end);
+        let tail = wrap_add(self.tail, start, CAP);
+        let head = wrap_add(self.tail, end, CAP);
         (tail, head)
     }
-}
-
-// Functions below are adapted from Rust's VecDeque impl
-
-/// Returns the index in the underlying buffer for a given logical element index.
-#[inline]
-fn wrap_index(index: usize, size: usize) -> usize {
-    // size is always a power of 2
-    debug_assert!(size.is_power_of_two());
-    index & (size - 1)
-}
-
-/// Calculate the number of elements left to be read in the buffer
-#[inline]
-fn count(tail: usize, head: usize, size: usize) -> usize {
-    // size is always a power of 2
-    (head.wrapping_sub(tail)) & (size - 1)
 }

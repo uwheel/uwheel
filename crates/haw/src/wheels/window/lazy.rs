@@ -5,6 +5,7 @@ use super::{
 use crate::{
     aggregator::{Aggregator, InverseExt},
     time::{Duration, NumericalDuration},
+    wheels::{slot_idx_backward_from_head, wrap_add},
     Entry,
     Error,
     Wheel,
@@ -32,7 +33,7 @@ pub struct PairsWheel<A: Aggregator> {
 
 impl<A: Aggregator> PairsWheel<A> {
     pub fn with_capacity(capacity: usize) -> Self {
-        assert!(capacity.is_power_of_two(), "Capacity must be power of two");
+        assert_capacity!(capacity);
         Self {
             capacity,
             aggregator: Default::default(),
@@ -48,7 +49,7 @@ impl<A: Aggregator> PairsWheel<A> {
     pub fn tick(&mut self) -> Option<A::PartialAggregate> {
         if !self.is_empty() {
             let tail = self.tail;
-            self.tail = self.wrap_add(self.tail, 1);
+            self.tail = wrap_add(self.tail, 1, self.capacity);
             self.slot(tail).take()
         } else {
             None
@@ -64,7 +65,7 @@ impl<A: Aggregator> PairsWheel<A> {
     #[inline]
     pub fn push(&mut self, data: A::PartialAggregate, aggregator: &A) {
         Self::insert(self.slot(self.head), data, aggregator);
-        self.head = self.wrap_add(self.head, 1);
+        self.head = wrap_add(self.head, 1, self.capacity);
     }
 
     #[inline]
@@ -83,51 +84,16 @@ impl<A: Aggregator> PairsWheel<A> {
             }
         }
     }
-    pub(crate) fn slot_idx_from_head(&self, subtrahend: usize) -> usize {
-        self.wrap_sub(self.head, subtrahend)
-    }
-    /// Returns the index in the underlying buffer for a given logical element
-    /// index - subtrahend.
-    #[inline]
-    fn wrap_sub(&self, idx: usize, subtrahend: usize) -> usize {
-        wrap_index(idx.wrapping_sub(subtrahend), self.capacity)
-    }
     /// Combines partial aggregates of the last `subtrahend` slots
     ///
     /// - If given a interval, returns the combined partial aggregate based on that interval,
     ///   or `None` if out of bounds
     #[inline]
     pub fn interval(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
-        let tail = self.slot_idx_from_head(subtrahend);
+        let tail = slot_idx_backward_from_head(self.head, subtrahend, self.capacity);
         let iter = Iter::<A>::new(&self.slots, tail, self.head);
         iter.combine()
     }
-
-    /// Returns the current number of used slots (includes empty NONE slots as well)
-    pub fn len(&self) -> usize {
-        count(self.tail, self.head, self.capacity)
-    }
-    /// Returns the index in the underlying buffer for a given logical element
-    /// index + addend.
-    #[inline]
-    fn wrap_add(&self, idx: usize, addend: usize) -> usize {
-        wrap_index(idx.wrapping_add(addend), self.capacity)
-    }
-}
-
-/// Returns the index in the underlying buffer for a given logical element index.
-#[inline]
-fn wrap_index(index: usize, size: usize) -> usize {
-    // size is always a power of 2
-    debug_assert!(size.is_power_of_two());
-    index & (size - 1)
-}
-
-/// Calculate the number of elements left to be read in the buffer
-#[inline]
-fn count(tail: usize, head: usize, size: usize) -> usize {
-    // size is always a power of 2
-    (head.wrapping_sub(tail)) & (size - 1)
 }
 
 #[derive(Default, Copy, Clone)]
