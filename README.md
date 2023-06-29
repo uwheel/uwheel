@@ -8,11 +8,12 @@ Features:
 - Streaming Window Aggregation (Sliding, Tumbling, Landmark)
 - OLAP (Roll-ups, Drill-downs)
 - Event-time driven using low watermarking
-- Compact and highly compressible
+- Low memory footprint
+- Serializable and highly compressible
 - High-throughput ingestion
 - Low-latency query execution
 - Compatible with `#[no_std]` with the ``alloc`` crate
-- Zero dependencies with default features enabled.
+- Zero dependencies with ``default-features = true ``
 
 ## How it works
 
@@ -31,21 +32,6 @@ For instance, to store aggregates with second granularity up to 10 years, we wou
 
 The above scheme results in a total of 213 wheel slots. This is the minimum number of slots
 required to support rolling up aggregates across 10 years with second granularity.
-
-## Components
-
-- `Aggregator` 
-    - Interface defining the aggregation on top of HAW
-    - HAW comes with pre-defined aggregators (e.g., SUM, AVG, ALL, TOP_K)
-- `Watermark`
-    - A u64 integer representing the current time
-    - Insertions below the watermark will be rejected
-- `Write-ahead Wheel`
-    - Mutable wheel slots ahead of the watermark
-    - Supports distributive, algebraic, and holistic aggregations.
-- `Aggregation Wheels`
-    - A hierarchy of wheels with immutable slots
-    - Supports distributive and algebraic aggregations
 
 ## Feature Flags
 - `std` (_enabled by default_)
