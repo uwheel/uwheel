@@ -81,18 +81,21 @@ impl Aggregator for AllAggregator {
     type Input = f64;
     type Aggregate = AggState;
     type PartialAggregate = AggState;
-    type Window = AggState;
+    type MutablePartialAggregate = AggState;
 
     #[inline]
-    fn insert(&self, window: &mut Self::Window, input: Self::Input) {
-        window.merge(AggState::new(input))
-    }
-    fn init_window(&self, input: Self::Input) -> Self::Window {
+    fn lift(&self, input: Self::Input) -> Self::MutablePartialAggregate {
         AggState::new(input)
     }
-    fn lift(&self, window: Self::Window) -> Self::PartialAggregate {
-        window
+
+    #[inline]
+    fn combine_mutable(&self, a: &mut Self::MutablePartialAggregate, input: Self::Input) {
+        a.merge(self.lift(input))
     }
+    fn freeze(&self, mutable: Self::MutablePartialAggregate) -> Self::PartialAggregate {
+        mutable
+    }
+
     #[inline]
     fn combine(
         &self,

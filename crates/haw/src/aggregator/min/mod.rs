@@ -7,20 +7,21 @@ macro_rules! min_impl {
 
         impl Aggregator for $struct {
             type Input = $type;
-            type Window = $pa;
+            type MutablePartialAggregate = $pa;
             type Aggregate = $type;
             type PartialAggregate = $pa;
-            #[inline]
-            fn insert(&self, window: &mut Self::Window, input: Self::Input) {
-                *window = <$type>::min(*window, input);
-            }
 
-            fn init_window(&self, input: Self::Input) -> Self::Window {
+            fn lift(&self, input: Self::Input) -> Self::MutablePartialAggregate {
                 input.into()
             }
 
-            fn lift(&self, window: Self::Window) -> Self::PartialAggregate {
-                window.into()
+            #[inline]
+            fn combine_mutable(&self, a: &mut Self::MutablePartialAggregate, input: Self::Input) {
+                *a = <$type>::min(*a, input);
+            }
+
+            fn freeze(&self, a: Self::MutablePartialAggregate) -> Self::PartialAggregate {
+                a.into()
             }
 
             #[inline]

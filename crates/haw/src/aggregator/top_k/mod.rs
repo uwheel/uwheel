@@ -17,22 +17,23 @@ where
     A::PartialAggregate: Ord + Copy,
 {
     type Input = ([u8; KEY_BYTES], A::Input);
-    type Window = TopKMap<KEY_BYTES, A>;
+    type MutablePartialAggregate = TopKMap<KEY_BYTES, A>;
     type PartialAggregate = TopKState<K, KEY_BYTES, A>;
     type Aggregate = TopKState<K, KEY_BYTES, A>;
 
-    fn insert(&self, window: &mut Self::Window, input: Self::Input) {
-        let inner_window = self.0.init_window(input.1);
-        window.insert(input.0, self.0.lift(inner_window));
-    }
-    fn lift(&self, window: Self::Window) -> Self::PartialAggregate {
-        window.to_state()
+    #[inline]
+    fn lift(&self, input: Self::Input) -> Self::MutablePartialAggregate {
+        let mut map = TopKMap::default();
+        self.combine_mutable(&mut map, input);
+        map
     }
     #[inline]
-    fn init_window(&self, input: Self::Input) -> Self::Window {
-        let mut window = TopKMap::with_capacity(1024);
-        self.insert(&mut window, input);
-        window
+    fn combine_mutable(&self, map: &mut Self::MutablePartialAggregate, input: Self::Input) {
+        let inner_mutable = self.0.lift(input.1);
+        map.insert(input.0, self.0.freeze(inner_mutable));
+    }
+    fn freeze(&self, mutable: Self::MutablePartialAggregate) -> Self::PartialAggregate {
+        mutable.to_state()
     }
 
     #[inline]
