@@ -7,10 +7,7 @@ use criterion::{
     Criterion,
     Throughput,
 };
-use haw::{
-    aggregator::{Aggregator, U64SumAggregator},
-    *,
-};
+use haw::{aggregator::U64SumAggregator, *};
 use rand::prelude::*;
 
 const NUM_ELEMENTS: usize = 10000;
@@ -64,7 +61,6 @@ pub fn insert_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("throughput");
 
     group.throughput(Throughput::Elements(NUM_ELEMENTS as u64));
-    group.bench_function("insert-no-wheel", insert_no_wheel);
 
     for out_of_order in [
         0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0,
@@ -87,21 +83,6 @@ pub fn insert_benchmark(c: &mut Criterion) {
         );
     }
     group.finish();
-}
-
-fn insert_no_wheel(bencher: &mut Bencher) {
-    bencher.iter_batched(
-        || U64SumAggregator,
-        |aggregator| {
-            let mut current = aggregator.lift(0u64);
-            for _ in 0..NUM_ELEMENTS {
-                let entry = aggregator.lift(1u64);
-                current = aggregator.combine(entry, current);
-            }
-            aggregator
-        },
-        BatchSize::PerIteration,
-    );
 }
 
 fn generate_out_of_order_timestamps(size: usize, percent: f32) -> Vec<u64> {

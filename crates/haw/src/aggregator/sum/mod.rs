@@ -12,34 +12,32 @@ macro_rules! integer_sum_impl {
             type Aggregate = $type;
             type PartialAggregate = $pa;
 
-            fn lift(&self, input: Self::Input) -> Self::MutablePartialAggregate {
+            fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
                 input.into()
             }
             #[inline]
-            fn combine_mutable(&self, a: &mut Self::MutablePartialAggregate, input: Self::Input) {
+            fn combine_mutable(a: &mut Self::MutablePartialAggregate, input: Self::Input) {
                 *a += input;
             }
-            fn freeze(&self, a: Self::MutablePartialAggregate) -> Self::PartialAggregate {
+            fn freeze(a: Self::MutablePartialAggregate) -> Self::PartialAggregate {
                 a.into()
             }
 
             #[inline]
             fn combine(
-                &self,
                 a: Self::PartialAggregate,
                 b: Self::PartialAggregate,
             ) -> Self::PartialAggregate {
                 a.saturating_add(b)
             }
             #[inline]
-            fn lower(&self, a: Self::PartialAggregate) -> Self::Aggregate {
+            fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a
             }
         }
         impl InverseExt for $struct {
             #[inline]
             fn inverse_combine(
-                &self,
                 a: Self::PartialAggregate,
                 b: Self::PartialAggregate,
             ) -> Self::PartialAggregate {
@@ -59,26 +57,25 @@ macro_rules! float_sum_impl {
             type Aggregate = $type;
             type PartialAggregate = $pa;
             type MutablePartialAggregate = $pa;
-            fn lift(&self, input: Self::Input) -> Self::MutablePartialAggregate {
+            fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
                 input.into()
             }
             #[inline]
-            fn combine_mutable(&self, a: &mut Self::MutablePartialAggregate, input: Self::Input) {
+            fn combine_mutable(a: &mut Self::MutablePartialAggregate, input: Self::Input) {
                 *a += input;
             }
 
-            fn freeze(&self, a: Self::MutablePartialAggregate) -> Self::PartialAggregate {
+            fn freeze(a: Self::MutablePartialAggregate) -> Self::PartialAggregate {
                 a.into()
             }
 
             fn combine(
-                &self,
                 a: Self::PartialAggregate,
                 b: Self::PartialAggregate,
             ) -> Self::PartialAggregate {
                 a + b
             }
-            fn lower(&self, a: Self::PartialAggregate) -> Self::Aggregate {
+            fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a as Self::Aggregate
             }
         }

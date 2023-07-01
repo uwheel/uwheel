@@ -6,11 +6,7 @@ use core::{
         Option,
         Option::{None, Some},
     },
-    result::{
-        Result,
-        Result::{Err, Ok},
-    },
-    time::Duration,
+    result::Result,
 };
 
 #[cfg(feature = "rkyv")]
@@ -76,6 +72,8 @@ pub type WeeksWheel<A> = AggregationWheel<WEEKS_CAP, A>;
 pub type YearsWheel<A> = AggregationWheel<YEARS_CAP, A>;
 
 cfg_rkyv! {
+    // Alias for an aggregators [`MutablePartialAggregate`] type
+    pub type MutablePartialAggregate<A> = <A as Aggregator>::MutablePartialAggregate;
     // Alias for an aggregators [`PartialAggregate`] type
     pub type PartialAggregate<A> = <A as Aggregator>::PartialAggregate;
     // Alias for an aggregators [`PartialAggregate`] archived type
@@ -88,6 +86,7 @@ cfg_rkyv! {
     >;
 }
 
+#[derive(Debug, Clone)]
 pub struct Options {
     drill_down: bool,
     write_ahead_capacity: usize,
@@ -119,8 +118,6 @@ pub struct Wheel<A>
 where
     A: Aggregator,
 {
-    #[cfg_attr(feature = "rkyv", with(Skip))]
-    aggregator: A,
     watermark: u64,
     #[cfg_attr(feature = "rkyv", with(Skip), omit_bounds)]
     waw: WriteAheadWheel<A>,
@@ -166,11 +163,12 @@ where
     ///
     /// Time is represented as milliseconds
     pub fn new(time: u64) -> Self {
-        Self::base(time, WriteAheadWheel::default())
+        Self::base(time, WriteAheadWheel::with_watermark(time))
     }
 
     pub fn with_options(time: u64, options: Options) -> Self {
-        let waw: WriteAheadWheel<A> = WriteAheadWheel::with_capacity(options.write_ahead_capacity);
+        let waw: WriteAheadWheel<A> =
+            WriteAheadWheel::with_capacity_and_watermark(options.write_ahead_capacity, time);
         if options.drill_down {
             Self::base_drill_down(time, waw)
         } else {
@@ -180,7 +178,6 @@ where
 
     fn base(time: u64, waw: WriteAheadWheel<A>) -> Self {
         Self {
-            aggregator: A::default(),
             watermark: time,
             waw,
             seconds_wheel: MaybeWheel::with_capacity(SECONDS),
@@ -195,7 +192,6 @@ where
     }
     fn base_drill_down(time: u64, waw: WriteAheadWheel<A>) -> Self {
         Self {
-            aggregator: A::default(),
             watermark: time,
             waw,
             seconds_wheel: MaybeWheel::with_capacity_and_drill_down(SECONDS),
@@ -318,28 +314,7 @@ where
     /// Inserts entry into the wheel
     #[inline]
     pub fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
-        let watermark = self.watermark();
-
-        // If timestamp is below the watermark, then reject it.
-        if entry.timestamp < watermark {
-            Err(Error::Late { entry, watermark })
-        } else {
-            let diff = entry.timestamp - self.watermark;
-            let seconds = Duration::from_millis(diff).as_secs();
-            if self.waw.can_write_ahead(seconds) {
-                self.waw.write_ahead(seconds, entry.data, &self.aggregator);
-                Ok(())
-            } else {
-                // cannot fit within the write-ahead wheel, return it to the user to handle it..
-                let write_ahead_ms =
-                    Duration::from_secs(self.waw.write_ahead_len() as u64).as_millis();
-                let max_write_ahead_ts = self.watermark + write_ahead_ms as u64;
-                Err(Error::Overflow {
-                    entry,
-                    max_write_ahead_ts,
-                })
-            }
-        }
+        self.waw.insert(entry)
     }
 
     /// Return the current watermark as milliseconds for this wheel
@@ -349,10 +324,11 @@ where
     }
     /// Returns the aggregate in the given time interval
     pub fn interval_and_lower(&self, dur: time::Duration) -> Option<A::Aggregate> {
-        self.interval(dur)
-            .map(|partial| self.aggregator.lower(partial))
+        self.interval(dur).map(|partial| A::lower(partial))
     }
+
     /// Returns the partial aggregate in the given time interval
+    #[inline]
     pub fn interval(&self, dur: time::Duration) -> Option<A::PartialAggregate> {
         // closure that turns i64 to None if it is zero
         let to_option = |num: i64| {
@@ -383,7 +359,6 @@ where
         year: Option<usize>,
     ) -> Option<A::PartialAggregate> {
         // Multi-Wheel Query => Need to make sure we don't duplicate data across granularities.
-        let aggregator = &self.aggregator;
 
         match (year, week, day, hour, minute, second) {
             // ywdhms
@@ -401,7 +376,7 @@ where
                 let week = self.weeks_wheel.interval_or_total(week);
                 let year = self.years_wheel.interval(year);
 
-                Self::reduce([sec, min, hr, day, week, year], aggregator)
+                Self::reduce([sec, min, hr, day, week, year])
             }
             // wdhms
             (None, Some(week), Some(day), Some(hour), Some(minute), Some(second)) => {
@@ -416,7 +391,7 @@ where
                 let day = self.days_wheel.interval_or_total(day);
                 let week = self.days_wheel.interval(week);
 
-                Self::reduce([sec, min, hr, day, week], aggregator)
+                Self::reduce([sec, min, hr, day, week])
             }
             // dhms
             (None, None, Some(day), Some(hour), Some(minute), Some(second)) => {
@@ -429,7 +404,7 @@ where
                 let hr = self.hours_wheel.interval_or_total(hour);
                 let day = self.days_wheel.interval(day);
 
-                Self::reduce([sec, min, hr, day], aggregator)
+                Self::reduce([sec, min, hr, day])
             }
             // dhm
             (None, None, Some(day), Some(hour), Some(minute), None) => {
@@ -440,14 +415,14 @@ where
                 let min = self.minutes_wheel.interval_or_total(minute);
                 let hr = self.hours_wheel.interval_or_total(hour);
                 let day = self.days_wheel.interval(day);
-                Self::reduce([min, hr, day], aggregator)
+                Self::reduce([min, hr, day])
             }
             // dh
             (None, None, Some(day), Some(hour), None, None) => {
                 let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
                 let hr = self.hours_wheel.interval_or_total(hour);
                 let day = self.days_wheel.interval(day);
-                Self::reduce([hr, day], aggregator)
+                Self::reduce([hr, day])
             }
             // d
             (None, None, Some(day), None, None, None) => self.days_wheel.interval(day),
@@ -459,7 +434,7 @@ where
                 let sec = self.seconds_wheel.interval_or_total(second);
                 let min = self.minutes_wheel.interval_or_total(minute);
                 let hr = self.hours_wheel.interval(hour);
-                Self::reduce([sec, min, hr], aggregator)
+                Self::reduce([sec, min, hr])
             }
             // hm
             (None, None, None, Some(hour), Some(minute), None) => {
@@ -467,14 +442,14 @@ where
                 let min = self.minutes_wheel.interval_or_total(minute);
 
                 let hr = self.hours_wheel.interval(hour);
-                Self::reduce([min, hr], aggregator)
+                Self::reduce([min, hr])
             }
             // yw
             (Some(year), Some(week), None, None, None, None) => {
                 let week = cmp::min(self.weeks_wheel.rotation_count(), week);
                 let week = self.weeks_wheel.interval_or_total(week);
                 let year = self.years_wheel.interval(year);
-                Self::reduce([year, week], aggregator)
+                Self::reduce([year, week])
             }
             // y
             (Some(year), None, None, None, None, None) => self.years_wheel.interval_or_total(year),
@@ -487,7 +462,7 @@ where
                 let second = cmp::min(self.seconds_wheel.rotation_count(), second);
                 let sec = self.seconds_wheel.interval_or_total(second);
                 let min = self.minutes_wheel.interval(minute);
-                Self::reduce([min, sec], aggregator)
+                Self::reduce([min, sec])
             }
             // m
             (None, None, None, None, Some(minute), None) => {
@@ -514,18 +489,17 @@ where
             self.weeks_wheel.total(),
             self.years_wheel.total(),
         ];
-        Self::reduce(wheels, &self.aggregator).map(|partial_agg| self.aggregator.lower(partial_agg))
+        Self::reduce(wheels).map(|partial_agg| A::lower(partial_agg))
     }
 
     #[inline]
     fn reduce(
         partial_aggs: impl IntoIterator<Item = Option<A::PartialAggregate>>,
-        aggregator: &A,
     ) -> Option<A::PartialAggregate> {
         partial_aggs
             .into_iter()
             .reduce(|acc, b| match (acc, b) {
-                (Some(curr), Some(agg)) => Some(aggregator.combine(curr, agg)),
+                (Some(curr), Some(agg)) => Some(A::combine(curr, agg)),
                 (None, Some(_)) => b,
                 _ => acc,
             })
@@ -543,8 +517,8 @@ where
 
         // Tick the Write-ahead wheel, if new entry insert into head of seconds wheel
         if let Some(window) = self.waw.tick() {
-            let partial_agg = self.aggregator.freeze(window);
-            seconds.insert_head(partial_agg, &self.aggregator)
+            let partial_agg = A::freeze(window);
+            seconds.insert_head(partial_agg)
         }
 
         // full rotation of seconds wheel

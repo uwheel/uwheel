@@ -24,7 +24,7 @@ map = ["dep:hashbrown"]
 [dependencies]
 smallvec = "1.10.0"
 hashbrown = { version = "0.13", optional = true }
-rkyv = { version = "0.7.39", features = ["copy", "copy_unsafe"], optional = true }
+rkyv = { version = "0.7.39", features = ["copy", "copy_unsafe", "smallvec"], optional = true }
 
 [dev-dependencies]
 fastrand = "1.8.0"
@@ -47,10 +47,6 @@ required-features = ["map"]
 
 [[bench]]
 name = "insert"
-harness = false
-
-[[bench]]
-name = "window"
 harness = false
 
 [[bench]]

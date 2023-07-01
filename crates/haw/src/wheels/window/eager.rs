@@ -22,7 +22,6 @@ use super::WindowWheel;
 #[derive(Debug, Clone)]
 pub struct InverseWheel<A: Aggregator> {
     capacity: usize,
-    aggregator: A,
     slots: Box<[Option<A::PartialAggregate>]>,
     tail: usize,
     head: usize,
@@ -33,7 +32,6 @@ impl<A: Aggregator> InverseWheel<A> {
         assert_capacity!(capacity);
         Self {
             capacity,
-            aggregator: Default::default(),
             slots: (0..capacity)
                 .map(|_| None)
                 .collect::<Vec<_>>()
@@ -50,7 +48,7 @@ impl<A: Aggregator> InverseWheel<A> {
         // 1: [0-10] 2: [10-20] -> need that to be [0-20] so we combine
         let partial_agg = self.slot(tail).take();
         if let Some(agg) = partial_agg {
-            combine_or_insert::<A>(self.slot(self.tail), agg, &Default::default());
+            combine_or_insert::<A>(self.slot(self.tail), agg);
         }
 
         partial_agg
@@ -67,8 +65,8 @@ impl<A: Aggregator> InverseWheel<A> {
         *self.slot(self.tail) = None;
     }
     #[inline]
-    pub fn push(&mut self, data: A::PartialAggregate, aggregator: &A) {
-        combine_or_insert(self.slot(self.head), data, aggregator);
+    pub fn push(&mut self, data: A::PartialAggregate) {
+        combine_or_insert::<A>(self.slot(self.head), data);
         self.head = self.wrap_add(self.head, 1);
     }
 
@@ -143,7 +141,6 @@ pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
     current_secs_rotation: u64,
     // a cached partial aggregate holding data for last full rotation (RANGE)
     last_rotation: Option<A::PartialAggregate>,
-    aggregator: A,
 }
 
 impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
@@ -170,7 +167,6 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
             next_full_rotation: time + range as u64,
             current_secs_rotation: 0,
             last_rotation: None,
-            aggregator: Default::default(),
         }
     }
     fn range_interval_duration(&self) -> Duration {
@@ -213,10 +209,7 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
 
         // Function: combine(inverse_combine(last_rotation, slice), current_rotation);
         // ⊕((⊖(last_rotation, slice)), current_rotation)
-        self.aggregator.combine(
-            self.aggregator.inverse_combine(last_rotation, inverse),
-            current_rotation,
-        )
+        A::combine(A::inverse_combine(last_rotation, inverse), current_rotation)
     }
 }
 impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
@@ -237,7 +230,7 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
                     .interval(self.current_pair_duration())
                     .unwrap_or_default();
 
-                self.inverse_wheel.push(partial, &self.aggregator);
+                self.inverse_wheel.push(partial);
 
                 // Update pair metadata
                 self.update_pair_len();
@@ -251,10 +244,8 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
                             self.wheel.interval(self.range_interval_duration()).unwrap();
                         self.last_rotation = Some(window_result);
 
-                        window_results.push((
-                            self.wheel.watermark(),
-                            Some(self.aggregator.lower(window_result)),
-                        ));
+                        window_results
+                            .push((self.wheel.watermark(), Some(A::lower(window_result))));
 
                         // If we are working with uneven pairs, we need to adjust range.
                         let next_rotation_distance = if self.pair_type.is_uneven() {
@@ -277,8 +268,7 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
                         self.merge_pairs();
                     } else {
                         let window = self.compute_window();
-                        window_results
-                            .push((self.wheel.watermark(), Some(self.aggregator.lower(window))));
+                        window_results.push((self.wheel.watermark(), Some(A::lower(window))));
                     }
                     // next window ends at next slide (p1+p2)
                     self.next_window_end += self.slide as u64;
@@ -310,10 +300,9 @@ mod tests {
     #[test]
     fn inverse_wheel_test() {
         let mut iwheel: InverseWheel<U64SumAggregator> = InverseWheel::with_capacity(64);
-        let aggregator = U64SumAggregator;
-        iwheel.push(2u64, &aggregator);
-        iwheel.push(3u64, &aggregator);
-        iwheel.push(10u64, &aggregator);
+        iwheel.push(2u64);
+        iwheel.push(3u64);
+        iwheel.push(10u64);
 
         assert_eq!(iwheel.tick().unwrap(), 2u64);
         assert_eq!(iwheel.tick().unwrap(), 5u64);

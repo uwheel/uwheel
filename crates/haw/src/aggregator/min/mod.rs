@@ -11,29 +11,28 @@ macro_rules! min_impl {
             type Aggregate = $type;
             type PartialAggregate = $pa;
 
-            fn lift(&self, input: Self::Input) -> Self::MutablePartialAggregate {
+            fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
                 input.into()
             }
 
             #[inline]
-            fn combine_mutable(&self, a: &mut Self::MutablePartialAggregate, input: Self::Input) {
+            fn combine_mutable(a: &mut Self::MutablePartialAggregate, input: Self::Input) {
                 *a = <$type>::min(*a, input);
             }
 
-            fn freeze(&self, a: Self::MutablePartialAggregate) -> Self::PartialAggregate {
+            fn freeze(a: Self::MutablePartialAggregate) -> Self::PartialAggregate {
                 a.into()
             }
 
             #[inline]
             fn combine(
-                &self,
                 a: Self::PartialAggregate,
                 b: Self::PartialAggregate,
             ) -> Self::PartialAggregate {
                 <$type>::min(a, b)
             }
             #[inline]
-            fn lower(&self, a: Self::PartialAggregate) -> Self::Aggregate {
+            fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a
             }
         }

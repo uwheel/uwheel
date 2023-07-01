@@ -130,6 +130,7 @@ const fn is_quantizable(duration: Duration) -> bool {
     false
 }
 
+#[allow(clippy::bool_to_int_with_if)]
 fn granularity_distance(range: Duration, slide: Duration) -> usize {
     let granularity = |seconds: i64| -> usize {
         if seconds >= Duration::years(1).whole_seconds() {

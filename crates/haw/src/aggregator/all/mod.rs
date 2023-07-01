@@ -84,29 +84,25 @@ impl Aggregator for AllAggregator {
     type MutablePartialAggregate = AggState;
 
     #[inline]
-    fn lift(&self, input: Self::Input) -> Self::MutablePartialAggregate {
+    fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
         AggState::new(input)
     }
 
     #[inline]
-    fn combine_mutable(&self, a: &mut Self::MutablePartialAggregate, input: Self::Input) {
-        a.merge(self.lift(input))
+    fn combine_mutable(a: &mut Self::MutablePartialAggregate, input: Self::Input) {
+        a.merge(Self::lift(input))
     }
-    fn freeze(&self, mutable: Self::MutablePartialAggregate) -> Self::PartialAggregate {
+    fn freeze(mutable: Self::MutablePartialAggregate) -> Self::PartialAggregate {
         mutable
     }
 
     #[inline]
-    fn combine(
-        &self,
-        mut a: Self::PartialAggregate,
-        b: Self::PartialAggregate,
-    ) -> Self::PartialAggregate {
+    fn combine(mut a: Self::PartialAggregate, b: Self::PartialAggregate) -> Self::PartialAggregate {
         a.merge(b);
         a
     }
     #[inline]
-    fn lower(&self, a: Self::PartialAggregate) -> Self::Aggregate {
+    fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
         a
     }
 }

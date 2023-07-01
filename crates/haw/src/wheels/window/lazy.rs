@@ -63,8 +63,8 @@ impl<A: Aggregator> PairsWheel<A> {
     }
 
     #[inline]
-    pub fn push(&mut self, data: A::PartialAggregate, aggregator: &A) {
-        Self::insert(self.slot(self.head), data, aggregator);
+    pub fn push(&mut self, data: A::PartialAggregate) {
+        Self::insert(self.slot(self.head), data);
         self.head = self.wrap_add(self.head, 1);
     }
 
@@ -73,10 +73,10 @@ impl<A: Aggregator> PairsWheel<A> {
         &mut self.slots[idx]
     }
     #[inline]
-    fn insert(slot: &mut Option<A::PartialAggregate>, entry: A::PartialAggregate, aggregator: &A) {
+    fn insert(slot: &mut Option<A::PartialAggregate>, entry: A::PartialAggregate) {
         match slot {
             Some(curr) => {
-                let new_curr = aggregator.combine(*curr, entry);
+                let new_curr = A::combine(*curr, entry);
                 *curr = new_curr;
             }
             None => {
@@ -153,7 +153,6 @@ pub struct LazyWindowWheel<A: Aggregator> {
     next_pair_start: u64,
     next_pair_end: u64,
     in_p1: bool,
-    aggregator: A,
 }
 
 impl<A: Aggregator> LazyWindowWheel<A> {
@@ -179,7 +178,6 @@ impl<A: Aggregator> LazyWindowWheel<A> {
             next_pair_start,
             next_pair_end,
             in_p1: false,
-            aggregator: Default::default(),
         }
     }
     fn current_pair_duration(&self) -> Duration {
@@ -219,7 +217,7 @@ impl<A: Aggregator> WindowWheel<A> for LazyWindowWheel<A> {
                     .interval(self.current_pair_duration())
                     .unwrap_or_default();
 
-                self.pairs_wheel.push(partial, &self.aggregator);
+                self.pairs_wheel.push(partial);
 
                 // Update pair metadata
                 self.update_pair_len();
@@ -240,8 +238,7 @@ impl<A: Aggregator> WindowWheel<A> for LazyWindowWheel<A> {
                         let _ = self.pairs_wheel.tick();
                     }
 
-                    window_results
-                        .push((self.wheel.watermark(), Some(self.aggregator.lower(window))));
+                    window_results.push((self.wheel.watermark(), Some(A::lower(window))));
 
                     // next window ends at next slide (p1+p2)
                     self.next_window_end += self.slide as u64;

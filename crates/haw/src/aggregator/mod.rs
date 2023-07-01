@@ -37,30 +37,25 @@ pub trait Aggregator: Default + Debug + 'static {
     type Aggregate: Send;
 
     /// Lifts input into a MutablePartialAggregate
-    fn lift(&self, input: Self::Input) -> Self::MutablePartialAggregate;
+    fn lift(input: Self::Input) -> Self::MutablePartialAggregate;
 
     /// Combine an input into a mutable partial aggregate
-    fn combine_mutable(&self, a: &mut Self::MutablePartialAggregate, input: Self::Input);
+    fn combine_mutable(a: &mut Self::MutablePartialAggregate, input: Self::Input);
 
     /// Freeze a mutable partial aggregate into an immutable one
-    fn freeze(&self, a: Self::MutablePartialAggregate) -> Self::PartialAggregate;
+    fn freeze(a: Self::MutablePartialAggregate) -> Self::PartialAggregate;
 
     /// Combine two partial aggregates and produce new output
-    fn combine(
-        &self,
-        a: Self::PartialAggregate,
-        b: Self::PartialAggregate,
-    ) -> Self::PartialAggregate;
+    fn combine(a: Self::PartialAggregate, b: Self::PartialAggregate) -> Self::PartialAggregate;
 
     /// Convert a partial aggregate to a final result
-    fn lower(&self, a: Self::PartialAggregate) -> Self::Aggregate;
+    fn lower(a: Self::PartialAggregate) -> Self::Aggregate;
 }
 
 /// Extension trait for inverse combine operations
 pub trait InverseExt: Aggregator {
     /// Inverse combine two partial aggregates to a new partial aggregate
     fn inverse_combine(
-        &self,
         a: Self::PartialAggregate,
         b: Self::PartialAggregate,
     ) -> Self::PartialAggregate;

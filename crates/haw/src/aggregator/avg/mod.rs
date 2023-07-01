@@ -11,23 +11,22 @@ macro_rules! avg_impl {
             type MutablePartialAggregate = $pa;
             type Aggregate = $type;
             type PartialAggregate = $pa;
-            fn lift(&self, input: Self::Input) -> Self::MutablePartialAggregate {
+            fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
                 (input, 1 as $type)
             }
             #[inline]
-            fn combine_mutable(&self, a: &mut Self::MutablePartialAggregate, input: Self::Input) {
+            fn combine_mutable(a: &mut Self::MutablePartialAggregate, input: Self::Input) {
                 let (ref mut sum, ref mut count) = a;
                 *sum += input;
                 *count += 1 as $type;
             }
 
-            fn freeze(&self, mutable: Self::MutablePartialAggregate) -> Self::PartialAggregate {
+            fn freeze(mutable: Self::MutablePartialAggregate) -> Self::PartialAggregate {
                 mutable.into()
             }
 
             #[inline]
             fn combine(
-                &self,
                 a: Self::PartialAggregate,
                 b: Self::PartialAggregate,
             ) -> Self::PartialAggregate {
@@ -36,14 +35,13 @@ macro_rules! avg_impl {
                 (sum, count)
             }
             #[inline]
-            fn lower(&self, a: Self::PartialAggregate) -> Self::Aggregate {
+            fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a.0 / a.1
             }
         }
         impl InverseExt for $struct {
             #[inline]
             fn inverse_combine(
-                &self,
                 a: Self::PartialAggregate,
                 b: Self::PartialAggregate,
             ) -> Self::PartialAggregate {
