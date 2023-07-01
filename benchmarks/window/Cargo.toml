@@ -1,0 +1,20 @@
+[package]
+name = "window"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+haw = { version = "0.1.0", path = "../../crates/haw" }
+fiba_rs = { version = "0.1.0", path = "../../crates/fiba_rs" }
+clap = { version = "3.2", features = ["derive"] }
+fastrand = "1.8.0"
+
+[dev-dependencies]
+fastrand = "1.8.0"
+rand = "0.8.5"
+criterion = "0.4"
+
+[[bench]]
+name = "insert"
+harness = false
+

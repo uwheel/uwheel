@@ -987,7 +987,7 @@ public:
     }
   }
 
-  outT rangeQuery(timeT timeFrom, timeT timeTo) const {
+  outT range(timeT timeFrom, timeT timeTo) const {
     if (kind==finger) {
       Node *nodeFrom = searchNode(timeFrom), *nodeTo = searchNode(timeTo);
       Node* top = leastCommonAncestor(nodeFrom, nodeTo);
