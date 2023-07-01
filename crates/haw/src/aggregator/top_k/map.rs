@@ -14,7 +14,6 @@ where
     A::PartialAggregate: Ord,
 {
     table: HashMap<[u8; KEY_BYTES], A::PartialAggregate>,
-    aggregator: A,
 }
 
 impl<const KEY_BYTES: usize, A: Aggregator> TopKMap<KEY_BYTES, A>
@@ -26,7 +25,7 @@ where
         self.table
             .entry(key)
             .and_modify(|curr_delta| {
-                *curr_delta = self.aggregator.combine(*curr_delta, delta);
+                *curr_delta = A::combine(*curr_delta, delta);
             })
             .or_insert(delta);
     }

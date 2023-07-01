@@ -22,31 +22,27 @@ where
     type Aggregate = TopKState<K, KEY_BYTES, A>;
 
     #[inline]
-    fn lift(&self, input: Self::Input) -> Self::MutablePartialAggregate {
+    fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
         let mut map = TopKMap::default();
-        self.combine_mutable(&mut map, input);
+        Self::combine_mutable(&mut map, input);
         map
     }
     #[inline]
-    fn combine_mutable(&self, map: &mut Self::MutablePartialAggregate, input: Self::Input) {
-        let inner_mutable = self.0.lift(input.1);
-        map.insert(input.0, self.0.freeze(inner_mutable));
+    fn combine_mutable(map: &mut Self::MutablePartialAggregate, input: Self::Input) {
+        let inner_mutable = A::lift(input.1);
+        map.insert(input.0, A::freeze(inner_mutable));
     }
-    fn freeze(&self, mutable: Self::MutablePartialAggregate) -> Self::PartialAggregate {
+    fn freeze(mutable: Self::MutablePartialAggregate) -> Self::PartialAggregate {
         mutable.to_state()
     }
 
     #[inline]
-    fn combine(
-        &self,
-        mut a: Self::PartialAggregate,
-        b: Self::PartialAggregate,
-    ) -> Self::PartialAggregate {
+    fn combine(mut a: Self::PartialAggregate, b: Self::PartialAggregate) -> Self::PartialAggregate {
         a.merge(b);
         a
     }
     #[inline]
-    fn lower(&self, a: Self::PartialAggregate) -> Self::Aggregate {
+    fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
         a
     }
 }

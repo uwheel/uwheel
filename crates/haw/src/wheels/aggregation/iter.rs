@@ -17,10 +17,9 @@ impl<'a, A: Aggregator> Iter<'a, A> {
     }
     #[inline]
     pub fn combine(self) -> Option<A::PartialAggregate> {
-        let aggregator = A::default();
         let mut res: Option<A::PartialAggregate> = None;
         for partial in self.flatten() {
-            combine_or_insert(&mut res, *partial, &aggregator);
+            combine_or_insert::<A>(&mut res, *partial);
         }
         res
     }
