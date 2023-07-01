@@ -32,6 +32,23 @@ For instance, to store aggregates with second granularity up to 10 years, we wou
 The above scheme results in a total of 213 wheel slots. This is the minimum number of slots
 required to support rolling up aggregates across 10 years with second granularity.
 
+## Aggregation Framework
+
+HAWs Aggregation Interface is inspired by the work of [Tangwongsan et al.](http://www.vldb.org/pvldb/vol8/p702-tangwongsan.pdf). 
+
+To implement your own custom aggregator, you have to implement the [Aggregator](https://github.com/Max-Meldrum/haw/blob/42d413c54845ab4370115bf5afb9a3e383eecaaa/crates/haw/src/aggregator/mod.rs#L26C11-L26C21) trait for your type.
+
+**Pre-defined Aggregators:**
+
+| Function | Description | Types |
+| ---- | ------| ----- |
+| SUM |  Sum of all inputs | u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
+| AVG |  Arithmetic mean of all inputs | u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
+| MIN |  Minimum value of all inputs |  u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
+| MAX |  Maximum value of all inputs | u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
+| ALL |  Pre-computed SUM, AVG, MIN, MAX, COUNT | f64 |
+| TOP_K (_feature_) |  Top K of all inputs | ``Aggregator`` with aggregate data that implements ``Ord`` |
+
 ## Feature Flags
 - `std` (_enabled by default_)
     - Enables features that rely on the standard library
