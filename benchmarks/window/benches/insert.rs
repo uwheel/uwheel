@@ -7,10 +7,7 @@ use criterion::{
     Criterion,
     Throughput,
 };
-use haw::{
-    aggregator::{Aggregator, U64SumAggregator},
-    *,
-};
+use haw::{aggregator::U64SumAggregator, *};
 use rand::prelude::*;
 
 const NUM_ELEMENTS: usize = 10000;
@@ -138,21 +135,6 @@ pub fn insert_benchmark(c: &mut Criterion) {
     group.finish();
 }
 
-fn _insert_no_wheel(bencher: &mut Bencher) {
-    bencher.iter_batched(
-        || U64SumAggregator,
-        |aggregator| {
-            let mut current = aggregator.lift(0u64);
-            for _ in 0..NUM_ELEMENTS {
-                let entry = aggregator.lift(1u64);
-                current = aggregator.combine(entry, current);
-            }
-            aggregator
-        },
-        BatchSize::PerIteration,
-    );
-}
-
 fn _generate_out_of_order_timestamps(size: usize, percent: f32) -> Vec<u64> {
     let mut rng = rand::thread_rng();
     let timestamps_per_second = 1000;
@@ -188,8 +170,7 @@ fn insert_batch_wheel(seconds: u64, bencher: &mut Bencher) {
     bencher.iter_batched(
         || {
             let time = 0;
-            let wheel = Wheel::<U64SumAggregator>::new(time);
-            wheel
+            Wheel::<U64SumAggregator>::new(time)
         },
         |mut wheel| {
             for _i in 0..NUM_ELEMENTS {
@@ -222,10 +203,7 @@ fn _insert_out_of_order(percentage: f32, bencher: &mut Bencher) {
 
 fn insert_batch_random_fiba_cg_bfinger2(seconds: u64, bencher: &mut Bencher) {
     bencher.iter_batched(
-        || {
-            let fiba = fiba_rs::bfinger_two::create_fiba_with_sum();
-            fiba
-        },
+        fiba_rs::bfinger_two::create_fiba_with_sum,
         |mut fiba| {
             for _i in 0..NUM_ELEMENTS {
                 let timestamp = random_timestamp_aligned(seconds);
@@ -239,10 +217,7 @@ fn insert_batch_random_fiba_cg_bfinger2(seconds: u64, bencher: &mut Bencher) {
 
 fn insert_batch_random_fiba_cg_bfinger4(seconds: u64, bencher: &mut Bencher) {
     bencher.iter_batched(
-        || {
-            let fiba = fiba_rs::bfinger_four::create_fiba_4_with_sum();
-            fiba
-        },
+        fiba_rs::bfinger_four::create_fiba_4_with_sum,
         |mut fiba| {
             for _i in 0..NUM_ELEMENTS {
                 let timestamp = random_timestamp_aligned(seconds);
@@ -256,10 +231,7 @@ fn insert_batch_random_fiba_cg_bfinger4(seconds: u64, bencher: &mut Bencher) {
 
 fn insert_batch_random_fiba_cg_bfinger8(seconds: u64, bencher: &mut Bencher) {
     bencher.iter_batched(
-        || {
-            let fiba = fiba_rs::bfinger_eight::create_fiba_8_with_sum();
-            fiba
-        },
+        fiba_rs::bfinger_eight::create_fiba_8_with_sum,
         |mut fiba| {
             for _i in 0..NUM_ELEMENTS {
                 let timestamp = random_timestamp_aligned(seconds);
