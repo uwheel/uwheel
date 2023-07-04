@@ -5,7 +5,7 @@ use super::{
 use crate::{
     aggregator::{Aggregator, InverseExt},
     time::{Duration, NumericalDuration},
-    wheels::WheelExt,
+    wheels::{aggregation::combine_or_insert, WheelExt},
     Entry,
     Error,
     Wheel,
@@ -19,6 +19,9 @@ use alloc::{boxed::Box, vec::Vec};
 
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
+
+#[cfg(feature = "stats")]
+use crate::stats::Measure;
 
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
@@ -56,33 +59,15 @@ impl<A: Aggregator> PairsWheel<A> {
         }
     }
 
-    /// Returns `true` if the wheel is empty or `false` if it contains slots
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.tail == self.head
-    }
-
     #[inline]
     pub fn push(&mut self, data: A::PartialAggregate) {
-        Self::insert(self.slot(self.head), data);
+        combine_or_insert::<A>(self.slot(self.head), data);
         self.head = self.wrap_add(self.head, 1);
     }
 
     #[inline]
     fn slot(&mut self, idx: usize) -> &mut Option<A::PartialAggregate> {
         &mut self.slots[idx]
-    }
-    #[inline]
-    fn insert(slot: &mut Option<A::PartialAggregate>, entry: A::PartialAggregate) {
-        match slot {
-            Some(curr) => {
-                let new_curr = A::combine(*curr, entry);
-                *curr = new_curr;
-            }
-            None => {
-                *slot = Some(entry);
-            }
-        }
     }
     /// Combines partial aggregates of the last `subtrahend` slots
     ///
@@ -153,6 +138,8 @@ pub struct LazyWindowWheel<A: Aggregator> {
     next_pair_start: u64,
     next_pair_end: u64,
     in_p1: bool,
+    #[cfg(feature = "stats")]
+    stats: super::stats::Stats,
 }
 
 impl<A: Aggregator> LazyWindowWheel<A> {
@@ -178,6 +165,8 @@ impl<A: Aggregator> LazyWindowWheel<A> {
             next_pair_start,
             next_pair_end,
             in_p1: false,
+            #[cfg(feature = "stats")]
+            stats: Default::default(),
         }
     }
     fn current_pair_duration(&self) -> Duration {
@@ -198,6 +187,8 @@ impl<A: Aggregator> LazyWindowWheel<A> {
     #[inline]
     fn compute_window(&self) -> A::PartialAggregate {
         let pair_slots = pairs_space(self.range, self.slide);
+        #[cfg(feature = "stats")]
+        let _measure = Measure::new(&self.stats.window_computation_ns);
         self.pairs_wheel.interval(pair_slots).unwrap_or_default()
     }
 }
@@ -229,6 +220,11 @@ impl<A: Aggregator> WindowWheel<A> for LazyWindowWheel<A> {
                     // Window computation:
                     let window = self.compute_window();
 
+                    window_results.push((self.wheel.watermark(), Some(A::lower(window))));
+
+                    #[cfg(feature = "stats")]
+                    let _measure = Measure::new(&self.stats.cleanup_ns);
+
                     // how many "pairs" we need to pop off from the Pairs wheel
                     let removals = match self.pair_type {
                         PairType::Even(_) => 1,
@@ -237,8 +233,6 @@ impl<A: Aggregator> WindowWheel<A> for LazyWindowWheel<A> {
                     for _i in 0..removals {
                         let _ = self.pairs_wheel.tick();
                     }
-
-                    window_results.push((self.wheel.watermark(), Some(A::lower(window))));
 
                     // next window ends at next slide (p1+p2)
                     self.next_window_end += self.slide as u64;
@@ -249,14 +243,22 @@ impl<A: Aggregator> WindowWheel<A> for LazyWindowWheel<A> {
     }
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)> {
         let diff = watermark.saturating_sub(self.wheel.watermark());
+        #[cfg(feature = "stats")]
+        let _measure = Measure::new(&self.stats.advance_ns);
         self.advance(Duration::milliseconds(diff as i64))
     }
     #[inline]
     fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
+        #[cfg(feature = "stats")]
+        let _measure = Measure::new(&self.stats.insert_ns);
         self.wheel.insert(entry)
     }
     /// Returns a reference to the underlying HAW
     fn wheel(&self) -> &Wheel<A> {
         &self.wheel
+    }
+    #[cfg(feature = "stats")]
+    fn print_stats(&self) {
+        println!("{:#?}", self.stats);
     }
 }

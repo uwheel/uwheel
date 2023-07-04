@@ -457,6 +457,13 @@ where
             (None, Some(week), None, None, None, None) => self.weeks_wheel.interval_or_total(week),
             // h
             (None, None, None, Some(hour), None, None) => self.hours_wheel.interval_or_total(hour),
+            // hs
+            (None, None, None, Some(hour), None, Some(second)) => {
+                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
+                let sec = self.seconds_wheel.interval_or_total(second);
+                let hour = self.hours_wheel.interval_or_total(hour);
+                Self::reduce([hour, sec])
+            }
             // ms
             (None, None, None, None, Some(minute), Some(second)) => {
                 let second = cmp::min(self.seconds_wheel.rotation_count(), second);
@@ -472,8 +479,8 @@ where
             (None, None, None, None, None, Some(second)) => {
                 self.seconds_wheel.interval_or_total(second)
             }
-            (_, _, _, _, _, _) => {
-                panic!("combine_time was given invalid Time arguments");
+            t @ (_, _, _, _, _, _) => {
+                panic!("combine_time was given invalid Time arguments {:?}", t);
             }
         }
     }

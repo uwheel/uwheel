@@ -2,7 +2,7 @@ use clap::Parser;
 use haw::{
     aggregator::U64SumAggregator,
     time::Duration,
-    wheels::window::{eager, lazy, WindowWheel},
+    wheels::window::{eager, eager_window_query_cost, lazy, lazy_window_query_cost, WindowWheel},
     Entry,
 };
 use std::time::Instant;
@@ -41,6 +41,8 @@ fn main() {
         slide.whole_seconds() as u64,
     );
     dbg!(seconds);
+    dbg!(lazy_window_query_cost(range, slide));
+    dbg!(eager_window_query_cost(range, slide));
 
     let lazy_wheel: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
         .with_range(range)
@@ -56,6 +58,7 @@ fn main() {
 
     run("Eager Wheel SUM", seconds, eager_wheel, &args);
 
+    /*
     let cg_bfinger_two_wheel = fiba_wheel::BFingerTwoWheel::new(0, range, slide);
     run(
         "FiBA CG Bfinger2 Wheel SUM",
@@ -71,6 +74,7 @@ fn main() {
         cg_bfinger_four_wheel,
         &args,
     );
+    */
 
     let cg_bfinger_eight_wheel = fiba_wheel::BFingerEightWheel::new(0, range, slide);
     run(
@@ -79,6 +83,8 @@ fn main() {
         cg_bfinger_eight_wheel,
         &args,
     );
+    let fiba_pairs_wheel = fiba_wheel::PairsFiBA::new(0, range, slide);
+    run("FiBA Pairs Wheel SUM", seconds, fiba_pairs_wheel, &args);
 }
 
 fn run(id: &str, seconds: u64, mut window: impl WindowWheel<U64SumAggregator>, args: &Args) {
@@ -90,7 +96,8 @@ fn run(id: &str, seconds: u64, mut window: impl WindowWheel<U64SumAggregator>, a
         slide: _,
         ooo_degree,
     } = *args;
-    let mut ts_generator = TimestampGenerator::new(0, max_distance, ooo_degree as f32);
+    let mut ts_generator =
+        TimestampGenerator::new(0, Duration::seconds(max_distance as i64), ooo_degree as f32);
     let full = Instant::now();
     for _i_ in 0..seconds {
         for _i in 0..events_per_sec {
@@ -112,4 +119,5 @@ fn run(id: &str, seconds: u64, mut window: impl WindowWheel<U64SumAggregator>, a
         (seconds * events_per_sec) as f64 / runtime.as_secs_f64(),
         runtime.as_secs_f64(),
     );
+    window.print_stats();
 }

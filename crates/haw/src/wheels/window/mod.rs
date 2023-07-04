@@ -4,7 +4,10 @@ use alloc::vec::Vec;
 
 pub mod eager;
 pub mod lazy;
-mod util;
+pub mod util;
+
+#[cfg(feature = "stats")]
+pub mod stats;
 
 pub use util::{eager_window_query_cost, lazy_window_query_cost, window_wheel};
 
@@ -22,6 +25,8 @@ pub trait WindowWheel<A: Aggregator> {
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)>;
     /// Returns a reference to the underlying HAW
     fn wheel(&self) -> &Wheel<A>;
+    #[cfg(feature = "stats")]
+    fn print_stats(&self);
 }
 
 #[cfg(test)]

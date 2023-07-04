@@ -13,6 +13,9 @@ use rkyv::{Archive, Deserialize, Serialize};
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, vec::Vec};
 
+#[cfg(feature = "stats")]
+use crate::stats::Measure;
+
 use super::WindowWheel;
 
 /// A fixed-sized wheel used to maintain partial aggregates for slides that can later
@@ -126,7 +129,6 @@ pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
     pair_type: PairType,
     next_pair_end: u64,
     in_p1: bool,
-
     // Inverse Wheel maintaining partial aggregates per slide
     inverse_wheel: InverseWheel<A>,
     // Regular HAW used together with inverse_wheel to answer a specific Sliding Window
@@ -141,6 +143,8 @@ pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
     current_secs_rotation: u64,
     // a cached partial aggregate holding data for last full rotation (RANGE)
     last_rotation: Option<A::PartialAggregate>,
+    #[cfg(feature = "stats")]
+    stats: super::stats::Stats,
 }
 
 impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
@@ -167,6 +171,8 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
             next_full_rotation: time + range as u64,
             current_secs_rotation: 0,
             last_rotation: None,
+            #[cfg(feature = "stats")]
+            stats: Default::default(),
         }
     }
     fn range_interval_duration(&self) -> Duration {
@@ -186,6 +192,8 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
             }
         }
     }
+
+    #[inline]
     fn merge_pairs(&mut self) {
         // how many "pairs" we need to pop off from the Pairs wheel
         let removals = match self.pair_type {
@@ -198,14 +206,22 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
     }
     #[inline]
     fn compute_window(&mut self) -> A::PartialAggregate {
+        #[cfg(feature = "stats")]
+        let _measure = Measure::new(&self.stats.window_computation_ns);
+
         let inverse = self.inverse_wheel.tick().unwrap_or_default();
+
+        {
+            #[cfg(feature = "stats")]
+            let _cleanup_measure = Measure::new(&self.stats.cleanup_ns);
+            self.merge_pairs();
+        }
+
         let last_rotation = self.last_rotation.unwrap();
         let current_rotation = self
             .wheel
             .interval(Duration::seconds(self.current_secs_rotation as i64))
             .unwrap_or_default();
-
-        self.merge_pairs();
 
         // Function: combine(inverse_combine(last_rotation, slice), current_rotation);
         // ⊕((⊖(last_rotation, slice)), current_rotation)
@@ -240,12 +256,20 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
 
                 if self.wheel.watermark() == self.next_window_end {
                     if self.next_window_end == self.next_full_rotation {
-                        let window_result =
-                            self.wheel.interval(self.range_interval_duration()).unwrap();
-                        self.last_rotation = Some(window_result);
+                        {
+                            // Need to scope the drop of Measure
+                            #[cfg(feature = "stats")]
+                            let _measure = Measure::new(&self.stats.window_computation_ns);
 
-                        window_results
-                            .push((self.wheel.watermark(), Some(A::lower(window_result))));
+                            let window_result =
+                                self.wheel.interval(self.range_interval_duration()).unwrap();
+                            self.last_rotation = Some(window_result);
+
+                            window_results
+                                .push((self.wheel.watermark(), Some(A::lower(window_result))));
+                        }
+                        #[cfg(feature = "stats")]
+                        let _measure = Measure::new(&self.stats.cleanup_ns);
 
                         // If we are working with uneven pairs, we need to adjust range.
                         let next_rotation_distance = if self.pair_type.is_uneven() {
@@ -279,15 +303,23 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
     }
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)> {
         let diff = watermark.saturating_sub(self.wheel.watermark());
+        #[cfg(feature = "stats")]
+        let _measure = Measure::new(&self.stats.advance_ns);
         self.advance(Duration::milliseconds(diff as i64))
     }
     #[inline]
     fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
+        #[cfg(feature = "stats")]
+        let _measure = Measure::new(&self.stats.insert_ns);
         self.wheel.insert(entry)
     }
     /// Returns a reference to the underlying HAW
     fn wheel(&self) -> &Wheel<A> {
         &self.wheel
+    }
+    #[cfg(feature = "stats")]
+    fn print_stats(&self) {
+        println!("{:#?}", self.stats);
     }
 }
 
