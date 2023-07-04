@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-haw = { version = "0.1.0", path = "../../crates/haw" }
+haw = { version = "0.1.0", path = "../../crates/haw", features = ["stats"]}
 fiba_rs = { version = "0.1.0", path = "../../crates/fiba_rs" }
 clap = { version = "3.2", features = ["derive"] }
 fastrand = "1.8.0"

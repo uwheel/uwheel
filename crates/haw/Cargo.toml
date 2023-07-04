@@ -20,11 +20,16 @@ years_size_100 = []
 rkyv = ["dep:rkyv"]
 top_k = ["dep:hashbrown"]
 map = ["dep:hashbrown"]
+stats = ["sketches-ddsketch", "minstant", "std"]
 
 [dependencies]
 smallvec = "1.10.0"
 hashbrown = { version = "0.13", optional = true }
 rkyv = { version = "0.7.39", features = ["copy", "copy_unsafe", "smallvec"], optional = true }
+
+sketches-ddsketch = { version = "0.1", optional = true }
+minstant = { version = "0.1", optional = true }
+
 
 [dev-dependencies]
 fastrand = "1.8.0"

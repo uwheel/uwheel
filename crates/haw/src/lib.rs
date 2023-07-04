@@ -35,6 +35,8 @@ pub mod aggregator;
 /// A Map maintaining a [Wheel] per key
 #[cfg(feature = "map")]
 pub mod map;
+#[cfg(feature = "stats")]
+pub mod stats;
 /// Time utilities
 ///
 /// Heavily borrowed from the [time](https://docs.rs/time/latest/time/) crate
