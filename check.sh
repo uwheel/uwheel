@@ -18,5 +18,6 @@ cargo test --workspace --doc
 (cd crates/haw && cargo check --features "rkyv")
 (cd crates/haw && cargo check --features "top_k")
 (cd crates/haw && cargo check --features "map")
+(cd crates/haw && cargo check --features "sync")
 (cd crates/haw && cargo check --no-default-features --features "years_size_10")
 (cd crates/haw && cargo check --no-default-features --features "years_size_10, rkyv")

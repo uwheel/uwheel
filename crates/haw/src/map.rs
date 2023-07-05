@@ -1,8 +1,7 @@
 use core::{borrow::Borrow, hash::Hash, ops::Deref};
 
+use crate::{aggregator::Aggregator, Entry, Error, ReadWheelOps, RwWheel};
 use hashbrown::HashMap;
-
-use crate::{aggregator::Aggregator, Entry, Error, Wheel};
 
 /// A Map with a `Wheel` per key
 ///
@@ -12,8 +11,8 @@ where
     K: Hash + Eq,
     A: Aggregator,
 {
-    star_wheel: Wheel<A>,
-    map: HashMap<K, Wheel<A>>,
+    star_wheel: RwWheel<A>,
+    map: HashMap<K, RwWheel<A>>,
 }
 
 impl<K, A> Deref for WheelMap<K, A>
@@ -21,9 +20,9 @@ where
     K: Hash + Eq,
     A: Aggregator,
 {
-    type Target = Wheel<A>;
+    type Target = RwWheel<A>;
 
-    fn deref(&self) -> &Wheel<A> {
+    fn deref(&self) -> &RwWheel<A> {
         &self.star_wheel
     }
 }
@@ -35,25 +34,25 @@ where
 {
     pub fn new(time: u64) -> Self {
         Self {
-            star_wheel: Wheel::new(time),
+            star_wheel: RwWheel::new(time),
             map: Default::default(),
         }
     }
     #[inline]
     pub fn insert(&mut self, key: K, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
-        self.star_wheel.insert(entry)?;
+        self.star_wheel.write().insert(entry)?;
 
         let wheel = self
             .map
             .entry(key)
-            .or_insert(Wheel::new(self.star_wheel.watermark()));
+            .or_insert(RwWheel::new(self.star_wheel.read().watermark()));
 
-        wheel.insert(entry)?;
+        wheel.write().insert(entry)?;
 
         Ok(())
     }
     #[inline]
-    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&Wheel<A>>
+    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&RwWheel<A>>
     where
         K: Borrow<Q>,
         Q: Hash + Eq,
@@ -67,7 +66,7 @@ where
         }
     }
     pub fn watermark(&self) -> u64 {
-        self.star_wheel.watermark()
+        self.star_wheel.read().watermark()
     }
 }
 

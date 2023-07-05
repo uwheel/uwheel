@@ -2,10 +2,15 @@ use super::util::{create_pair_type, pairs_capacity, PairType};
 use crate::{
     aggregator::{Aggregator, InverseExt},
     time::{Duration, NumericalDuration},
-    wheels::{aggregation::combine_or_insert, WheelExt},
+    wheels::{
+        wheel::{
+            read::{aggregation::combine_or_insert, rw_impl::ReadWheel, ReadWheelOps},
+            RwWheel,
+        },
+        WheelExt,
+    },
     Entry,
     Error,
-    Wheel,
 };
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
@@ -132,7 +137,7 @@ pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
     // Inverse Wheel maintaining partial aggregates per slide
     inverse_wheel: InverseWheel<A>,
     // Regular HAW used together with inverse_wheel to answer a specific Sliding Window
-    wheel: Wheel<A>,
+    wheel: RwWheel<A>,
     // When the next window starts
     next_window_start: u64,
     // When the next window ends
@@ -165,7 +170,7 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
             pair_ticks_remaining: current_pair_len / 1000,
             in_p1: false,
             inverse_wheel: InverseWheel::with_capacity(pair_slots),
-            wheel: Wheel::new(time),
+            wheel: RwWheel::new(time),
             next_window_start: time + slide as u64,
             next_window_end: time + range as u64,
             next_full_rotation: time + range as u64,
@@ -220,6 +225,7 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
         let last_rotation = self.last_rotation.unwrap();
         let current_rotation = self
             .wheel
+            .read()
             .interval(Duration::seconds(self.current_secs_rotation as i64))
             .unwrap_or_default();
 
@@ -243,6 +249,7 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
                 // Take partial aggregates from SLIDE interval and insert into InverseWheel
                 let partial = self
                     .wheel
+                    .read()
                     .interval(self.current_pair_duration())
                     .unwrap_or_default();
 
@@ -251,22 +258,27 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
                 // Update pair metadata
                 self.update_pair_len();
 
-                self.next_pair_end = self.wheel.watermark() + self.current_pair_len as u64;
+                self.next_pair_end = self.wheel.read().watermark() + self.current_pair_len as u64;
                 self.pair_ticks_remaining = self.current_pair_duration().whole_seconds() as usize;
 
-                if self.wheel.watermark() == self.next_window_end {
+                if self.wheel.read().watermark() == self.next_window_end {
                     if self.next_window_end == self.next_full_rotation {
                         {
                             // Need to scope the drop of Measure
                             #[cfg(feature = "stats")]
                             let _measure = Measure::new(&self.stats.window_computation_ns);
 
-                            let window_result =
-                                self.wheel.interval(self.range_interval_duration()).unwrap();
+                            let window_result = self
+                                .wheel
+                                .read()
+                                .interval(self.range_interval_duration())
+                                .unwrap();
                             self.last_rotation = Some(window_result);
 
-                            window_results
-                                .push((self.wheel.watermark(), Some(A::lower(window_result))));
+                            window_results.push((
+                                self.wheel.read().watermark(),
+                                Some(A::lower(window_result)),
+                            ));
                         }
                         #[cfg(feature = "stats")]
                         let _measure = Measure::new(&self.stats.cleanup_ns);
@@ -283,7 +295,11 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
 
                         // If we have already completed a full RANGE
                         // then we need to reset the current inverse tail
-                        if (self.wheel.current_time_in_cycle().whole_milliseconds() as usize)
+                        if (self
+                            .wheel
+                            .read()
+                            .current_time_in_cycle()
+                            .whole_milliseconds() as usize)
                             > self.range
                         {
                             self.inverse_wheel.clear_tail_and_tick();
@@ -292,7 +308,8 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
                         self.merge_pairs();
                     } else {
                         let window = self.compute_window();
-                        window_results.push((self.wheel.watermark(), Some(A::lower(window))));
+                        window_results
+                            .push((self.wheel.read().watermark(), Some(A::lower(window))));
                     }
                     // next window ends at next slide (p1+p2)
                     self.next_window_end += self.slide as u64;
@@ -302,7 +319,7 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
         window_results
     }
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)> {
-        let diff = watermark.saturating_sub(self.wheel.watermark());
+        let diff = watermark.saturating_sub(self.wheel.read().watermark());
         #[cfg(feature = "stats")]
         let _measure = Measure::new(&self.stats.advance_ns);
         self.advance(Duration::milliseconds(diff as i64))
@@ -311,11 +328,11 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
     fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
         #[cfg(feature = "stats")]
         let _measure = Measure::new(&self.stats.insert_ns);
-        self.wheel.insert(entry)
+        self.wheel.write().insert(entry)
     }
     /// Returns a reference to the underlying HAW
-    fn wheel(&self) -> &Wheel<A> {
-        &self.wheel
+    fn wheel(&self) -> &ReadWheel<A> {
+        self.wheel.read()
     }
     #[cfg(feature = "stats")]
     fn print_stats(&self) {

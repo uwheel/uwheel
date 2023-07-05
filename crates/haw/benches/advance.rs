@@ -18,7 +18,7 @@ pub fn advance_time_benchmark(c: &mut Criterion) {
 fn advance_time(ticks: usize, bencher: &mut Bencher) {
     let mut time = 0;
     let ticks_as_ms = (ticks * 1000) as u64;
-    let mut wheel = Wheel::<U64SumAggregator>::new(time);
+    let mut wheel = RwWheel::<U64SumAggregator>::new(time);
     bencher.iter(|| {
         time += ticks_as_ms;
         wheel.advance_to(time);

@@ -16,18 +16,16 @@ use alloc::{boxed::Box, vec::Vec};
 use rkyv::{ser::Serializer, AlignedVec, Archive, Deserialize, Serialize};
 
 #[cfg(feature = "rkyv")]
-use crate::wheels::wheel::{DefaultSerializer, PartialAggregate};
+use crate::wheels::wheel::read::inner::{DefaultSerializer, PartialAggregate};
 
 pub(crate) mod iter;
 mod maybe;
 
 pub use maybe::MaybeWheel;
 
-use iter::Iter;
+use iter::{DrillIter, Iter};
 
-use crate::wheels::aggregation::iter::DrillIter;
-
-use super::WheelExt;
+use crate::wheels::WheelExt;
 
 /// Combine partial aggregates or insert new entry
 #[inline]
@@ -482,7 +480,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     }
 
     #[inline]
-    pub(super) fn insert_rotation_data(&mut self, data: RotationData<A>) {
+    pub(crate) fn insert_rotation_data(&mut self, data: RotationData<A>) {
         if let Some(partial_agg) = data.total {
             self.insert_head(partial_agg);
         }
@@ -494,6 +492,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// Merge two AggregationWheels of similar granularity
     ///
     /// NOTE: must ensure wheels have been advanced to the same time
+    #[allow(clippy::useless_conversion)]
     pub(crate) fn merge(&mut self, other: &Self) {
         // merge current total
         if let Some(other_total) = other.total {

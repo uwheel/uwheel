@@ -1,3 +1,4 @@
+use haw::ReadWheelOps;
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use ahash::AHashMap;
@@ -10,7 +11,13 @@ use egui::{
     ScrollArea,
     Ui,
 };
-use haw::{aggregator::U64SumAggregator, time::NumericalDuration, Entry, Wheel};
+use haw::{
+    aggregator::U64SumAggregator,
+    time::NumericalDuration,
+    wheels::wheel::read::InnerRW,
+    Entry,
+    RwWheel,
+};
 use hdrhistogram::Histogram;
 use time::OffsetDateTime;
 
@@ -137,36 +144,48 @@ pub struct HawLabels {
     pub(crate) years_ticks_label: String,
 }
 impl HawLabels {
-    pub fn new(wheel: &Wheel<DemoAggregator>) -> Self {
-        let watermark_unix_label = wheel.watermark().to_string();
-        let watermark_label = to_offset_datetime(wheel.watermark()).to_string();
-        let slots_len_label = wheel.len().to_string();
-        let remaining_ticks_label = wheel.remaining_ticks().to_string();
+    pub fn new(wheel: &RwWheel<DemoAggregator>) -> Self {
+        let watermark_unix_label = wheel.read().watermark().to_string();
+        let watermark_label = to_offset_datetime(wheel.read().watermark()).to_string();
+        let slots_len_label = wheel.read().len().to_string();
+        let remaining_ticks_label = wheel.read().remaining_ticks().to_string();
         let seconds_ticks_label = wheel
+            .read()
+            .raw()
             .seconds()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let minutes_ticks_label = wheel
+            .read()
+            .raw()
             .minutes()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let hours_ticks_label = wheel
+            .read()
+            .raw()
             .hours()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let days_ticks_label = wheel
+            .read()
+            .raw()
             .days()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let weeks_ticks_label = wheel
+            .read()
+            .raw()
             .weeks()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let years_ticks_label = wheel
+            .read()
+            .raw()
             .years()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
-        let landmark_window_label = wheel.landmark().unwrap_or(0).to_string();
+        let landmark_window_label = wheel.read().landmark().unwrap_or(0).to_string();
         Self {
             watermark_unix_label,
             watermark_label,
@@ -195,9 +214,9 @@ pub struct TemplateApp {
     //#[serde(skip)]
     //wheel: Rc<RefCell<Wheel<DemoAggregator>>>,
     #[serde(skip)]
-    wheels: AHashMap<Student, Rc<RefCell<Wheel<DemoAggregator>>>>,
+    wheels: AHashMap<Student, Rc<RefCell<RwWheel<DemoAggregator>>>>,
     #[serde(skip)]
-    star_wheel: Rc<RefCell<Wheel<DemoAggregator>>>,
+    star_wheel: Rc<RefCell<RwWheel<DemoAggregator>>>,
     timestamp: String,
     aggregate: String,
     ticks: u64,
@@ -205,18 +224,36 @@ pub struct TemplateApp {
 
 impl Default for TemplateApp {
     fn default() -> Self {
-        let wheel = Wheel::<DemoAggregator>::with_drill_down(0);
+        let wheel = RwWheel::<DemoAggregator>::with_drill_down(0);
         let mut wheels = AHashMap::default();
-        wheels.insert(Student::Max, Rc::new(RefCell::new(wheel.clone())));
-        wheels.insert(Student::Adam, Rc::new(RefCell::new(wheel.clone())));
-        wheels.insert(Student::Klas, Rc::new(RefCell::new(wheel.clone())));
-        wheels.insert(Student::Jonas, Rc::new(RefCell::new(wheel.clone())));
-        wheels.insert(Student::Sonia, Rc::new(RefCell::new(wheel.clone())));
-        wheels.insert(Student::Harald, Rc::new(RefCell::new(wheel.clone())));
+        wheels.insert(
+            Student::Max,
+            Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
+        );
+        wheels.insert(
+            Student::Adam,
+            Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
+        );
+        wheels.insert(
+            Student::Klas,
+            Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
+        );
+        wheels.insert(
+            Student::Jonas,
+            Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
+        );
+        wheels.insert(
+            Student::Harald,
+            Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
+        );
+        wheels.insert(
+            Student::Sonia,
+            Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
+        );
         let labels = HawLabels::new(&wheel);
         Self {
             wheels,
-            star_wheel: Rc::new(RefCell::new(wheel)),
+            star_wheel: Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
             labels,
             tick_granularity: Default::default(),
             plot_key: Default::default(),
@@ -238,7 +275,7 @@ impl TemplateApp {
         Default::default()
     }
     // TODO: optimise
-    fn wheels_plot(&self, wheel: Rc<RefCell<Wheel<DemoAggregator>>>, ui: &mut Ui) -> Response {
+    fn wheels_plot(&self, wheel: Rc<RefCell<RwWheel<DemoAggregator>>>, ui: &mut Ui) -> Response {
         #[cfg(not(target_arch = "wasm32"))]
         puffin::profile_function!();
 
@@ -248,11 +285,13 @@ impl TemplateApp {
         // Watermark
 
         let watermark_agg = wheel
+            .read()
+            .raw()
             .seconds()
             .map(|w| w.lower_at(0).unwrap_or(0))
             .unwrap_or(0) as f64;
-        let bar =
-            Bar::new(0.5, watermark_agg).name(to_offset_datetime(wheel.watermark()).to_string());
+        let bar = Bar::new(0.5, watermark_agg)
+            .name(to_offset_datetime(wheel.read().watermark()).to_string());
         let watermark_chart = BarChart::new(vec![bar])
             .highlight(true)
             .color(WATERMARK_COLOR)
@@ -261,7 +300,7 @@ impl TemplateApp {
 
         let mut pos = 1.5;
         let mut bars = Vec::new();
-        if let Some(seconds_wheel) = wheel.seconds() {
+        if let Some(seconds_wheel) = wheel.read().raw().seconds() {
             for i in 1..=haw::SECONDS {
                 let val = seconds_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Second));
@@ -277,7 +316,7 @@ impl TemplateApp {
 
         // MINUTES
         let mut bars = Vec::new();
-        if let Some(minutes_wheel) = wheel.minutes() {
+        if let Some(minutes_wheel) = wheel.read().raw().minutes() {
             for i in 1..=haw::MINUTES {
                 let val = minutes_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Minute));
@@ -293,7 +332,7 @@ impl TemplateApp {
 
         // HOURS
         let mut bars = Vec::new();
-        if let Some(hours_wheel) = wheel.hours() {
+        if let Some(hours_wheel) = wheel.read().raw().hours() {
             for i in 1..=haw::HOURS {
                 let val = hours_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Hour));
@@ -308,7 +347,7 @@ impl TemplateApp {
             .name("Hours");
 
         let mut bars = Vec::new();
-        if let Some(days_wheel) = wheel.days() {
+        if let Some(days_wheel) = wheel.read().raw().days() {
             for i in 1..=haw::DAYS {
                 let val = days_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Day));
@@ -323,7 +362,7 @@ impl TemplateApp {
             .name("Days");
 
         let mut bars = Vec::new();
-        if let Some(weeks_wheel) = wheel.weeks() {
+        if let Some(weeks_wheel) = wheel.read().raw().weeks() {
             for i in 1..=haw::WEEKS {
                 let val = weeks_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Week));
@@ -338,7 +377,7 @@ impl TemplateApp {
             .name("Weeks");
 
         let mut bars = Vec::new();
-        if let Some(years_wheel) = wheel.years() {
+        if let Some(years_wheel) = wheel.read().raw().years() {
             for i in 1..=haw::YEARS {
                 let val = years_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Year));
@@ -358,7 +397,7 @@ impl TemplateApp {
                 .show(ui, |_plot_ui| {})
                 .response
         };
-        let watermark_date = to_offset_datetime(wheel.watermark());
+        let watermark_date = to_offset_datetime(wheel.read().watermark());
 
         let label_fmt = move |_s: &str, val: &PlotPoint| {
             let x = val.x as usize;
@@ -402,7 +441,7 @@ impl TemplateApp {
                                         empty_plot(ui);
                                     }
                                     Some((Granularity::Minute, pos)) => {
-                                        if let Some(minutes) = wheel.minutes() {
+                                        if let Some(minutes) = wheel.read().raw().minutes() {
                                             if let Some(slots) = measure(|| minutes.drill_down(pos))
                                             {
                                                 let mut bars = Vec::new();
@@ -430,7 +469,7 @@ impl TemplateApp {
                                         }
                                     }
                                     Some((Granularity::Hour, pos)) => {
-                                        if let Some(hours) = wheel.hours() {
+                                        if let Some(hours) = wheel.read().raw().hours() {
                                             if let Some(slots) = measure(|| hours.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -457,7 +496,7 @@ impl TemplateApp {
                                         }
                                     }
                                     Some((Granularity::Day, pos)) => {
-                                        if let Some(days) = wheel.days() {
+                                        if let Some(days) = wheel.read().raw().days() {
                                             if let Some(slots) = measure(|| days.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -483,7 +522,7 @@ impl TemplateApp {
                                         }
                                     }
                                     Some((Granularity::Week, pos)) => {
-                                        if let Some(weeks) = wheel.weeks() {
+                                        if let Some(weeks) = wheel.read().raw().weeks() {
                                             if let Some(slots) = measure(|| weeks.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -509,7 +548,7 @@ impl TemplateApp {
                                         }
                                     }
                                     Some((Granularity::Year, pos)) => {
-                                        if let Some(years) = wheel.years() {
+                                        if let Some(years) = wheel.read().raw().years() {
                                             if let Some(slots) = measure(|| years.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -577,34 +616,46 @@ impl eframe::App for TemplateApp {
         } = self;
 
         let update_haw_labels =
-            |labels: &mut HawLabels, wheel: &Rc<RefCell<Wheel<DemoAggregator>>>| {
+            |labels: &mut HawLabels, wheel: &Rc<RefCell<RwWheel<DemoAggregator>>>| {
                 let wheel = wheel.borrow();
-                labels.watermark_label = to_offset_datetime(wheel.watermark()).to_string();
-                labels.watermark_unix_label = wheel.watermark().to_string();
-                labels.remaining_ticks_label = wheel.remaining_ticks().to_string();
-                labels.slots_len_label = wheel.len().to_string();
-                labels.landmark_window_label = wheel.landmark().unwrap_or(0).to_string();
+                labels.watermark_label = to_offset_datetime(wheel.read().watermark()).to_string();
+                labels.watermark_unix_label = wheel.read().watermark().to_string();
+                labels.remaining_ticks_label = wheel.read().remaining_ticks().to_string();
+                labels.slots_len_label = wheel.read().len().to_string();
+                labels.landmark_window_label = wheel.read().landmark().unwrap_or(0).to_string();
                 labels.seconds_ticks_label = wheel
+                    .read()
+                    .raw()
                     .seconds()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.minutes_ticks_label = wheel
+                    .read()
+                    .raw()
                     .minutes()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.hours_ticks_label = wheel
+                    .read()
+                    .raw()
                     .hours()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.days_ticks_label = wheel
+                    .read()
+                    .raw()
                     .days()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.weeks_ticks_label = wheel
+                    .read()
+                    .raw()
                     .weeks()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.years_ticks_label = wheel
+                    .read()
+                    .raw()
                     .years()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
@@ -686,8 +737,8 @@ impl eframe::App for TemplateApp {
                     RichText::new(
                         plot_wheel
                             .borrow()
-                            .seconds()
-                            .and_then(|w| w.interval(5))
+                            .read()
+                            .interval(5.seconds())
                             .unwrap_or(0)
                             .to_string(),
                     )
@@ -700,8 +751,8 @@ impl eframe::App for TemplateApp {
                     RichText::new(
                         plot_wheel
                             .borrow()
-                            .seconds()
-                            .and_then(|w| w.interval(15))
+                            .read()
+                            .interval(15.seconds())
                             .unwrap_or(0)
                             .to_string(),
                     )
@@ -714,8 +765,8 @@ impl eframe::App for TemplateApp {
                     RichText::new(
                         plot_wheel
                             .borrow()
-                            .seconds()
-                            .and_then(|w| w.interval(30))
+                            .read()
+                            .interval(30.seconds())
                             .unwrap_or(0)
                             .to_string(),
                     )
@@ -728,8 +779,8 @@ impl eframe::App for TemplateApp {
                     RichText::new(
                         plot_wheel
                             .borrow()
-                            .seconds()
-                            .and_then(|w| w.interval(1))
+                            .read()
+                            .interval(1.minutes())
                             .unwrap_or(0)
                             .to_string(),
                     )
@@ -742,8 +793,8 @@ impl eframe::App for TemplateApp {
                     RichText::new(
                         plot_wheel
                             .borrow()
-                            .hours()
-                            .and_then(|w| w.interval(1))
+                            .read()
+                            .interval(1.hours())
                             .unwrap_or(0)
                             .to_string(),
                     )
@@ -756,8 +807,8 @@ impl eframe::App for TemplateApp {
                     RichText::new(
                         plot_wheel
                             .borrow()
-                            .days()
-                            .and_then(|w| w.interval(1))
+                            .read()
+                            .interval(1.days())
                             .unwrap_or(0)
                             .to_string(),
                     )
@@ -766,7 +817,7 @@ impl eframe::App for TemplateApp {
             });
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Landmark Window: ").strong());
-                let landmark = measure(|| plot_wheel.borrow().landmark().unwrap_or(0));
+                let landmark = measure(|| plot_wheel.borrow().read().landmark().unwrap_or(0));
                 ui.label(RichText::new(landmark.to_string()).strong());
             });
             ui.separator();
@@ -814,12 +865,13 @@ impl eframe::App for TemplateApp {
                     (Ok(aggregate), Ok(timestamp)) => {
                         if let Err(err) = insert_wheel
                             .borrow_mut()
+                            .write()
                             .insert(Entry::new(aggregate, timestamp))
                         {
                             log.push_front(LogEntry::Red(err.to_string()));
                         } else {
                             // should not fail
-                            star_wheel.borrow_mut().insert(Entry::new(aggregate, timestamp)).unwrap();
+                            star_wheel.borrow_mut().write().insert(Entry::new(aggregate, timestamp)).unwrap();
                             log.push_front(LogEntry::Green(format!(
                                 "Inserted {} with timestamp {}",
                                 aggregate, timestamp
@@ -900,21 +952,21 @@ impl eframe::App for TemplateApp {
             ui.label(
                 RichText::new(format!(
                     "Memory Size Bytes: {}",
-                    std::mem::size_of::<Wheel<DemoAggregator>>()
+                    std::mem::size_of::<RwWheel<DemoAggregator>>()
                 ))
                 .strong(),
             );
             ui.label(
                 RichText::new(format!(
                     "Total Wheel Slots: {}",
-                    Wheel::<DemoAggregator>::TOTAL_WHEEL_SLOTS
+                    InnerRW::<DemoAggregator>::TOTAL_WHEEL_SLOTS
                 ))
                 .strong(),
             );
             ui.label(
                 RichText::new(format!(
                     "Cycle Length: {}",
-                    Wheel::<DemoAggregator>::CYCLE_LENGTH
+                    InnerRW::<DemoAggregator>::CYCLE_LENGTH
                 ))
                 .strong(),
             );
@@ -931,14 +983,14 @@ impl eframe::App for TemplateApp {
                 ui.label(RichText::new("Watermark: ").strong());
                 ui.label(RichText::new(&*labels.watermark_label).strong());
             });
-            let write_ahead_len = insert_wheel.borrow().write_ahead_len();
+            let write_ahead_len = insert_wheel.borrow_mut().write().write_ahead_len();
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Write ahead Slots: ").strong());
                 ui.label(RichText::new(write_ahead_len.to_string()).strong());
             });
             let write_ahead_ms =
                 core::time::Duration::from_secs(write_ahead_len as u64).as_millis();
-            let max_write_ahead_ts = insert_wheel.borrow().watermark() + write_ahead_ms as u64;
+            let max_write_ahead_ts = insert_wheel.borrow().read().watermark() + write_ahead_ms as u64;
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Max write ahead ts: ").strong());
                 ui.label(RichText::new(max_write_ahead_ts.to_string()).strong());
@@ -950,7 +1002,7 @@ impl eframe::App for TemplateApp {
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Cycle time: ").strong());
                 ui.label(
-                    RichText::new(insert_wheel.borrow().current_time_in_cycle().to_string()).strong(),
+                    RichText::new(insert_wheel.borrow().read().current_time_in_cycle().to_string()).strong(),
                 );
             });
             ui.horizontal(|ui| {
@@ -986,7 +1038,7 @@ impl eframe::App for TemplateApp {
 
             ui.horizontal(|ui| {
                 if ui.button("Reset").clicked() {
-                    insert_wheel.borrow_mut().clear();
+                    insert_wheel.borrow_mut().read().clear();
                     update_haw_labels(labels, &insert_wheel);
                 }
                 if ui.button("Simulate").clicked() {
@@ -996,8 +1048,8 @@ impl eframe::App for TemplateApp {
                             let student = Student::random();
                             let ts = fastrand::u64(time..time + 60000);
                             let agg = fastrand::u64(1..5);
-                            wheels.get(&student).unwrap().borrow_mut().insert(Entry::new(agg, ts)).unwrap();
-                            star_wheel.borrow_mut().insert(Entry::new(agg, ts)).unwrap();
+                            wheels.get(&student).unwrap().borrow_mut().write().insert(Entry::new(agg, ts)).unwrap();
+                            star_wheel.borrow_mut().write().insert(Entry::new(agg, ts)).unwrap();
                         }
                         for wheel in wheels.values() {
                             wheel.borrow_mut().advance(60.seconds());

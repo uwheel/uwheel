@@ -1,5 +1,9 @@
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
-use haw::{aggregator::AllAggregator, *};
+use haw::{
+    aggregator::AllAggregator,
+    wheels::wheel::{read::ReadWheelOps, Options, RwWheel},
+    *,
+};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("wheel-queries");
@@ -35,39 +39,59 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 }
 
 #[inline]
-fn random_interval(wheel: &Wheel<AllAggregator>) {
+fn random_interval(wheel: &RwWheel<AllAggregator>) {
     let pick = fastrand::usize(0..4);
     if pick == 0usize {
         assert!(wheel
+            .read()
+            .raw()
             .seconds_unchecked()
             .interval(random_seconds())
             .is_some());
     } else if pick == 1usize {
         assert!(wheel
+            .read()
+            .raw()
             .minutes_unchecked()
             .interval(random_minute())
             .is_some());
     } else if pick == 2usize {
-        assert!(wheel.hours_unchecked().interval(random_hours()).is_some());
+        assert!(wheel
+            .read()
+            .raw()
+            .hours_unchecked()
+            .interval(random_hours())
+            .is_some());
     } else {
-        assert!(wheel.days_unchecked().interval(random_days()).is_some());
+        assert!(wheel
+            .read()
+            .raw()
+            .days_unchecked()
+            .interval(random_days())
+            .is_some());
     }
 }
 #[inline]
-fn random_drill_down_interval(wheel: &Wheel<AllAggregator>) {
+fn random_drill_down_interval(wheel: &RwWheel<AllAggregator>) {
     let pick = fastrand::usize(0..3);
     if pick == 0usize {
         assert!(wheel
+            .read()
+            .raw()
             .minutes_unchecked()
             .drill_down_interval(random_minute())
             .is_some());
     } else if pick == 1usize {
         assert!(wheel
+            .read()
+            .raw()
             .hours_unchecked()
             .drill_down_interval(random_hours())
             .is_some());
     } else {
         assert!(wheel
+            .read()
+            .raw()
             .days_unchecked()
             .drill_down_interval(random_days())
             .is_some());
@@ -86,47 +110,51 @@ fn random_seconds() -> usize {
     fastrand::usize(1..59)
 }
 
-fn large_wheel() -> (Wheel<AllAggregator>, AllAggregator) {
-    let aggregator = AllAggregator;
+fn large_wheel() -> RwWheel<AllAggregator> {
     let mut time = 0;
-    let mut wheel = Wheel::with_drill_down(time);
+    let mut wheel: RwWheel<AllAggregator> =
+        RwWheel::with_options(time, Options::default().with_drill_down());
     let ticks = 604800; // 7-days as seconds
     for _ in 0..ticks {
         wheel.advance_to(time);
-        wheel.insert(Entry::new(1.0, time)).unwrap();
+        wheel.write().insert(Entry::new(1.0, time)).unwrap();
         time += 1000;
     }
-    (wheel, aggregator)
+    wheel
 }
 fn random_drill_down_interval_bench(bencher: &mut Bencher) {
-    let (wheel, _) = large_wheel();
+    let wheel = large_wheel();
     bencher.iter(|| random_drill_down_interval(&wheel));
 }
 
 fn random_interval_bench(bencher: &mut Bencher) {
-    let (wheel, _) = large_wheel();
+    let wheel = large_wheel();
     bencher.iter(|| random_interval(&wheel));
 }
 fn landmark_window_bench(bencher: &mut Bencher) {
-    let (wheel, _) = large_wheel();
+    let wheel = large_wheel();
     bencher.iter(|| {
-        assert!(wheel.landmark().is_some());
+        assert!(wheel.read().landmark().is_some());
     });
 }
 
 fn random_seconds_interval_bench(bencher: &mut Bencher) {
-    let (wheel, _) = large_wheel();
+    let wheel = large_wheel();
     bencher.iter(|| {
         assert!(wheel
+            .read()
+            .raw()
             .seconds_unchecked()
             .interval(random_seconds())
             .is_some());
     });
 }
 fn random_minutes_interval_bench(bencher: &mut Bencher) {
-    let (wheel, _) = large_wheel();
+    let wheel = large_wheel();
     bencher.iter(|| {
         assert!(wheel
+            .read()
+            .raw()
             .minutes_unchecked()
             .interval(random_minute())
             .is_some());
@@ -134,22 +162,34 @@ fn random_minutes_interval_bench(bencher: &mut Bencher) {
 }
 
 fn random_hour_interval_bench(bencher: &mut Bencher) {
-    let (wheel, _) = large_wheel();
+    let wheel = large_wheel();
     bencher.iter(|| {
-        assert!(wheel.hours_unchecked().interval(random_hours()).is_some());
+        assert!(wheel
+            .read()
+            .raw()
+            .hours_unchecked()
+            .interval(random_hours())
+            .is_some());
     });
 }
 fn random_days_interval_bench(bencher: &mut Bencher) {
-    let (wheel, _) = large_wheel();
+    let wheel = large_wheel();
     bencher.iter(|| {
-        assert!(wheel.days_unchecked().interval(random_days()).is_some());
+        assert!(wheel
+            .read()
+            .raw()
+            .days_unchecked()
+            .interval(random_days())
+            .is_some());
     });
 }
 
 fn random_minutes_drill_down_interval_bench(bencher: &mut Bencher) {
-    let (wheel, _) = large_wheel();
+    let wheel = large_wheel();
     bencher.iter(|| {
         assert!(wheel
+            .read()
+            .raw()
             .minutes_unchecked()
             .drill_down_interval(random_minute())
             .is_some());
@@ -157,18 +197,22 @@ fn random_minutes_drill_down_interval_bench(bencher: &mut Bencher) {
 }
 
 fn random_hours_drill_down_interval_bench(bencher: &mut Bencher) {
-    let (wheel, _) = large_wheel();
+    let wheel = large_wheel();
     bencher.iter(|| {
         assert!(wheel
+            .read()
+            .raw()
             .hours_unchecked()
             .drill_down_interval(random_hours())
             .is_some());
     });
 }
 fn random_days_drill_down_interval_bench(bencher: &mut Bencher) {
-    let (wheel, _) = large_wheel();
+    let wheel = large_wheel();
     bencher.iter(|| {
         assert!(wheel
+            .read()
+            .raw()
             .days_unchecked()
             .drill_down_interval(random_days())
             .is_some());

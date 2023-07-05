@@ -68,24 +68,25 @@ avg_impl!(F64AvgAggregator, f64, (f64, f64));
 
 #[cfg(test)]
 mod tests {
-    use crate::{time::NumericalDuration, Wheel, SECONDS};
+    use crate::{time::NumericalDuration, RwWheel, SECONDS};
 
     use super::*;
 
     #[test]
     fn avg_test() {
+        use crate::ReadWheelOps;
         let mut time = 0u64;
-        let mut wheel = Wheel::<U64AvgAggregator>::new(time);
+        let mut wheel = RwWheel::<U64AvgAggregator>::new(time);
 
         for _ in 0..SECONDS + 1 {
             wheel.advance_to(time);
             let entry = crate::Entry::new(10, time);
-            wheel.insert(entry).unwrap();
+            wheel.write().insert(entry).unwrap();
             time += 1000; // increase by 1 second
         }
         // partial aggregate
-        assert_eq!(wheel.interval(15.seconds()), Some((150, 15)));
+        assert_eq!(wheel.read().interval(15.seconds()), Some((150, 15)));
         // full aggregate
-        assert_eq!(wheel.interval_and_lower(15.seconds()), Some(10));
+        assert_eq!(wheel.read().interval_and_lower(15.seconds()), Some(10));
     }
 }

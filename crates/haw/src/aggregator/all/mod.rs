@@ -109,23 +109,24 @@ impl Aggregator for AllAggregator {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Wheel, SECONDS};
+    use crate::{time::Duration, RwWheel, SECONDS};
 
     use super::*;
 
     #[test]
     fn all_test() {
         let mut time = 0u64;
-        let mut wheel = Wheel::<AllAggregator>::new(time);
+        let mut wheel = RwWheel::<AllAggregator>::new(time);
 
         for _ in 0..SECONDS + 1 {
             wheel.advance_to(time);
             let entry = crate::Entry::new(1.0, time);
-            wheel.insert(entry).unwrap();
+            wheel.write().insert(entry).unwrap();
             time += 1000; // increase by 1 second
         }
 
-        let all: AggState = wheel.minutes().unwrap().lower_at(1).unwrap();
+        use crate::ReadWheelOps;
+        let all: AggState = wheel.read().interval(Duration::minutes(1i64)).unwrap();
         assert_eq!(all.sum(), 60.0);
         assert_eq!(all.count(), 60);
         assert_eq!(all.max_value(), 1.0);
