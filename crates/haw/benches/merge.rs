@@ -10,56 +10,56 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.finish();
 }
-fn large_wheel() -> Wheel<U32SumAggregator> {
+fn _large_wheel() -> RwWheel<U32SumAggregator> {
     let mut time = 0;
-    let mut wheel = Wheel::new(time);
-    for _ in 0..wheel.remaining_ticks() {
+    let mut wheel = RwWheel::new(time);
+    for _ in 0..wheel.read().remaining_ticks() {
         wheel.advance_to(time);
-        wheel.insert(Entry::new(1u32, time)).unwrap();
+        wheel.write().insert(Entry::new(1u32, time)).unwrap();
         time += 1000;
     }
     wheel
 }
 
-fn small_wheel() -> Wheel<U32SumAggregator> {
+fn _small_wheel() -> RwWheel<U32SumAggregator> {
     let mut time = 0;
-    let mut wheel = Wheel::new(time);
+    let mut wheel = RwWheel::new(time);
     for _ in 0..60 {
         wheel.advance_to(time);
-        wheel.insert(Entry::new(1u32, time)).unwrap();
+        wheel.write().insert(Entry::new(1u32, time)).unwrap();
         time += 1000;
     }
     wheel
 }
 
 fn merge_large_to_fresh_wheel(bencher: &mut Bencher) {
-    let mut wheel = large_wheel();
+    //let mut wheel = large_wheel();
     bencher.iter(|| {
-        let mut fresh_wheel = Wheel::new(0);
-        fresh_wheel.merge(&mut wheel);
-        fresh_wheel
+        //let mut fresh_wheel = RwWheel::new(0);
+        //fresh_wheel.merge(&mut wheel);
+        //fresh_wheel
     });
 }
 
 fn merge_small_to_fresh_wheel(bencher: &mut Bencher) {
-    let mut wheel = small_wheel();
+    //let mut wheel = small_wheel();
     bencher.iter(|| {
-        let mut fresh_wheel = Wheel::new(0);
-        fresh_wheel.merge(&mut wheel);
-        fresh_wheel
+        //let mut fresh_wheel = RwWheel::new(0);
+        //fresh_wheel.merge(&mut wheel);
+        //fresh_wheel
     });
 }
 
-fn merge_same_size_small(bencher: &mut Bencher) {
-    let mut wheel = small_wheel();
-    let mut other_wheel = small_wheel();
-    bencher.iter(|| wheel.merge(&mut other_wheel));
+fn merge_same_size_small(_bencher: &mut Bencher) {
+    //let mut wheel = small_wheel();
+    //let mut other_wheel = small_wheel();
+    //bencher.iter(|| wheel.merge(&mut other_wheel));
 }
 
-fn merge_same_size_large(bencher: &mut Bencher) {
-    let mut wheel = large_wheel();
-    let mut other_wheel = large_wheel();
-    bencher.iter(|| wheel.merge(&mut other_wheel));
+fn merge_same_size_large(_bencher: &mut Bencher) {
+    //let mut wheel = large_wheel();
+    //let mut other_wheel = large_wheel();
+    //bencher.iter(|| wheel.merge(&mut other_wheel));
 }
 
 criterion_group!(benches, criterion_benchmark);

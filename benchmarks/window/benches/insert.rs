@@ -170,12 +170,12 @@ fn insert_batch_wheel(seconds: u64, bencher: &mut Bencher) {
     bencher.iter_batched(
         || {
             let time = 0;
-            Wheel::<U64SumAggregator>::new(time)
+            RwWheel::<U64SumAggregator>::new(time)
         },
         |mut wheel| {
             for _i in 0..NUM_ELEMENTS {
                 let timestamp = random_timestamp(seconds);
-                wheel.insert(Entry::new(1, timestamp)).unwrap();
+                wheel.write().insert(Entry::new(1, timestamp)).unwrap();
             }
             wheel
         },
@@ -187,13 +187,13 @@ fn _insert_out_of_order(percentage: f32, bencher: &mut Bencher) {
     bencher.iter_batched(
         || {
             let time = 0;
-            let wheel = Wheel::<U64SumAggregator>::new(time);
+            let wheel = RwWheel::<U64SumAggregator>::new(time);
             let timestamps = _generate_out_of_order_timestamps(NUM_ELEMENTS, percentage);
             (wheel, timestamps)
         },
         |(mut wheel, timestamps)| {
             for timestamp in timestamps {
-                wheel.insert(Entry::new(1, timestamp)).unwrap();
+                wheel.write().insert(Entry::new(1, timestamp)).unwrap();
             }
             wheel
         },
@@ -310,17 +310,17 @@ fn insert_fiba_cg_bfinger8_random(seconds: u64, bencher: &mut Bencher) {
 }
 
 fn insert_wheel_random(seconds: u64, bencher: &mut Bencher) {
-    let mut wheel = Wheel::<U64SumAggregator>::new(0);
+    let mut wheel = RwWheel::<U64SumAggregator>::new(0);
     bencher.iter(|| {
         let ts = random_timestamp(seconds);
-        wheel.insert(Entry::new(1, ts)).unwrap();
+        wheel.write().insert(Entry::new(1, ts)).unwrap();
     });
 }
 
 fn insert_same_timestamp_wheel(bencher: &mut Bencher) {
-    let mut wheel = Wheel::<U64SumAggregator>::new(0);
+    let mut wheel = RwWheel::<U64SumAggregator>::new(0);
     bencher.iter(|| {
-        wheel.insert(Entry::new(1, 1000)).unwrap();
+        wheel.write().insert(Entry::new(1, 1000)).unwrap();
     });
 }
 

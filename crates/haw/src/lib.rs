@@ -47,19 +47,23 @@ pub mod wheels;
 use aggregator::Aggregator;
 
 pub use wheels::wheel::{
-    DaysWheel,
-    HoursWheel,
-    MinutesWheel,
-    SecondsWheel,
-    WeeksWheel,
-    Wheel,
-    YearsWheel,
-    DAYS,
-    HOURS,
-    MINUTES,
-    SECONDS,
-    WEEKS,
-    YEARS,
+    read::{
+        rw_impl::ReadWheel,
+        DaysWheel,
+        HoursWheel,
+        MinutesWheel,
+        ReadWheelOps,
+        SecondsWheel,
+        WeeksWheel,
+        YearsWheel,
+        DAYS,
+        HOURS,
+        MINUTES,
+        SECONDS,
+        WEEKS,
+        YEARS,
+    },
+    RwWheel,
 };
 
 /// A type containing error variants that may arise when using a wheel

@@ -52,6 +52,8 @@ To implement your own custom aggregator, you have to implement the [Aggregator](
 ## Feature Flags
 - `std` (_enabled by default_)
     - Enables features that rely on the standard library
+- `sync` (_implicitly enables `std`_)
+    - Enables a sync version of ``ReadWheel`` that can be accessed across threads
 - `years_size_10` (_enabled by default_)
     - Enables rolling up aggregates across 10 years
 - `years_size_100`
@@ -64,15 +66,15 @@ To implement your own custom aggregator, you have to implement the [Aggregator](
 ## Examples
 
 ```rust
-use haw::{aggregator::U32SumAggregator, time::NumericalDuration, Entry, Wheel};
+use haw::{aggregator::U32SumAggregator, time::NumericalDuration, Entry, RwWheel, ReadWheelOps};
 
 // Initial start time (represented as milliseconds)
 let mut time = 0;
-let mut wheel: Wheel<U32SumAggregator> = Wheel::new(time);
+let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(time);
 
 // Fill the seconds wheel (60 slots)
 for _ in 0..60 {
-    wheel.insert(Entry::new(1u32, time)).unwrap();
+    wheel.write().insert(Entry::new(1u32, time)).unwrap();
     time += 1000;
 }
 
@@ -80,13 +82,13 @@ for _ in 0..60 {
 wheel.advance(60.seconds());
 
 // interval of last 1 minute
-assert_eq!(wheel.interval(1.minutes()), Some(60));
+assert_eq!(wheel.read().interval(1.minutes()), Some(60));
 
 // full range of data
-assert_eq!(wheel.landmark(), Some(60));
+assert_eq!(wheel.read().landmark(), Some(60));
 
 // interval of last 15 seconds
-assert_eq!(wheel.interval(15.seconds()), Some(15));
+assert_eq!(wheel.read().interval(15.seconds()), Some(15));
 ```
 
 ## License

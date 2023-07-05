@@ -3,7 +3,7 @@ use core::time::Duration as CoreDuration;
 use crate::{aggregator::Aggregator, time::Duration, Entry, Error};
 use smallvec::SmallVec;
 
-use super::WheelExt;
+use crate::wheels::WheelExt;
 
 /// Number of write ahead slots
 pub const DEFAULT_WRITE_AHEAD_SLOTS: usize = INLINE_WRITE_AHEAD_SLOTS;
@@ -59,6 +59,9 @@ impl<A: Aggregator> WriteAheadWheel<A> {
             None
         }
     }
+    pub(crate) fn watermark_mut(&mut self) -> &mut u64 {
+        &mut self.watermark
+    }
 
     /// Returns `true` if the wheel is empty or `false` if it contains slots
     #[inline]
@@ -73,7 +76,7 @@ impl<A: Aggregator> WriteAheadWheel<A> {
 
     /// How many write ahead slots are available
     #[inline]
-    pub(crate) fn write_ahead_len(&self) -> usize {
+    pub fn write_ahead_len(&self) -> usize {
         self.capacity - self.len()
     }
 

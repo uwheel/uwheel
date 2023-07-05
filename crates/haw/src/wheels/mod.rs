@@ -1,31 +1,12 @@
-/// Aggregation Wheel based on a fixed-sized circular buffer
-///
-/// This is the core data structure that is reused between different hierarchies (e.g., seconds, minutes, hours, days)
-pub mod aggregation;
-/// Hierarchical Aggregation Wheel (HAW)
+/// The core Reader-Writer Wheel
 pub mod wheel;
 /// Wheels that are tailored for Sliding Window Aggregation
 pub mod window;
-/// Write-ahead Wheel
-pub mod write_ahead;
 
-pub use aggregation::{AggregationWheel, MaybeWheel};
-pub use wheel::Wheel;
-
-/// Returns the index in the underlying buffer for a given logical element index.
-#[inline]
-fn wrap_index(index: usize, size: usize) -> usize {
-    // size is always a power of 2
-    debug_assert!(size.is_power_of_two());
-    index & (size - 1)
-}
-
-/// Calculate the number of elements left to be read in the buffer
-#[inline]
-fn count(tail: usize, head: usize, size: usize) -> usize {
-    // size is always a power of 2
-    (head.wrapping_sub(tail)) & (size - 1)
-}
+pub use wheel::{
+    read::aggregation::{AggregationWheel, MaybeWheel},
+    RwWheel,
+};
 
 /// Extension trait for becoming a wheel
 pub trait WheelExt {
@@ -67,4 +48,19 @@ pub trait WheelExt {
     fn wrap_sub(&self, idx: usize, subtrahend: usize) -> usize {
         wrap_index(idx.wrapping_sub(subtrahend), self.capacity())
     }
+}
+
+/// Returns the index in the underlying buffer for a given logical element index.
+#[inline]
+fn wrap_index(index: usize, size: usize) -> usize {
+    // size is always a power of 2
+    debug_assert!(size.is_power_of_two());
+    index & (size - 1)
+}
+
+/// Calculate the number of elements left to be read in the buffer
+#[inline]
+fn count(tail: usize, head: usize, size: usize) -> usize {
+    // size is always a power of 2
+    (head.wrapping_sub(tail)) & (size - 1)
 }

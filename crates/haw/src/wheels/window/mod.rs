@@ -1,8 +1,10 @@
-use crate::{aggregator::Aggregator, time::Duration, Entry, Error, Wheel};
+use crate::{aggregator::Aggregator, time::Duration, Entry, Error};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
+/// A Eager Window Wheel which utilises higher-order aggregates more efficiently (requires invertable aggregation function)
 pub mod eager;
+/// A Lazy Window Wheel which uses a Pairs Wheel + RwWheel to compute periodic window aggregation
 pub mod lazy;
 pub mod util;
 
@@ -10,6 +12,8 @@ pub mod util;
 pub mod stats;
 
 pub use util::{eager_window_query_cost, lazy_window_query_cost, window_wheel};
+
+use super::wheel::read::rw_impl::ReadWheel;
 
 /// Interface a Window Wheel must implement
 pub trait WindowWheel<A: Aggregator> {
@@ -24,7 +28,7 @@ pub trait WindowWheel<A: Aggregator> {
     /// Returns window computations if they have been triggered
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)>;
     /// Returns a reference to the underlying HAW
-    fn wheel(&self) -> &Wheel<A>;
+    fn wheel(&self) -> &ReadWheel<A>;
     #[cfg(feature = "stats")]
     fn print_stats(&self);
 }

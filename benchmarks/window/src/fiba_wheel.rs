@@ -73,7 +73,7 @@ impl WindowWheel<U64SumAggregator> for BFingerTwoWheel {
         self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
         Ok(())
     }
-    fn wheel(&self) -> &haw::Wheel<U64SumAggregator> {
+    fn wheel(&self) -> &haw::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
     fn print_stats(&self) {
@@ -144,7 +144,7 @@ impl WindowWheel<U64SumAggregator> for BFingerFourWheel {
         self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
         Ok(())
     }
-    fn wheel(&self) -> &haw::Wheel<U64SumAggregator> {
+    fn wheel(&self) -> &haw::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
     fn print_stats(&self) {
@@ -219,7 +219,7 @@ impl WindowWheel<U64SumAggregator> for BFingerEightWheel {
         self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
         Ok(())
     }
-    fn wheel(&self) -> &haw::Wheel<U64SumAggregator> {
+    fn wheel(&self) -> &haw::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
     fn print_stats(&self) {
@@ -362,7 +362,7 @@ impl WindowWheel<U64SumAggregator> for PairsFiBA {
         self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
         Ok(())
     }
-    fn wheel(&self) -> &haw::Wheel<U64SumAggregator> {
+    fn wheel(&self) -> &haw::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
     fn print_stats(&self) {

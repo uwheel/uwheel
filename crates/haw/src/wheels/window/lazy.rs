@@ -5,13 +5,18 @@ use super::{
 use crate::{
     aggregator::{Aggregator, InverseExt},
     time::{Duration, NumericalDuration},
-    wheels::{aggregation::combine_or_insert, WheelExt},
+    wheels::{
+        wheel::{
+            read::{aggregation::combine_or_insert, rw_impl::ReadWheel, ReadWheelOps},
+            RwWheel,
+        },
+        WheelExt,
+    },
     Entry,
     Error,
-    Wheel,
 };
 
-use crate::wheels::aggregation::iter::Iter;
+use crate::wheels::wheel::read::aggregation::iter::Iter;
 use core::iter::Iterator;
 
 #[cfg(not(feature = "std"))]
@@ -130,7 +135,7 @@ pub struct LazyWindowWheel<A: Aggregator> {
     current_pair_len: usize,
     pair_type: PairType,
     pairs_wheel: PairsWheel<A>,
-    wheel: Wheel<A>,
+    wheel: RwWheel<A>,
     // When the next window starts
     next_window_start: u64,
     // When the next window ends
@@ -159,7 +164,7 @@ impl<A: Aggregator> LazyWindowWheel<A> {
             pair_ticks_remaining: current_pair_len / 1000,
             pair_type,
             pairs_wheel: PairsWheel::with_capacity(pairs_capacity(range, slide)),
-            wheel: Wheel::new(time),
+            wheel: RwWheel::new(time),
             next_window_start,
             next_window_end: time + range as u64,
             next_pair_start,
@@ -205,6 +210,7 @@ impl<A: Aggregator> WindowWheel<A> for LazyWindowWheel<A> {
                 // pair ended
                 let partial = self
                     .wheel
+                    .read()
                     .interval(self.current_pair_duration())
                     .unwrap_or_default();
 
@@ -213,14 +219,14 @@ impl<A: Aggregator> WindowWheel<A> for LazyWindowWheel<A> {
                 // Update pair metadata
                 self.update_pair_len();
 
-                self.next_pair_end = self.wheel.watermark() + self.current_pair_len as u64;
+                self.next_pair_end = self.wheel.read().watermark() + self.current_pair_len as u64;
                 self.pair_ticks_remaining = self.current_pair_duration().whole_seconds() as usize;
 
-                if self.wheel.watermark() == self.next_window_end {
+                if self.wheel.read().watermark() == self.next_window_end {
                     // Window computation:
                     let window = self.compute_window();
 
-                    window_results.push((self.wheel.watermark(), Some(A::lower(window))));
+                    window_results.push((self.wheel.read().watermark(), Some(A::lower(window))));
 
                     #[cfg(feature = "stats")]
                     let _measure = Measure::new(&self.stats.cleanup_ns);
@@ -242,7 +248,7 @@ impl<A: Aggregator> WindowWheel<A> for LazyWindowWheel<A> {
         window_results
     }
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)> {
-        let diff = watermark.saturating_sub(self.wheel.watermark());
+        let diff = watermark.saturating_sub(self.wheel.read().watermark());
         #[cfg(feature = "stats")]
         let _measure = Measure::new(&self.stats.advance_ns);
         self.advance(Duration::milliseconds(diff as i64))
@@ -251,11 +257,11 @@ impl<A: Aggregator> WindowWheel<A> for LazyWindowWheel<A> {
     fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
         #[cfg(feature = "stats")]
         let _measure = Measure::new(&self.stats.insert_ns);
-        self.wheel.insert(entry)
+        self.wheel.write().insert(entry)
     }
     /// Returns a reference to the underlying HAW
-    fn wheel(&self) -> &Wheel<A> {
-        &self.wheel
+    fn wheel(&self) -> &ReadWheel<A> {
+        self.wheel.read()
     }
     #[cfg(feature = "stats")]
     fn print_stats(&self) {

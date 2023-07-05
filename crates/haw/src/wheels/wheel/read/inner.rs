@@ -6,7 +6,6 @@ use core::{
         Option,
         Option::{None, Some},
     },
-    result::Result,
 };
 
 #[cfg(feature = "rkyv")]
@@ -24,20 +23,16 @@ use rkyv::{
     AlignedVec,
 };
 #[cfg(feature = "rkyv")]
-use rkyv::{with::Skip, Archive, Deserialize, Infallible, Serialize};
+use rkyv::{Archive, Deserialize, Infallible, Serialize};
 
 #[cfg(all(feature = "rkyv", not(feature = "std")))]
 use alloc::boxed::Box;
 
-use crate::{
-    aggregator::Aggregator,
-    time,
-    wheels::{aggregation::AggregationWheel, write_ahead::WriteAheadWheel, MaybeWheel},
-    Entry,
-    Error,
+use super::{
+    super::write::WriteAheadWheel,
+    aggregation::{AggregationWheel, MaybeWheel},
 };
-
-use super::write_ahead::DEFAULT_WRITE_AHEAD_SLOTS;
+use crate::{aggregator::Aggregator, time};
 
 pub const SECONDS: usize = 60;
 pub const MINUTES: usize = 60;
@@ -86,41 +81,26 @@ cfg_rkyv! {
     >;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Options {
     drill_down: bool,
-    write_ahead_capacity: usize,
-}
-impl Default for Options {
-    fn default() -> Self {
-        Self {
-            drill_down: false,
-            write_ahead_capacity: DEFAULT_WRITE_AHEAD_SLOTS,
-        }
-    }
 }
 impl Options {
     pub fn with_drill_down(mut self) -> Self {
         self.drill_down = true;
         self
     }
-    pub fn with_write_ahead(mut self, capacity: usize) -> Self {
-        self.write_ahead_capacity = capacity;
-        self
-    }
 }
 
-/// Hierarchical Aggregation Wheel (HAW)
+/// Inner Hierarchical Aggregation Wheels
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[derive(Clone, Debug)]
-pub struct Wheel<A>
+pub struct InnerRW<A>
 where
     A: Aggregator,
 {
     watermark: u64,
-    #[cfg_attr(feature = "rkyv", with(Skip), omit_bounds)]
-    waw: WriteAheadWheel<A>,
     #[cfg_attr(feature = "rkyv", omit_bounds)]
     seconds_wheel: MaybeWheel<SECONDS_CAP, A>,
     #[cfg_attr(feature = "rkyv", omit_bounds)]
@@ -134,7 +114,7 @@ where
     _marker: A::PartialAggregate,
 }
 
-impl<A> Wheel<A>
+impl<A> InnerRW<A>
 where
     A: Aggregator,
 {
@@ -163,23 +143,20 @@ where
     ///
     /// Time is represented as milliseconds
     pub fn new(time: u64) -> Self {
-        Self::base(time, WriteAheadWheel::with_watermark(time))
+        Self::base(time)
     }
 
     pub fn with_options(time: u64, options: Options) -> Self {
-        let waw: WriteAheadWheel<A> =
-            WriteAheadWheel::with_capacity_and_watermark(options.write_ahead_capacity, time);
         if options.drill_down {
-            Self::base_drill_down(time, waw)
+            Self::base_drill_down(time)
         } else {
-            Self::base(time, waw)
+            Self::base(time)
         }
     }
 
-    fn base(time: u64, waw: WriteAheadWheel<A>) -> Self {
+    fn base(time: u64) -> Self {
         Self {
             watermark: time,
-            waw,
             seconds_wheel: MaybeWheel::with_capacity(SECONDS),
             minutes_wheel: MaybeWheel::with_capacity(MINUTES),
             hours_wheel: MaybeWheel::with_capacity(HOURS),
@@ -190,10 +167,9 @@ where
             _marker: Default::default(),
         }
     }
-    fn base_drill_down(time: u64, waw: WriteAheadWheel<A>) -> Self {
+    fn base_drill_down(time: u64) -> Self {
         Self {
             watermark: time,
-            waw,
             seconds_wheel: MaybeWheel::with_capacity_and_drill_down(SECONDS),
             minutes_wheel: MaybeWheel::with_capacity_and_drill_down(MINUTES),
             hours_wheel: MaybeWheel::with_capacity_and_drill_down(HOURS),
@@ -225,11 +201,6 @@ where
         self.len() == Self::TOTAL_WHEEL_SLOTS
     }
 
-    /// Returns how many slots (seconds) in front of the current watermark that can be written to
-    pub fn write_ahead_len(&self) -> usize {
-        self.waw.write_ahead_len()
-    }
-
     /// Returns how many ticks (seconds) are left until the wheel is fully utilised
     pub fn remaining_ticks(&self) -> u64 {
         Self::TOTAL_SECS_IN_WHEEL - self.current_time_in_cycle().whole_seconds() as u64
@@ -249,32 +220,31 @@ where
     }
 
     /// Advance the watermark of the wheel by the given [time::Duration]
-    #[inline]
-    pub fn advance(&mut self, duration: time::Duration) {
+    #[inline(always)]
+    pub fn advance(&mut self, duration: time::Duration, waw: &mut WriteAheadWheel<A>) {
         let mut ticks: usize = duration.whole_seconds() as usize;
 
         // helper fn to tick N times
-        let tick_n = |ticks: usize, haw: &mut Self| {
+        let tick_n = |ticks: usize, haw: &mut Self, waw: &mut WriteAheadWheel<A>| {
             for _ in 0..ticks {
-                haw.tick();
+                haw.tick(waw);
             }
         };
 
         if ticks <= SECONDS {
-            tick_n(ticks, self);
+            tick_n(ticks, self, waw);
         } else if ticks <= Self::CYCLE_LENGTH_SECS as usize {
             // force full rotation
             let rem_ticks = self.seconds_wheel.get_or_insert().ticks_remaining();
-            tick_n(rem_ticks, self);
+            tick_n(rem_ticks, self, waw);
             ticks -= rem_ticks;
 
             // calculate how many fast_ticks we can perform
             let fast_ticks = ticks.saturating_div(SECONDS);
 
-            // TODO: verify Write-ahead wheel logic
             if fast_ticks == 0 {
                 // if fast ticks is 0, then tick normally
-                tick_n(ticks, self);
+                tick_n(ticks, self, waw);
             } else {
                 // perform a number of fast ticks
                 // NOTE: currently a fast tick is a full SECONDS rotation.
@@ -282,11 +252,12 @@ where
                 for _ in 0..fast_ticks {
                     self.seconds_wheel.get_or_insert().fast_skip_tick();
                     self.watermark += fast_tick_ms;
-                    self.tick();
+                    *waw.watermark_mut() += fast_tick_ms;
+                    self.tick(waw);
                     ticks -= SECONDS;
                 }
                 // tick any remaining ticks
-                tick_n(ticks, self);
+                tick_n(ticks, self, waw);
             }
         } else {
             // Exceeds full cycle length, clear all!
@@ -296,9 +267,9 @@ where
 
     /// Advances the time of the wheel aligned by the lowest unit (Second)
     #[inline]
-    pub fn advance_to(&mut self, watermark: u64) {
+    pub fn advance_to(&mut self, watermark: u64, waw: &mut WriteAheadWheel<A>) {
         let diff = watermark.saturating_sub(self.watermark());
-        self.advance(time::Duration::milliseconds(diff as i64));
+        self.advance(time::Duration::milliseconds(diff as i64), waw);
     }
 
     /// Clears the state of all wheels
@@ -309,12 +280,6 @@ where
         self.days_wheel.clear();
         self.weeks_wheel.clear();
         self.years_wheel.clear();
-    }
-
-    /// Inserts entry into the wheel
-    #[inline]
-    pub fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
-        self.waw.insert(entry)
     }
 
     /// Return the current watermark as milliseconds for this wheel
@@ -517,13 +482,13 @@ where
     ///
     /// In the worst case, a tick may cause a rotation of all the wheels in the hierarchy.
     #[inline]
-    fn tick(&mut self) {
+    fn tick(&mut self, waw: &mut WriteAheadWheel<A>) {
         self.watermark += Self::SECOND_AS_MS;
 
         let seconds = self.seconds_wheel.get_or_insert();
 
         // Tick the Write-ahead wheel, if new entry insert into head of seconds wheel
-        if let Some(window) = self.waw.tick() {
+        if let Some(window) = waw.tick() {
             let partial_agg = A::freeze(window);
             seconds.insert_head(partial_agg)
         }
@@ -624,9 +589,9 @@ where
 
         // make sure both wheels are aligned by time
         if self.watermark() > other_watermark {
-            other.advance_to(self.watermark());
+            other.advance_to(self.watermark(), &mut WriteAheadWheel::default());
         } else {
-            self.advance_to(other_watermark);
+            self.advance_to(other_watermark, &mut WriteAheadWheel::default());
         }
 
         // merge all aggregation wheels
@@ -755,316 +720,5 @@ where
         let mut maybe: MaybeWheel<YEARS_CAP, A> =
             archived.years_wheel.deserialize(&mut Infallible).unwrap();
         maybe.wheel.take()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{aggregator::U32SumAggregator, time::*, wheels::WheelExt, *};
-
-    #[test]
-    fn interval_test() {
-        let mut time = 0;
-        let mut wheel = Wheel::<U32SumAggregator>::new(time);
-        wheel.advance(1.seconds());
-
-        assert!(wheel.insert(Entry::new(1u32, 1000)).is_ok());
-        assert!(wheel.insert(Entry::new(5u32, 5000)).is_ok());
-        assert!(wheel.insert(Entry::new(11u32, 11000)).is_ok());
-
-        wheel.advance(5.seconds());
-        assert_eq!(wheel.watermark(), 6000);
-
-        let seconds_wheel = wheel.seconds_unchecked();
-        let expected: &[_] = &[&None, &Some(1u32), &None, &None, &None, &Some(5)];
-        let res: Vec<&Option<u32>> = seconds_wheel.iter().collect();
-        assert_eq!(&res[..], expected);
-
-        assert_eq!(seconds_wheel.interval(5), Some(6u32));
-        assert_eq!(seconds_wheel.interval(1), Some(5u32));
-
-        time = 12000;
-        wheel.advance_to(time);
-
-        assert!(wheel.insert(Entry::new(100u32, 61000)).is_ok());
-        assert!(wheel.insert(Entry::new(100u32, 63000)).is_ok());
-        assert!(wheel.insert(Entry::new(100u32, 67000)).is_ok());
-
-        // go pass seconds wheel
-        time = 65000;
-        wheel.advance_to(time);
-
-        //assert_eq!(wheel.interval(63.seconds()), Some(117u32));
-        //assert_eq!(wheel.interval(64.seconds()), Some(217u32));
-        // TODO: this does not work properly.
-        // assert_eq!(wheel.interval(120.seconds()), Some(217u32));
-        //assert_eq!(wheel.interval(2.days()), None);
-    }
-
-    #[test]
-    fn mixed_timestamp_insertions_test() {
-        let mut time = 1000;
-        let mut wheel = Wheel::<U32SumAggregator>::new(time);
-        wheel.advance_to(time);
-
-        assert!(wheel.insert(Entry::new(1u32, 1000)).is_ok());
-        assert!(wheel.insert(Entry::new(5u32, 5000)).is_ok());
-        assert!(wheel.insert(Entry::new(11u32, 11000)).is_ok());
-
-        time = 6000; // new watermark
-        wheel.advance_to(time);
-
-        assert_eq!(wheel.seconds_unchecked().total(), Some(6u32));
-        // check we get the same result by combining the range of last 6 seconds
-        assert_eq!(
-            wheel.seconds_unchecked().combine_and_lower_range(0..5),
-            Some(6u32)
-        );
-    }
-
-    #[test]
-    fn write_ahead_test() {
-        let mut time = 0;
-        let mut wheel = Wheel::<U32SumAggregator>::new(time);
-
-        time += 58000; // 58 seconds
-        wheel.advance_to(time);
-        // head: 58
-        // tail:0
-        assert_eq!(wheel.write_ahead_len(), 64);
-
-        // current watermark is 58000, this should be rejected
-        assert!(wheel
-            .insert(Entry::new(11u32, 11000))
-            .unwrap_err()
-            .is_late());
-
-        // current watermark is 58000, with max_write_ahead_ts 128000.
-        // should overflow
-        assert!(wheel
-            .insert(Entry::new(11u32, 158000))
-            .unwrap_err()
-            .is_overflow());
-    }
-
-    #[test]
-    fn full_cycle_test() {
-        let mut wheel = Wheel::<U32SumAggregator>::new(0);
-
-        let ticks = wheel.remaining_ticks() - 1;
-        wheel.advance(time::Duration::seconds(ticks as i64));
-
-        // one tick away from full cycle clear
-        assert_eq!(wheel.seconds_wheel.rotation_count(), SECONDS - 1);
-        assert_eq!(wheel.minutes_wheel.rotation_count(), MINUTES - 1);
-        assert_eq!(wheel.hours_wheel.rotation_count(), HOURS - 1);
-        assert_eq!(wheel.days_wheel.rotation_count(), DAYS - 1);
-        assert_eq!(wheel.weeks_wheel.rotation_count(), WEEKS - 1);
-        assert_eq!(wheel.years_wheel.rotation_count(), YEARS - 1);
-
-        // force full cycle clear
-        wheel.advance(1.seconds());
-
-        // rotation count of all wheels should be zero
-        assert_eq!(wheel.seconds_wheel.rotation_count(), 0);
-        assert_eq!(wheel.minutes_wheel.rotation_count(), 0);
-        assert_eq!(wheel.hours_wheel.rotation_count(), 0);
-        assert_eq!(wheel.days_wheel.rotation_count(), 0);
-        assert_eq!(wheel.weeks_wheel.rotation_count(), 0);
-        assert_eq!(wheel.years_wheel.rotation_count(), 0);
-
-        // Verify len of all wheels
-        assert_eq!(wheel.seconds_unchecked().len(), SECONDS);
-        assert_eq!(wheel.minutes_unchecked().len(), MINUTES);
-        assert_eq!(wheel.hours_unchecked().len(), HOURS);
-        assert_eq!(wheel.days_unchecked().len(), DAYS);
-        assert_eq!(wheel.weeks_unchecked().len(), WEEKS);
-        assert_eq!(wheel.years_unchecked().len(), YEARS);
-
-        assert!(wheel.is_full());
-        assert!(!wheel.is_empty());
-        assert!(wheel.landmark().is_none());
-    }
-
-    #[test]
-    fn drill_down_test() {
-        use crate::{aggregator::U64SumAggregator, wheels::aggregation::DrillCut};
-
-        let mut time = 0;
-        let mut wheel = Wheel::<U64SumAggregator>::with_drill_down(time);
-
-        let days_as_secs = time::Duration::days((DAYS + 1) as i64).whole_seconds();
-
-        for _ in 0..days_as_secs {
-            let entry = Entry::new(1u64, time);
-            wheel.insert(entry).unwrap();
-            time += 1000; // increase by 1 second
-            wheel.advance_to(time);
-        }
-
-        // can't drill down on seconds wheel as it is the first wheel
-        assert!(wheel.seconds_unchecked().drill_down(1).is_none());
-
-        // Drill down on each wheel (e.g., minute, hours, days) and confirm summed results
-
-        let slots = wheel.minutes_unchecked().drill_down(1).unwrap();
-        assert_eq!(slots.iter().sum::<u64>(), 60u64);
-
-        let slots = wheel.hours_unchecked().drill_down(1).unwrap();
-        assert_eq!(slots.iter().sum::<u64>(), 60u64 * 60);
-
-        let slots = wheel.days_unchecked().drill_down(1).unwrap();
-        assert_eq!(slots.iter().sum::<u64>(), 60u64 * 60 * 24);
-
-        // drill down range of 3 and confirm combined aggregates
-        let decoded = wheel.minutes_unchecked().combine_drill_down_range(..3);
-        assert_eq!(decoded[0], 3);
-        assert_eq!(decoded[1], 3);
-        assert_eq!(decoded[59], 3);
-
-        // test cut of last 5 seconds of last 1 minute + first 10 aggregates of last 2 min
-        let decoded = wheel
-            .minutes_unchecked()
-            .drill_down_cut(
-                DrillCut {
-                    slot: 1,
-                    range: 55..,
-                },
-                DrillCut {
-                    slot: 2,
-                    range: ..10,
-                },
-            )
-            .unwrap();
-        assert_eq!(decoded.len(), 15);
-        let sum = decoded.iter().sum::<u64>();
-        assert_eq!(sum, 15u64);
-
-        // drill down whole of minutes wheel
-        let decoded = wheel.minutes_unchecked().combine_drill_down_range(..);
-        let sum = decoded.iter().sum::<u64>();
-        assert_eq!(sum, 3600u64);
-    }
-
-    #[test]
-    fn drill_down_holes_test() {
-        let mut time = 0;
-        let mut wheel = Wheel::<U32SumAggregator>::with_drill_down(time);
-
-        for _ in 0..30 {
-            let entry = Entry::new(1u32, time);
-            wheel.insert(entry).unwrap();
-            time += 2000; // increase by 2 seconds
-            wheel.advance_to(time);
-        }
-
-        wheel.advance_to(time);
-
-        // confirm there are "holes" as we bump time by 2 seconds above
-        let decoded = wheel.minutes_unchecked().drill_down(1).unwrap();
-        assert_eq!(decoded[0], 1);
-        assert_eq!(decoded[1], 0);
-        assert_eq!(decoded[2], 1);
-        assert_eq!(decoded[3], 0);
-
-        assert_eq!(decoded[58], 1);
-        assert_eq!(decoded[59], 0);
-    }
-
-    #[test]
-    fn merge_test() {
-        let time = 0;
-        let mut wheel = Wheel::<U32SumAggregator>::new(time);
-
-        let entry = Entry::new(1u32, 5000);
-        wheel.insert(entry).unwrap();
-
-        wheel.advance(7.days());
-
-        let fresh_wheel_time = 0;
-        let mut fresh_wheel = Wheel::new(fresh_wheel_time);
-        fresh_wheel.merge(&mut wheel);
-
-        assert_eq!(fresh_wheel.watermark(), wheel.watermark());
-        assert_eq!(fresh_wheel.landmark(), wheel.landmark());
-        assert_eq!(fresh_wheel.remaining_ticks(), wheel.remaining_ticks());
-    }
-
-    #[cfg(feature = "drill_down")]
-    #[test]
-    fn merge_drill_down_test() {
-        let mut time = 0;
-        let mut wheel = Wheel::<U32SumAggregator>::with_drill_down(time);
-
-        for _ in 0..30 {
-            let entry = Entry::new(1u32, time);
-            wheel.insert(entry).unwrap();
-            time += 2000; // increase by 2 seconds
-            wheel.advance_to(time);
-        }
-
-        wheel.advance_to(time);
-
-        let mut time = 0;
-        let mut other_wheel = Wheel::<U32SumAggregator>::with_drill_down(time);
-
-        for _ in 0..30 {
-            let entry = Entry::new(1u32, time);
-            other_wheel.insert(entry).unwrap();
-            time += 2000; // increase by 2 seconds
-            other_wheel.advance_to(time);
-        }
-
-        other_wheel.advance_to(time);
-
-        // merge other_wheel into ´wheel´
-        wheel.merge(&mut other_wheel);
-
-        // same as drill_down_holes test but confirm that drill down slots have be merged between wheels
-        let decoded = wheel.minutes_unchecked().drill_down(1).unwrap();
-        assert_eq!(decoded[0], 2);
-        assert_eq!(decoded[1], 0);
-        assert_eq!(decoded[2], 2);
-        assert_eq!(decoded[3], 0);
-
-        assert_eq!(decoded[58], 2);
-        assert_eq!(decoded[59], 0);
-    }
-
-    #[cfg(all(feature = "rkyv", feature = "std"))]
-    #[test]
-    fn serde_test() {
-        let time = 1000;
-        let wheel: Wheel<U32SumAggregator> = Wheel::new(time);
-
-        let mut raw_wheel = wheel.as_bytes();
-
-        for _ in 0..3 {
-            let mut wheel = Wheel::<U32SumAggregator>::from_bytes(&raw_wheel).unwrap();
-            wheel.insert(Entry::new(1u32, time + 100)).unwrap();
-            raw_wheel = wheel.as_bytes();
-        }
-
-        assert!(Wheel::<U32SumAggregator>::from_bytes(&raw_wheel).is_ok());
-
-        // TODO: fix WaW serialization
-        /*
-        time += 1000;
-        wheel.advance_to(time);
-
-        assert_eq!(
-            wheel.seconds_unchecked().combine_and_lower_range(..),
-            Some(3u32)
-        );
-
-        let raw_wheel = wheel.as_bytes();
-
-        // deserialize seconds wheel only and confirm same query works
-        let seconds_wheel =
-            Wheel::<U32SumAggregator>::seconds_wheel_from_bytes(&raw_wheel).unwrap();
-
-        assert_eq!(seconds_wheel.combine_and_lower_range(..), Some(3u32));
-        */
     }
 }

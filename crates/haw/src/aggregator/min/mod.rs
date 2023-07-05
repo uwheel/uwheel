@@ -52,19 +52,20 @@ min_impl!(F64MinAggregator, f64, f64);
 
 #[cfg(test)]
 mod tests {
-    use crate::{time::NumericalDuration, Entry, Wheel};
+    use crate::{time::NumericalDuration, Entry, RwWheel};
 
     use super::*;
 
     #[test]
     fn min_test() {
-        let mut wheel = Wheel::<U64MinAggregator>::new(0);
-        wheel.insert(Entry::new(1, 1000)).unwrap();
-        wheel.insert(Entry::new(5, 2000)).unwrap();
-        wheel.insert(Entry::new(10, 3000)).unwrap();
+        use crate::ReadWheelOps;
+        let mut wheel = RwWheel::<U64MinAggregator>::new(0);
+        wheel.write().insert(Entry::new(1, 1000)).unwrap();
+        wheel.write().insert(Entry::new(5, 2000)).unwrap();
+        wheel.write().insert(Entry::new(10, 3000)).unwrap();
         wheel.advance(3.seconds());
-        assert_eq!(wheel.interval_and_lower(3.seconds()), Some(1));
+        assert_eq!(wheel.read().interval_and_lower(3.seconds()), Some(1));
         wheel.advance(1.seconds());
-        assert_eq!(wheel.interval_and_lower(3.seconds()), Some(1));
+        assert_eq!(wheel.read().interval_and_lower(3.seconds()), Some(1));
     }
 }
