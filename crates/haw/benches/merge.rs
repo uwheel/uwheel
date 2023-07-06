@@ -10,7 +10,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.finish();
 }
-fn _large_wheel() -> RwWheel<U32SumAggregator> {
+fn large_wheel() -> RwWheel<U32SumAggregator> {
     let mut time = 0;
     let mut wheel = RwWheel::new(time);
     for _ in 0..wheel.read().remaining_ticks() {
@@ -21,7 +21,7 @@ fn _large_wheel() -> RwWheel<U32SumAggregator> {
     wheel
 }
 
-fn _small_wheel() -> RwWheel<U32SumAggregator> {
+fn small_wheel() -> RwWheel<U32SumAggregator> {
     let mut time = 0;
     let mut wheel = RwWheel::new(time);
     for _ in 0..60 {
@@ -33,33 +33,33 @@ fn _small_wheel() -> RwWheel<U32SumAggregator> {
 }
 
 fn merge_large_to_fresh_wheel(bencher: &mut Bencher) {
-    //let mut wheel = large_wheel();
+    let wheel = large_wheel();
     bencher.iter(|| {
-        //let mut fresh_wheel = RwWheel::new(0);
-        //fresh_wheel.merge(&mut wheel);
-        //fresh_wheel
+        let fresh_wheel = RwWheel::new(0);
+        fresh_wheel.read().merge(wheel.read());
+        fresh_wheel
     });
 }
 
 fn merge_small_to_fresh_wheel(bencher: &mut Bencher) {
-    //let mut wheel = small_wheel();
+    let wheel = small_wheel();
     bencher.iter(|| {
-        //let mut fresh_wheel = RwWheel::new(0);
-        //fresh_wheel.merge(&mut wheel);
-        //fresh_wheel
+        let fresh_wheel = RwWheel::new(0);
+        fresh_wheel.read().merge(wheel.read());
+        fresh_wheel
     });
 }
 
-fn merge_same_size_small(_bencher: &mut Bencher) {
-    //let mut wheel = small_wheel();
-    //let mut other_wheel = small_wheel();
-    //bencher.iter(|| wheel.merge(&mut other_wheel));
+fn merge_same_size_small(bencher: &mut Bencher) {
+    let wheel = small_wheel();
+    let other_wheel = small_wheel();
+    bencher.iter(|| wheel.read().merge(other_wheel.read()));
 }
 
-fn merge_same_size_large(_bencher: &mut Bencher) {
-    //let mut wheel = large_wheel();
-    //let mut other_wheel = large_wheel();
-    //bencher.iter(|| wheel.merge(&mut other_wheel));
+fn merge_same_size_large(bencher: &mut Bencher) {
+    let wheel = large_wheel();
+    let other_wheel = large_wheel();
+    bencher.iter(|| wheel.read().merge(other_wheel.read()));
 }
 
 criterion_group!(benches, criterion_benchmark);

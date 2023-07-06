@@ -1,0 +1,19 @@
+[package]
+name = "olap"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+duckdb = { version = "0.8.1", features = ["bundled"] }
+haw = { workspace = true, features = ["sync", "stats"] }
+clap.workspace = true
+fastrand.workspace = true
+hdrhistogram.workspace = true
+minstant.workspace = true
+sketches-ddsketch.workspace = true
+
+
+[dev-dependencies]
+fastrand = "1.8.0"
+rand = "0.8.5"
+criterion = "0.4"

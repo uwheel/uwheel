@@ -10,12 +10,12 @@ eframe = { version = "0.22.0", default-features = false, features = [
     "glow",          # Use the glow rendering backend. Alternative: "wgpu".
     "persistence",   # Enable restoring app state when restarting the app.
 ] }
-haw = { path = "../haw" }
+haw.workspace = true
+fastrand.workspace = true
+hdrhistogram.workspace = true
 ahash = { version = "0.8.2", default-features = false, features = ["std"] }
 time = { version = "0.3.17", default-features = false }
 tracing = "0.1.37"
-fastrand = "1.8.0"
-hdrhistogram = "7.5.2"
 
 # You only need serde if you want app persistence:
 serde = { version = "1", features = ["derive"] }

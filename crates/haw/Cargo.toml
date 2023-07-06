@@ -30,17 +30,17 @@ hashbrown = { version = "0.13", optional = true }
 rkyv = { version = "0.7.39", features = ["copy", "copy_unsafe", "smallvec"], optional = true }
 
 # Stats 
-sketches-ddsketch = { version = "0.1", optional = true }
-minstant = { version = "0.1", optional = true }
+sketches-ddsketch = { workspace = true,  optional = true }
+minstant = { workspace = true, optional = true }
 
 
 [dev-dependencies]
-fastrand = "1.8.0"
-rand = "0.8.5"
-criterion = "0.4"
+fastrand.workspace = true
+rand.workspace = true
+criterion.workspace = true
+fiba_rs.workspace = true
+clap.workspace = true
 lz4_flex = { version = "0.11", default-features = false }
-fiba_rs = { version = "0.1.0", path = "../fiba_rs"}
-clap = { version = "3.2", features = ["derive"] }
 zipf = "7.0.0"
 
 [[example]]
@@ -65,9 +65,9 @@ harness = false
 name = "queries"
 harness = false
 
-#[[bench]]
-#name = "merge"
-#harness = false
+[[bench]]
+name = "merge"
+harness = false
 
 [[bench]]
 name = "serde"

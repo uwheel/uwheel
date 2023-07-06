@@ -13,7 +13,7 @@ use window::{fiba_wheel, TimestampGenerator};
 struct Args {
     #[clap(short, long, value_parser, default_value_t = 1000)]
     windows: u64,
-    #[clap(short, long, value_parser, default_value_t = 100000)]
+    #[clap(short, long, value_parser, default_value_t = 10000)]
     events_per_sec: u64,
     #[clap(short, long, value_parser, default_value_t = 30)]
     max_distance: u64,
@@ -83,8 +83,8 @@ fn main() {
         cg_bfinger_eight_wheel,
         &args,
     );
-    let fiba_pairs_wheel = fiba_wheel::PairsFiBA::new(0, range, slide);
-    run("FiBA Pairs Wheel SUM", seconds, fiba_pairs_wheel, &args);
+    //let fiba_pairs_wheel = fiba_wheel::PairsFiBA::new(0, range, slide);
+    //run("FiBA Pairs Wheel SUM", seconds, fiba_pairs_wheel, &args);
 }
 
 fn run(id: &str, seconds: u64, mut window: impl WindowWheel<U64SumAggregator>, args: &Args) {
@@ -113,11 +113,6 @@ fn run(id: &str, seconds: u64, mut window: impl WindowWheel<U64SumAggregator>, a
         }
     }
     let runtime = full.elapsed();
-    println!(
-        "{} ran at {} ops/s (took {:.2}s)",
-        id,
-        (seconds * events_per_sec) as f64 / runtime.as_secs_f64(),
-        runtime.as_secs_f64(),
-    );
+    println!("{} (took {:.2}s)", id, runtime.as_secs_f64(),);
     window.print_stats();
 }
