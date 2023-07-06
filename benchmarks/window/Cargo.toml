@@ -4,15 +4,18 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-haw = { version = "0.1.0", path = "../../crates/haw", features = ["stats"]}
-fiba_rs = { version = "0.1.0", path = "../../crates/fiba_rs" }
-clap = { version = "3.2", features = ["derive"] }
-fastrand = "1.8.0"
+haw = { workspace = true, features = ["stats"] }
+fiba_rs.workspace = true
+clap.workspace = true
+fastrand.workspace = true
+hdrhistogram.workspace = true
+minstant.workspace = true
+sketches-ddsketch.workspace = true
 
 [dev-dependencies]
-fastrand = "1.8.0"
-rand = "0.8.5"
-criterion = "0.4"
+rand.workspace = true
+criterion.workspace = true
+fastrand.workspace = true
 
 [[bench]]
 name = "insert"

@@ -722,3 +722,10 @@ where
         maybe.wheel.take()
     }
 }
+#[cfg(feature = "sync")]
+#[allow(unsafe_code)]
+unsafe impl<A: Aggregator> Send for InnerRW<A> {}
+
+#[cfg(feature = "sync")]
+#[allow(unsafe_code)]
+unsafe impl<A: Aggregator> Sync for InnerRW<A> {}

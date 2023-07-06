@@ -3,7 +3,7 @@ use minstant::Instant;
 use sketches_ddsketch::{Config, DDSketch};
 use std::rc::Rc;
 
-pub(crate) fn sketch_percentiles(sketch: &DDSketch) -> Percentiles {
+pub fn sketch_percentiles(sketch: &DDSketch) -> Percentiles {
     Percentiles {
         count: sketch.count(),
         min: sketch.min().unwrap_or(0.0),
