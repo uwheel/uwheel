@@ -6,8 +6,8 @@ use crate::{
     aggregator::{Aggregator, InverseExt},
     time::{Duration, NumericalDuration},
     wheels::{
-        wheel::{
-            read::{aggregation::combine_or_insert, rw_impl::ReadWheel, ReadWheelOps},
+        rw::{
+            read::{aggregation::combine_or_insert, ReadWheel},
             RwWheel,
         },
         WheelExt,
@@ -16,7 +16,7 @@ use crate::{
     Error,
 };
 
-use crate::wheels::wheel::read::aggregation::iter::Iter;
+use crate::wheels::rw::read::aggregation::iter::Iter;
 use core::iter::Iterator;
 
 #[cfg(not(feature = "std"))]

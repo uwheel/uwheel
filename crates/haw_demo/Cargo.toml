@@ -1,7 +1,8 @@
 [package]
 name = "haw_demo"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+
 
 [dependencies]
 eframe = { version = "0.22.0", default-features = false, features = [

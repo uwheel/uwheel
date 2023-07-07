@@ -74,7 +74,6 @@ mod tests {
 
     #[test]
     fn avg_test() {
-        use crate::ReadWheelOps;
         let mut time = 0u64;
         let mut wheel = RwWheel::<U64AvgAggregator>::new(time);
 

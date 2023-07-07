@@ -1,9 +1,15 @@
+/// Reader Wheel
+///
+/// Single reader or multi-reader with the ``sync`` feature enabled.
 pub mod read;
+/// Writer Wheel
+///
+/// Optimised for a single writer
 pub mod write;
 
-use crate::{aggregator::Aggregator, time, wheels::wheel::read::ReadWheelOps};
+use crate::{aggregator::Aggregator, time};
 use core::fmt::Debug;
-use read::rw_impl::ReadWheel;
+use read::ReadWheel;
 use write::{WriteAheadWheel, DEFAULT_WRITE_AHEAD_SLOTS};
 
 #[derive(Debug, Clone)]
@@ -72,6 +78,10 @@ impl<A: Aggregator> RwWheel<A> {
     /// Returns a reference to the underlying ReadWheel
     pub fn read(&self) -> &ReadWheel<A> {
         &self.read
+    }
+    /// Merges another read wheel with same size into this one
+    pub fn merge_read_wheel(&self, other: &mut ReadWheel<A>) {
+        self.read().merge(other);
     }
     /// Returns the current watermark of this wheel
     pub fn watermark(&self) -> u64 {
@@ -269,7 +279,7 @@ mod tests {
 
     #[test]
     fn drill_down_test() {
-        use crate::{aggregator::U64SumAggregator, wheels::wheel::read::aggregation::DrillCut};
+        use crate::{aggregator::U64SumAggregator, wheels::rw::read::aggregation::DrillCut};
 
         let mut time = 0;
         let mut wheel = RwWheel::<U64SumAggregator>::with_drill_down(time);

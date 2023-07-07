@@ -54,10 +54,8 @@ To implement your own custom aggregator, you have to implement the [Aggregator](
     - Enables features that rely on the standard library
 - `sync` (_implicitly enables `std`_)
     - Enables a sync version of ``ReadWheel`` that can be accessed across threads
-- `years_size_10` (_enabled by default_)
-    - Enables rolling up aggregates across 10 years
-- `years_size_100`
-    - Enables rolling up aggregates across 100 years
+- `stats` (_implicitly enables `std`_)
+    - Enables recording of latencies for various operations
 - `top_k`
     - Enables top_k aggregation using the [hashbrown](https://github.com/rust-lang/hashbrown) crate.
 - `rkyv`
@@ -66,7 +64,7 @@ To implement your own custom aggregator, you have to implement the [Aggregator](
 ## Examples
 
 ```rust
-use haw::{aggregator::U32SumAggregator, time::NumericalDuration, Entry, RwWheel, ReadWheelOps};
+use haw::{aggregator::U32SumAggregator, time::NumericalDuration, Entry, RwWheel};
 
 // Initial start time (represented as milliseconds)
 let mut time = 0;

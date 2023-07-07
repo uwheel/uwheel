@@ -1,11 +1,11 @@
 [package]
 name = "haw"
 version = "0.1.0"
-edition = "2021"
 categories = ["index", "temporal warehousing", "streaming", "no-std"]
 authors = ["Max Meldrum <max@meldrum.se>"]
 readme = "../../README.md"
-license = "Apache-2.0 & MIT"
+edition.workspace = true
+license.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
@@ -13,10 +13,8 @@ targets = []
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["years_size_10", "std"]
+default = ["std"]
 std = ["rkyv?/std"]
-years_size_10 = []
-years_size_100 = []
 rkyv = ["dep:rkyv"]
 top_k = ["dep:hashbrown"]
 map = ["dep:hashbrown"]
@@ -27,10 +25,14 @@ sync = ["parking_lot", "std"]
 smallvec = "1.10.0"
 parking_lot = { version = "0.12", optional = true }
 hashbrown = { version = "0.13", optional = true }
-rkyv = { version = "0.7.39", features = ["copy", "copy_unsafe", "smallvec"], optional = true }
+rkyv = { version = "0.7.39", features = [
+    "copy",
+    "copy_unsafe",
+    "smallvec",
+], optional = true }
 
 # Stats 
-sketches-ddsketch = { workspace = true,  optional = true }
+sketches-ddsketch = { workspace = true, optional = true }
 minstant = { workspace = true, optional = true }
 
 
@@ -47,6 +49,10 @@ zipf = "7.0.0"
 name = "serde"
 path = "examples/serde.rs"
 required-features = ["rkyv", "std"]
+
+[[example]]
+name = "memory"
+path = "examples/memory.rs"
 
 [[example]]
 name = "map_bench"

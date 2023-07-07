@@ -7,15 +7,6 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-#[cfg(not(any(feature = "years_size_10", feature = "years_size_100")))]
-core::compile_error!(r#"one of ["years_size_10", "years_size_100"] features must be enabled"#);
-
-#[cfg(all(feature = "years_size_10", feature = "years_size_100"))]
-core::compile_error!(
-    "\"years_size_10\" and \"years_size_100\" are mutually-exclusive features. You may need to set \
-    `default-features = false` or compile with `--no-default-features`."
-);
-
 #[doc(hidden)]
 #[macro_use]
 pub mod macros;
@@ -46,13 +37,12 @@ pub mod wheels;
 
 use aggregator::Aggregator;
 
-pub use wheels::wheel::{
+pub use wheels::rw::{
     read::{
-        rw_impl::ReadWheel,
         DaysWheel,
         HoursWheel,
         MinutesWheel,
-        ReadWheelOps,
+        ReadWheel,
         SecondsWheel,
         WeeksWheel,
         YearsWheel,

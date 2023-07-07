@@ -224,6 +224,7 @@ impl WindowWheel<U64SumAggregator> for BFingerEightWheel {
     }
     fn print_stats(&self) {
         println!("{:#?}", self.stats);
+        println!("FiBA Size {}", self.fiba.size());
     }
 }
 

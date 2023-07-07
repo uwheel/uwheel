@@ -1,9 +1,9 @@
 /// The core Reader-Writer Wheel
-pub mod wheel;
+pub mod rw;
 /// Wheels that are tailored for Sliding Window Aggregation
 pub mod window;
 
-pub use wheel::{
+pub use rw::{
     read::aggregation::{AggregationWheel, MaybeWheel},
     RwWheel,
 };
@@ -18,7 +18,7 @@ pub trait WheelExt {
         self.tail() == self.head()
     }
 
-    /// Returns the current number of used slots (includes empty NONE slots as well)
+    /// Returns the current number of used slots
     fn len(&self) -> usize {
         count(self.tail(), self.head(), self.capacity())
     }

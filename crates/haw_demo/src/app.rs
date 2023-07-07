@@ -1,4 +1,3 @@
-use haw::ReadWheelOps;
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use ahash::AHashMap;
@@ -14,7 +13,7 @@ use egui::{
 use haw::{
     aggregator::U64SumAggregator,
     time::NumericalDuration,
-    wheels::wheel::read::InnerRW,
+    wheels::rw::read::InnerRW,
     Entry,
     RwWheel,
 };

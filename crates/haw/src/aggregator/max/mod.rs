@@ -58,7 +58,6 @@ mod tests {
 
     #[test]
     fn max_test() {
-        use crate::ReadWheelOps;
         let mut wheel = RwWheel::<U64MaxAggregator>::new(0);
         wheel.write().insert(Entry::new(1, 1000)).unwrap();
         wheel.write().insert(Entry::new(5, 2000)).unwrap();

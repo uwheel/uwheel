@@ -1,6 +1,6 @@
 use core::{borrow::Borrow, hash::Hash, ops::Deref};
 
-use crate::{aggregator::Aggregator, Entry, Error, ReadWheelOps, RwWheel};
+use crate::{aggregator::Aggregator, Entry, Error, RwWheel};
 use hashbrown::HashMap;
 
 /// A Map with a `Wheel` per key

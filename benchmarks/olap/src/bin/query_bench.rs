@@ -2,7 +2,7 @@ use minstant::Instant;
 
 use clap::Parser;
 use duckdb::Result;
-use haw::{aggregator::AllAggregator, time, Entry, ReadWheel, ReadWheelOps, RwWheel};
+use haw::{aggregator::AllAggregator, time, Entry, ReadWheel, RwWheel};
 use hdrhistogram::Histogram;
 use olap::*;
 use std::time::Duration;

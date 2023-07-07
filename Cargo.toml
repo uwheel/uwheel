@@ -10,7 +10,6 @@ authors = ["Max Meldrum <max@meldrum.se>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
-
 [profile.release]
 opt-level = 2 # fast and small wasm
 
