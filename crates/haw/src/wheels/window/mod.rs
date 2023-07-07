@@ -13,7 +13,7 @@ pub mod stats;
 
 pub use util::{eager_window_query_cost, lazy_window_query_cost, window_wheel};
 
-use super::wheel::read::rw_impl::ReadWheel;
+use super::rw::read::ReadWheel;
 
 /// Interface a Window Wheel must implement
 pub trait WindowWheel<A: Aggregator> {

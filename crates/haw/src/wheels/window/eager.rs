@@ -3,8 +3,8 @@ use crate::{
     aggregator::{Aggregator, InverseExt},
     time::{Duration, NumericalDuration},
     wheels::{
-        wheel::{
-            read::{aggregation::combine_or_insert, rw_impl::ReadWheel, ReadWheelOps},
+        rw::{
+            read::{aggregation::combine_or_insert, ReadWheel},
             RwWheel,
         },
         WheelExt,

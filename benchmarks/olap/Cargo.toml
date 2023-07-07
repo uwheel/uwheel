@@ -1,7 +1,7 @@
 [package]
 name = "olap"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 duckdb = { version = "0.8.1", features = ["bundled"] }
@@ -14,6 +14,6 @@ sketches-ddsketch.workspace = true
 
 
 [dev-dependencies]
-fastrand = "1.8.0"
-rand = "0.8.5"
-criterion = "0.4"
+fastrand.workspace = true
+rand.workspace = true
+criterion.workspace = true

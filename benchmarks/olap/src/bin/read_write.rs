@@ -1,6 +1,6 @@
 use clap::{ArgEnum, Parser};
 use duckdb::Result;
-use haw::{aggregator::AllAggregator, time, Entry, ReadWheelOps, RwWheel};
+use haw::{aggregator::AllAggregator, time, Entry, RwWheel};
 use minstant::Instant;
 use olap::*;
 use sketches_ddsketch::{Config, DDSketch};

@@ -5,7 +5,13 @@ use haw::{
     wheels::window::{eager, eager_window_query_cost, lazy, lazy_window_query_cost, WindowWheel},
     Entry,
 };
-use std::time::Instant;
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Instant,
+};
 use window::{fiba_wheel, TimestampGenerator};
 
 #[derive(Parser, Debug)]
@@ -15,7 +21,7 @@ struct Args {
     windows: u64,
     #[clap(short, long, value_parser, default_value_t = 10000)]
     events_per_sec: u64,
-    #[clap(short, long, value_parser, default_value_t = 30)]
+    #[clap(short, long, value_parser, default_value_t = 5)]
     max_distance: u64,
     #[clap(short, long, value_parser, default_value_t = 30)]
     range: u64,
@@ -40,7 +46,8 @@ fn main() {
         range.whole_seconds() as u64,
         slide.whole_seconds() as u64,
     );
-    dbg!(seconds);
+    let inserts = seconds * args.events_per_sec;
+    dbg!((seconds, inserts));
     dbg!(lazy_window_query_cost(range, slide));
     dbg!(eager_window_query_cost(range, slide));
 
@@ -56,7 +63,38 @@ fn main() {
         .with_slide(slide)
         .build();
 
+    let gate = Arc::new(AtomicBool::new(true));
+    let read_wheel = eager_wheel.wheel().clone();
+    let inner_gate = gate.clone();
+    let handle = std::thread::spawn(move || {
+        let now = Instant::now();
+        let mut counter = 0;
+        while inner_gate.load(Ordering::Relaxed) {
+            // Execute queries on random granularities
+            let pick = fastrand::usize(0..3);
+            if pick == 0 {
+                let _res = std::hint::black_box(
+                    read_wheel.interval(Duration::seconds(fastrand::i64(1..60))),
+                );
+            } else if pick == 1 {
+                let _res = std::hint::black_box(
+                    read_wheel.interval(Duration::minutes(fastrand::i64(1..60))),
+                );
+            } else {
+                let _res = std::hint::black_box(
+                    read_wheel.interval(Duration::hours(fastrand::i64(1..24))),
+                );
+            }
+            counter += 1;
+        }
+        println!(
+            "Concurrent Read task ran at {} Mops/s",
+            (counter as f64 / now.elapsed().as_secs_f64()) as u64 / 1_000_000
+        );
+    });
     run("Eager Wheel SUM", seconds, eager_wheel, &args);
+    gate.store(false, Ordering::Relaxed);
+    handle.join().unwrap();
 
     /*
     let cg_bfinger_two_wheel = fiba_wheel::BFingerTwoWheel::new(0, range, slide);
@@ -99,7 +137,7 @@ fn run(id: &str, seconds: u64, mut window: impl WindowWheel<U64SumAggregator>, a
     let mut ts_generator =
         TimestampGenerator::new(0, Duration::seconds(max_distance as i64), ooo_degree as f32);
     let full = Instant::now();
-    for _i_ in 0..seconds {
+    for _i in 0..seconds {
         for _i in 0..events_per_sec {
             window
                 .insert(Entry::new(1, ts_generator.timestamp()))

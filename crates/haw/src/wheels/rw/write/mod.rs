@@ -28,10 +28,10 @@ impl<A: Aggregator> Default for WriteAheadWheel<A> {
 }
 
 impl<A: Aggregator> WriteAheadWheel<A> {
-    pub fn with_watermark(watermark: u64) -> Self {
+    pub(super) fn with_watermark(watermark: u64) -> Self {
         Self::with_capacity_and_watermark(DEFAULT_WRITE_AHEAD_SLOTS, watermark)
     }
-    pub fn with_capacity_and_watermark(capacity: usize, watermark: u64) -> Self {
+    pub(super) fn with_capacity_and_watermark(capacity: usize, watermark: u64) -> Self {
         assert_capacity!(capacity);
         Self {
             capacity,
@@ -46,7 +46,7 @@ impl<A: Aggregator> WriteAheadWheel<A> {
     }
 
     #[inline]
-    pub fn tick(&mut self) -> Option<A::MutablePartialAggregate> {
+    pub(super) fn tick(&mut self) -> Option<A::MutablePartialAggregate> {
         self.watermark += Duration::seconds(1i64).whole_milliseconds() as u64;
         // bump head
         self.head = self.wrap_add(self.head, 1);
@@ -59,7 +59,7 @@ impl<A: Aggregator> WriteAheadWheel<A> {
             None
         }
     }
-    pub(crate) fn watermark_mut(&mut self) -> &mut u64 {
+    pub(super) fn watermark_mut(&mut self) -> &mut u64 {
         &mut self.watermark
     }
 
@@ -82,7 +82,7 @@ impl<A: Aggregator> WriteAheadWheel<A> {
 
     /// Attempts to write `entry` into the Wheel
     #[inline]
-    pub fn write_ahead(&mut self, addend: u64, data: A::Input) {
+    fn write_ahead(&mut self, addend: u64, data: A::Input) {
         let slot_idx = self.slot_idx_forward_from_head(addend as usize);
         self.combine_or_lift(slot_idx, data);
     }

@@ -1,10 +1,10 @@
 [package]
 name = "window"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
-haw = { workspace = true, features = ["stats"] }
+haw = { workspace = true, features = ["stats", "sync"] }
 fiba_rs.workspace = true
 clap.workspace = true
 fastrand.workspace = true
@@ -20,4 +20,3 @@ fastrand.workspace = true
 [[bench]]
 name = "insert"
 harness = false
-

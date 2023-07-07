@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 use haw::{
     aggregator::AllAggregator,
-    wheels::wheel::{read::ReadWheelOps, Options, RwWheel},
+    wheels::rw::{Options, RwWheel},
     *,
 };
 

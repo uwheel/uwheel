@@ -1,32 +1,26 @@
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
-use haw::*;
 use arbitrary::Arbitrary;
-use haw::aggregator::AllAggregator;
-use haw::Wheel;
+use haw::{aggregator::AllAggregator, RwWheel, *};
+use libfuzzer_sys::fuzz_target;
 
 #[derive(Debug, Arbitrary)]
 enum Op {
     Insert(f64, u64),
     Advance(u64),
-    Range(u64, u64),
 }
 
 fuzz_target!(|ops: Vec<Op>| {
     let time = 0u64;
-    let mut wheel: Wheel<AllAggregator> = Wheel::new(time);
+    let mut wheel: RwWheel<AllAggregator> = RwWheel::new(time);
 
     for op in ops {
         match op {
             Op::Insert(data, timestamp) => {
-                let _ = wheel.insert(Entry::new(data, timestamp));
+                let _ = wheel.write().insert(Entry::new(data, timestamp));
             }
             Op::Advance(watermark) => {
                 wheel.advance_to(watermark);
-            }
-            Op::Range(start, end) => {
-                //let _ = wheel.range(start..end);
             }
         }
     }

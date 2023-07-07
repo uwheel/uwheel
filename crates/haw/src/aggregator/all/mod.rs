@@ -125,7 +125,6 @@ mod tests {
             time += 1000; // increase by 1 second
         }
 
-        use crate::ReadWheelOps;
         let all: AggState = wheel.read().interval(Duration::minutes(1i64)).unwrap();
         assert_eq!(all.sum(), 60.0);
         assert_eq!(all.count(), 60);

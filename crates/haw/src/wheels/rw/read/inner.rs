@@ -39,11 +39,7 @@ pub const MINUTES: usize = 60;
 pub const HOURS: usize = 24;
 pub const DAYS: usize = 7;
 pub const WEEKS: usize = 52;
-
-#[cfg(feature = "years_size_10")]
 pub const YEARS: usize = 10;
-#[cfg(feature = "years_size_100")]
-pub const YEARS: usize = 100;
 
 // Default Wheel Capacities (power of two)
 const SECONDS_CAP: usize = 64;
