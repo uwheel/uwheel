@@ -13,7 +13,7 @@ use egui::{
 use haw::{
     aggregator::U64SumAggregator,
     time::NumericalDuration,
-    wheels::rw::read::InnerRW,
+    wheels::rw::read::Haw,
     Entry,
     RwWheel,
 };
@@ -958,14 +958,14 @@ impl eframe::App for TemplateApp {
             ui.label(
                 RichText::new(format!(
                     "Total Wheel Slots: {}",
-                    InnerRW::<DemoAggregator>::TOTAL_WHEEL_SLOTS
+                    Haw::<DemoAggregator>::TOTAL_WHEEL_SLOTS
                 ))
                 .strong(),
             );
             ui.label(
                 RichText::new(format!(
                     "Cycle Length: {}",
-                    InnerRW::<DemoAggregator>::CYCLE_LENGTH
+                    Haw::<DemoAggregator>::CYCLE_LENGTH
                 ))
                 .strong(),
             );

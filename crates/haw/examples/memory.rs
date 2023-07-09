@@ -4,7 +4,18 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use haw::{aggregator::U64SumAggregator, time::NumericalDuration, Entry, RwWheel};
+use haw::{
+    aggregator::U64SumAggregator,
+    time::NumericalDuration,
+    DaysWheel,
+    Entry,
+    HoursWheel,
+    MinutesWheel,
+    RwWheel,
+    SecondsWheel,
+    WeeksWheel,
+    YearsWheel,
+};
 
 #[global_allocator]
 static ALLOCATOR: Alloc = Alloc;
@@ -70,6 +81,15 @@ fn main() {
         wheel.advance(1.seconds());
     }
     assert!(wheel.read().is_full());
+    let seconds = std::mem::size_of::<SecondsWheel<U64SumAggregator>>();
+    let minutes = std::mem::size_of::<MinutesWheel<U64SumAggregator>>();
+    let hours = std::mem::size_of::<HoursWheel<U64SumAggregator>>();
+    let days = std::mem::size_of::<DaysWheel<U64SumAggregator>>();
+    let weeks = std::mem::size_of::<WeeksWheel<U64SumAggregator>>();
+    let years = std::mem::size_of::<YearsWheel<U64SumAggregator>>();
+    let full = (seconds + minutes + hours + days + weeks + years)
+        + std::mem::size_of::<RwWheel<U64SumAggregator>>();
+    println!("Size {}", full);
     println!(
         "size_of RwWheel<U64SumAggregator> {}",
         std::mem::size_of::<RwWheel<U64SumAggregator>>()

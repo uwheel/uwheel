@@ -16,7 +16,7 @@ use alloc::{boxed::Box, vec::Vec};
 use rkyv::{ser::Serializer, AlignedVec, Archive, Deserialize, Serialize};
 
 #[cfg(feature = "rkyv")]
-use crate::wheels::rw::read::inner::{DefaultSerializer, PartialAggregate};
+use crate::wheels::rw::read::hierarchical::{DefaultSerializer, PartialAggregate};
 
 pub(crate) mod iter;
 mod maybe;

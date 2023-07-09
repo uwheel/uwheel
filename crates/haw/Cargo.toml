@@ -20,6 +20,7 @@ top_k = ["dep:hashbrown"]
 map = ["dep:hashbrown"]
 stats = ["sketches-ddsketch", "minstant", "std"]
 sync = ["parking_lot", "std"]
+nightly = ["parking_lot?/nightly", "hashbrown?/nightly"]
 
 [dependencies]
 smallvec = "1.10.0"

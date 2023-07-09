@@ -36,7 +36,7 @@ fn merge_large_to_fresh_wheel(bencher: &mut Bencher) {
     let wheel = large_wheel();
     bencher.iter(|| {
         let fresh_wheel = RwWheel::new(0);
-        fresh_wheel.read().merge(wheel.read());
+        fresh_wheel.merge_read_wheel(wheel.read());
         fresh_wheel
     });
 }
@@ -45,7 +45,7 @@ fn merge_small_to_fresh_wheel(bencher: &mut Bencher) {
     let wheel = small_wheel();
     bencher.iter(|| {
         let fresh_wheel = RwWheel::new(0);
-        fresh_wheel.read().merge(wheel.read());
+        fresh_wheel.merge_read_wheel(wheel.read());
         fresh_wheel
     });
 }
@@ -53,13 +53,13 @@ fn merge_small_to_fresh_wheel(bencher: &mut Bencher) {
 fn merge_same_size_small(bencher: &mut Bencher) {
     let wheel = small_wheel();
     let other_wheel = small_wheel();
-    bencher.iter(|| wheel.read().merge(other_wheel.read()));
+    bencher.iter(|| wheel.merge_read_wheel(other_wheel.read()));
 }
 
 fn merge_same_size_large(bencher: &mut Bencher) {
     let wheel = large_wheel();
     let other_wheel = large_wheel();
-    bencher.iter(|| wheel.read().merge(other_wheel.read()));
+    bencher.iter(|| wheel.merge_read_wheel(other_wheel.read()));
 }
 
 criterion_group!(benches, criterion_benchmark);

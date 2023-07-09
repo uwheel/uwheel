@@ -88,11 +88,11 @@ impl Options {
     }
 }
 
-/// Inner Hierarchical Aggregation Wheels
+/// Hierarchical Aggregation Wheel
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[derive(Clone, Debug)]
-pub struct InnerRW<A>
+pub struct Haw<A>
 where
     A: Aggregator,
 {
@@ -110,7 +110,7 @@ where
     _marker: A::PartialAggregate,
 }
 
-impl<A> InnerRW<A>
+impl<A> Haw<A>
 where
     A: Aggregator,
 {
@@ -720,8 +720,8 @@ where
 }
 #[cfg(feature = "sync")]
 #[allow(unsafe_code)]
-unsafe impl<A: Aggregator> Send for InnerRW<A> {}
+unsafe impl<A: Aggregator> Send for Haw<A> {}
 
 #[cfg(feature = "sync")]
 #[allow(unsafe_code)]
-unsafe impl<A: Aggregator> Sync for InnerRW<A> {}
+unsafe impl<A: Aggregator> Sync for Haw<A> {}
