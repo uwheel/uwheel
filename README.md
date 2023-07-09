@@ -53,7 +53,7 @@ To implement your own custom aggregator, you have to implement the [Aggregator](
 - `std` (_enabled by default_)
     - Enables features that rely on the standard library
 - `sync` (_implicitly enables `std`_)
-    - Enables a sync version of ``ReadWheel`` that can be accessed across threads
+    - Enables a sync version of ``ReadWheel`` that can be queried across threads
 - `stats` (_implicitly enables `std`_)
     - Enables recording of latencies for various operations
 - `top_k`

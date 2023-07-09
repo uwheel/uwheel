@@ -80,7 +80,7 @@ impl<A: Aggregator> RwWheel<A> {
         &self.read
     }
     /// Merges another read wheel with same size into this one
-    pub fn merge_read_wheel(&self, other: &mut ReadWheel<A>) {
+    pub fn merge_read_wheel(&self, other: &ReadWheel<A>) {
         self.read().merge(other);
     }
     /// Returns the current watermark of this wheel
