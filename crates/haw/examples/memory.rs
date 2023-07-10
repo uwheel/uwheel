@@ -89,7 +89,7 @@ fn main() {
     let years = std::mem::size_of::<YearsWheel<U64SumAggregator>>();
     let full = (seconds + minutes + hours + days + weeks + years)
         + std::mem::size_of::<RwWheel<U64SumAggregator>>();
-    println!("Size {}", full);
+    println!("RwWheel Size (Write wheel + {}", full);
     println!(
         "size_of RwWheel<U64SumAggregator> {}",
         std::mem::size_of::<RwWheel<U64SumAggregator>>()

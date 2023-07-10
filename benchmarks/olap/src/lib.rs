@@ -110,6 +110,7 @@ pub enum QueryType {
     Keyed(u64),
     /// OLAP query
     All,
+    Range(u64, u64),
 }
 impl Default for QueryType {
     fn default() -> Self {
@@ -130,6 +131,15 @@ impl QueryType {
     }
     pub fn point() -> Self {
         QueryType::Keyed(pu_location_id())
+    }
+    pub fn range() -> Self {
+        let pu_one = pu_location_id();
+        let pu_two = pu_location_id();
+        if pu_one <= pu_two {
+            QueryType::Range(pu_one, pu_two)
+        } else {
+            QueryType::Range(pu_two, pu_one)
+        }
     }
 }
 
@@ -157,6 +167,20 @@ impl Query {
     pub fn olap_high_intervals() -> Self {
         Self {
             query_type: QueryType::olap(),
+            interval: QueryInterval::generate_olap(),
+        }
+    }
+    #[inline]
+    pub fn olap_range_low_intervals() -> Self {
+        Self {
+            query_type: QueryType::range(),
+            interval: QueryInterval::generate_stream(),
+        }
+    }
+    #[inline]
+    pub fn olap_range_high_intervals() -> Self {
+        Self {
+            query_type: QueryType::range(),
             interval: QueryInterval::generate_olap(),
         }
     }
@@ -213,6 +237,17 @@ impl QueryGenerator {
     }
     pub fn generate_streaming(total: usize) -> Vec<Query> {
         (0..total).map(|_| Query::stream()).collect()
+    }
+
+    pub fn generate_low_interval_range_queries(total: usize) -> Vec<Query> {
+        (0..total)
+            .map(|_| Query::olap_range_low_intervals())
+            .collect()
+    }
+    pub fn generate_high_interval_range_queries(total: usize) -> Vec<Query> {
+        (0..total)
+            .map(|_| Query::olap_range_high_intervals())
+            .collect()
     }
 }
 

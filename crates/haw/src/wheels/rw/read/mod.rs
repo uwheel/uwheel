@@ -24,7 +24,7 @@ pub use hierarchical::{
 
 use crate::{aggregator::Aggregator, time, wheels::rw::write::WriteAheadWheel};
 
-pub use inner_impl::{InnerHaw, RwRef, RwRefMut};
+pub use inner_impl::{HawRef, HawRefMut, InnerHaw};
 
 /// A read wheel with hierarchical aggregation wheels backed by interior mutability.
 ///
@@ -112,7 +112,7 @@ impl<A: Aggregator> ReadWheel<A> {
 
     /// Executes a Landmark Window that combines total partial aggregates across all wheels
     #[inline]
-    pub fn landmark(&self) -> Option<A::Aggregate> {
+    pub fn landmark(&self) -> Option<A::PartialAggregate> {
         self.inner.read().landmark()
     }
     pub(crate) fn merge(&self, other: &Self) {
@@ -120,7 +120,7 @@ impl<A: Aggregator> ReadWheel<A> {
     }
 
     /// Raw access to the internal Hierarchical Aggregation Wheel
-    pub fn raw(&self) -> RwRef<'_, A> {
+    pub fn raw(&self) -> HawRef<'_, A> {
         self.inner.read()
     }
 }
@@ -134,9 +134,9 @@ mod inner_impl {
     use std::sync::Arc;
 
     /// The lock you get from [`RwLock::read`].
-    pub type RwRef<'a, T> = MappedRwLockReadGuard<'a, Haw<T>>;
+    pub type HawRef<'a, T> = MappedRwLockReadGuard<'a, Haw<T>>;
     /// The lock you get from [`RwLock::write`].
-    pub type RwRefMut<'a, T> = MappedRwLockWriteGuard<'a, Haw<T>>;
+    pub type HawRefMut<'a, T> = MappedRwLockWriteGuard<'a, Haw<T>>;
 
     /// An inner read wheel impl for multi-reader setups
     #[derive(Clone, Debug)]
@@ -149,12 +149,12 @@ mod inner_impl {
         }
 
         #[inline(always)]
-        pub fn read(&self) -> RwRef<'_, T> {
+        pub fn read(&self) -> HawRef<'_, T> {
             parking_lot::RwLockReadGuard::map(self.0.read(), |v| v)
         }
 
         #[inline(always)]
-        pub fn write(&self) -> RwRefMut<'_, T> {
+        pub fn write(&self) -> HawRefMut<'_, T> {
             parking_lot::RwLockWriteGuard::map(self.0.write(), |v| v)
         }
     }
@@ -170,9 +170,9 @@ mod inner_impl {
     use core::cell::RefCell;
 
     /// An immutably borrowed Haw from [`RefCell::borrow´]
-    pub type RwRef<'a, T> = core::cell::Ref<'a, Haw<T>>;
+    pub type HawRef<'a, T> = core::cell::Ref<'a, Haw<T>>;
     /// A mutably borrowed Haw from [`RefCell::borrow_mut´]
-    pub type RwRefMut<'a, T> = core::cell::RefMut<'a, Haw<T>>;
+    pub type HawRefMut<'a, T> = core::cell::RefMut<'a, Haw<T>>;
 
     /// An inner read wheel impl for single-threaded executions
     #[derive(Debug, Clone)]
@@ -185,12 +185,12 @@ mod inner_impl {
         }
 
         #[inline(always)]
-        pub fn read(&self) -> RwRef<'_, T> {
+        pub fn read(&self) -> HawRef<'_, T> {
             self.0.borrow()
         }
 
         #[inline(always)]
-        pub fn write(&self) -> RwRefMut<'_, T> {
+        pub fn write(&self) -> HawRefMut<'_, T> {
             self.0.borrow_mut()
         }
     }

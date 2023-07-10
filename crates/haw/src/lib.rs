@@ -23,9 +23,6 @@ use core::{
 ///
 /// This module also contains a number of pre-defined aggregators (e.g., SUM, ALL, TopK)
 pub mod aggregator;
-/// A Map maintaining a [Wheel] per key
-#[cfg(feature = "map")]
-pub mod map;
 #[cfg(feature = "stats")]
 pub mod stats;
 /// Time utilities
@@ -55,6 +52,9 @@ pub use wheels::rw::{
     },
     RwWheel,
 };
+
+#[cfg(feature = "rw_tree")]
+pub use wheels::rw_tree::{Key, ReadTreeWheel, RwTreeWheel};
 
 /// A type containing error variants that may arise when using a wheel
 #[derive(Debug)]

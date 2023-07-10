@@ -13,13 +13,13 @@ targets = []
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["std"]
+default = ["std", "rw_tree"]
 std = ["rkyv?/std"]
 rkyv = ["dep:rkyv"]
 top_k = ["dep:hashbrown"]
-map = ["dep:hashbrown"]
-stats = ["sketches-ddsketch", "minstant", "std"]
-sync = ["parking_lot", "std"]
+stats = ["dep:sketches-ddsketch", "dep:minstant", "std"]
+sync = ["dep:parking_lot", "std"]
+rw_tree = ["dep:hashbrown", "dep:parking_lot"]
 nightly = ["parking_lot?/nightly", "hashbrown?/nightly"]
 
 [dependencies]
@@ -56,9 +56,9 @@ name = "memory"
 path = "examples/memory.rs"
 
 [[example]]
-name = "map_bench"
-path = "examples/map_bench.rs"
-required-features = ["map"]
+name = "rw_tree_bench"
+path = "examples/rw_tree_bench.rs"
+required-features = ["rw_tree"]
 
 [[bench]]
 name = "insert"

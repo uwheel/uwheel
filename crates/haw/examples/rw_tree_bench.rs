@@ -6,7 +6,7 @@ use std::{
 };
 use zipf::ZipfDistribution;
 
-use haw::{aggregator::U64SumAggregator, map::WheelMap, Entry};
+use haw::{aggregator::U64SumAggregator, time::Duration, Entry, RwTreeWheel};
 
 #[global_allocator]
 static ALLOCATOR: Alloc = Alloc;
@@ -79,10 +79,6 @@ fn main() {
         total_random_keys,
         std::mem::size_of::<u64>()
     );
-    println!(
-        "Wheel Size (No Alloc): {}",
-        std::mem::size_of::<haw::Wheel<U64SumAggregator>>()
-    );
 
     let keys: Vec<u64> = match args.mode {
         DistributionMode::Zipf => {
@@ -98,11 +94,11 @@ fn main() {
     const VALUE: u64 = 1;
     const TIMESTAMP: u64 = 1000;
 
-    let mut map: WheelMap<u64, U64SumAggregator> = WheelMap::new(0);
+    let mut rw_tree: RwTreeWheel<u64, U64SumAggregator> = RwTreeWheel::new(0);
 
     let before_writes = std::time::Instant::now();
     for k in keys.iter() {
-        assert!(map.insert(*k, Entry::new(VALUE, TIMESTAMP)).is_ok());
+        assert!(rw_tree.insert(*k, Entry::new(VALUE, TIMESTAMP)).is_ok());
         if (k + 1) % (total_random_keys as u64 / 10) == 0 {
             println!(
                 "{:.2} million wps {} mb allocated {} mb freed {} mb resident",
@@ -121,18 +117,7 @@ fn main() {
         elapsed,
     );
 
-    let before_reads = std::time::Instant::now();
-    for k in keys {
-        assert_eq!(map.get(&k).unwrap().seconds_unchecked().interval(30), None);
-        if (k + 1) % (total_random_keys as u64 / 10) == 0 {
-            println!(
-                "{:.2} million rps {} mb allocated {} mb freed {} mb resident",
-                k as f64 / (before_reads.elapsed().as_micros().max(1)) as f64,
-                allocated(),
-                freed(),
-                resident(),
-            )
-        }
-    }
-    dbg!(before_reads.elapsed());
+    let before_advance = std::time::Instant::now();
+    rw_tree.advance(Duration::seconds(5));
+    dbg!(before_advance.elapsed());
 }

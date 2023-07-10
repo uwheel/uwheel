@@ -1,5 +1,8 @@
-/// The core Reader-Writer Wheel
+/// A Reader-Writer Wheel
 pub mod rw;
+#[cfg(feature = "rw_tree")]
+/// A Reader-Writer Tree Wheel
+pub mod rw_tree;
 /// Wheels that are tailored for Sliding Window Aggregation
 pub mod window;
 

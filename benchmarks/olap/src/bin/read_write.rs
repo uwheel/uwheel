@@ -1,3 +1,11 @@
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+
 use clap::{ArgEnum, Parser};
 use duckdb::Result;
 use haw::{aggregator::AllAggregator, time, Entry, RwWheel};
@@ -8,7 +16,7 @@ use sketches_ddsketch::{Config, DDSketch};
 #[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
 pub enum Workload {
     ReadOnly,
-    ReadHeavy,
+    ReadWrite,
 }
 
 #[derive(Parser, Debug)]
@@ -22,15 +30,18 @@ struct Args {
     events_per_min: usize,
     #[clap(short, long, value_parser, default_value_t = 1000000)]
     queries: usize,
+    #[clap(short, long, value_parser, default_value_t = 100000)]
+    advances: usize,
     #[clap(short, long, value_parser, default_value_t = 1)]
-    advance: usize,
+    advance_step: usize,
+    #[clap(short, long, value_parser, default_value_t = 1)]
+    advance_freq_seconds: usize,
     #[clap(arg_enum, value_parser, default_value_t = Workload::ReadOnly)]
     workload: Workload,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let total_queries = args.queries;
     let events_per_min = args.events_per_min;
 
     println!("Running with {:#?}", args);
@@ -52,16 +63,15 @@ fn main() -> Result<()> {
     let read_wheel = wheel.read().clone();
 
     let mut handles = vec![];
-
-    let queries_per_thread = args.queries / args.threads;
-
     let now = Instant::now();
+    let gate = Arc::new(AtomicBool::new(true));
 
     for _ in 0..args.threads {
         let read_wheel = read_wheel.clone();
+        let inner_gate = gate.clone();
         let handle = std::thread::spawn(move || {
             let mut sketch = DDSketch::new(Config::new(0.01, 2048, 1.0e-9));
-            for _i in 0..queries_per_thread {
+            while inner_gate.load(Ordering::Relaxed) {
                 let query = QueryInterval::generate_random();
                 let now = Instant::now();
                 let _res = match query {
@@ -88,27 +98,28 @@ fn main() -> Result<()> {
     }
 
     let workload = args.workload;
-
-    if let Workload::ReadHeavy = workload {
-        let write_now = Instant::now();
-        let write_iterations = 10000;
-        let writes_per_iter = 10000;
-        let total_writes = write_iterations * writes_per_iter;
-        for _i in 0..write_iterations {
-            // Do some writes to the wheel then advance it
-            let wm = wheel.watermark();
-            for _x in 0..writes_per_iter {
-                wheel.write().insert(Entry::new(1.0, wm + 1)).unwrap();
-            }
-            wheel.advance(time::Duration::seconds(args.advance as i64));
+    match &workload {
+        Workload::ReadOnly => {
+            // just sleep a bit
+            std::thread::sleep(Duration::from_secs(20));
         }
-        let runtime = write_now.elapsed();
-        println!(
-            "ran with {} write Mops/s (took {:.2}s)",
-            (total_writes as f64 / runtime.as_secs_f64()) as u64 / 1_000_000,
-            runtime.as_secs_f64(),
-        );
+        Workload::ReadWrite => {
+            let write_now = Instant::now();
+            for _i in 0..args.advances {
+                let wm = wheel.watermark();
+                wheel.write().insert(Entry::new(1.0, wm + 1)).unwrap();
+                wheel.advance(time::Duration::seconds(args.advance_step as i64));
+            }
+            let runtime = write_now.elapsed();
+            println!(
+                "ran with {} advance Mops/s (took {:.2}s)",
+                (args.advances as f64 / runtime.as_secs_f64()) as u64 / 1_000_000,
+                runtime.as_secs_f64(),
+            );
+        }
     }
+
+    gate.store(false, Ordering::Relaxed);
 
     let skecthes: Vec<_> = handles
         .into_iter()
@@ -121,10 +132,12 @@ fn main() -> Result<()> {
         sketch.merge(&s).unwrap();
     }
     let percentiles = haw::stats::sketch_percentiles(&sketch);
+    let total_queries = sketch.count();
     println!("{:#?}", percentiles);
 
     println!(
-        "ran with {} Mops/s (took {:.2}s)",
+        "Executed {} queries and ran with {} Mops/s (took {:.2}s)",
+        total_queries,
         (total_queries as f64 / runtime.as_secs_f64()) as u64 / 1_000_000,
         runtime.as_secs_f64(),
     );
