@@ -1,8 +1,3 @@
-use core::{borrow::Borrow, hash::Hash, ops::RangeBounds};
-use hashbrown::{hash_map::IterMut, HashMap};
-use parking_lot::RwLock;
-use std::{collections::BTreeMap, sync::Arc};
-
 use crate::{
     aggregator::Aggregator,
     time,
@@ -12,20 +7,29 @@ use crate::{
     ReadWheel,
     RwWheel,
 };
+use core::{borrow::Borrow, hash::Hash, ops::RangeBounds};
+use hashbrown::{hash_map::IterMut, HashMap};
+
+use self::inner_impl::InnerTree;
 
 use super::rw::write::WriteAheadWheel;
 pub trait Key: PartialEq + Ord + Hash + Eq + Send + Sync + Clone + 'static {}
 impl<T> Key for T where T: PartialEq + Ord + Hash + Eq + Send + Sync + Clone + 'static {}
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct ReadTreeWheel<K: Key, A: Aggregator + Clone> {
-    // TODO: implement InnerTree impl with non-sync version + sync (Similar to RwWheel)
-    inner: Arc<RwLock<BTreeMap<K, ReadWheel<A>>>>,
+    inner: InnerTree<K, A>,
 }
+impl<K: Key, A: Aggregator + Clone + 'static> Default for ReadTreeWheel<K, A> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<K: Key, A: Aggregator + Clone + 'static> ReadTreeWheel<K, A> {
     pub fn new() -> Self {
         Self {
-            inner: Default::default(),
+            inner: InnerTree::new(),
         }
     }
     /// Returns the ReadWheel for a given key
@@ -159,6 +163,81 @@ impl<K: Key, A: Aggregator + Clone + 'static> RwTreeWheel<K, A> {
     pub fn advance_to(&mut self, watermark: u64) {
         let diff = watermark.saturating_sub(self.watermark());
         self.advance(time::Duration::milliseconds(diff as i64));
+    }
+}
+
+// Two different Inner Read Wheel implementations below:
+
+#[cfg(feature = "sync")]
+mod inner_impl {
+    use super::{Aggregator, Key};
+    use crate::ReadWheel;
+    use parking_lot::{MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock};
+    use std::{collections::BTreeMap, sync::Arc};
+
+    pub type TreeRef<'a, K, T> = MappedRwLockReadGuard<'a, BTreeMap<K, ReadWheel<T>>>;
+    pub type TreeRefMut<'a, K, T> = MappedRwLockWriteGuard<'a, BTreeMap<K, ReadWheel<T>>>;
+
+    /// An inner read wheel impl for multi-reader setups
+    #[derive(Clone, Debug)]
+    pub struct InnerTree<K: Key, T: Aggregator + Clone>(Arc<RwLock<BTreeMap<K, ReadWheel<T>>>>);
+
+    impl<K: Key, T: Aggregator + Clone> InnerTree<K, T> {
+        #[inline(always)]
+        pub fn new() -> Self {
+            Self(Arc::new(RwLock::new(Default::default())))
+        }
+
+        #[inline(always)]
+        pub fn read(&self) -> TreeRef<'_, K, T> {
+            parking_lot::RwLockReadGuard::map(self.0.read(), |v| v)
+        }
+
+        #[inline(always)]
+        pub fn write(&self) -> TreeRefMut<'_, K, T> {
+            parking_lot::RwLockWriteGuard::map(self.0.write(), |v| v)
+        }
+    }
+    #[allow(unsafe_code)]
+    unsafe impl<K: Key, T: Aggregator + Clone> Send for InnerTree<K, T> {}
+    #[allow(unsafe_code)]
+    unsafe impl<K: Key, T: Aggregator + Clone> Sync for InnerTree<K, T> {}
+}
+
+#[cfg(not(feature = "sync"))]
+mod inner_impl {
+    use super::{Aggregator, Key};
+    use crate::ReadWheel;
+    #[cfg(not(feature = "std"))]
+    use alloc::collections::BTreeMap;
+    use core::cell::RefCell;
+    #[cfg(feature = "std")]
+    use std::collections::BTreeMap;
+
+    /// An immutably borrowed Haw from [`RefCell::borrow´]
+    pub type TreeRef<'a, K, T> = core::cell::Ref<'a, BTreeMap<K, ReadWheel<T>>>;
+    /// A mutably borrowed Haw from [`RefCell::borrow_mut´]
+    pub type TreeRefMut<'a, K, T> = core::cell::RefMut<'a, BTreeMap<K, ReadWheel<T>>>;
+
+    /// An inner read wheel impl for single-threaded executions
+    #[derive(Debug, Clone)]
+    pub struct InnerTree<K: Key, T: Aggregator + Clone>(RefCell<BTreeMap<K, ReadWheel<T>>>);
+
+    impl<K: Key, T: Aggregator + Clone> InnerTree<K, T> {
+        #[inline(always)]
+        pub fn new() -> Self {
+            Self(RefCell::new(Default::default()))
+        }
+
+        #[inline(always)]
+        pub fn read(&self) -> TreeRef<'_, K, T> {
+            self.0.borrow()
+        }
+
+        #[inline(always)]
+        pub fn write(&self) -> TreeRefMut<'_, K, T> {
+            self.0.borrow_mut()
+        }
     }
 }
 
