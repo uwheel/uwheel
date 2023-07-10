@@ -53,7 +53,7 @@ pub use wheels::rw::{
     RwWheel,
 };
 
-#[cfg(feature = "rw_tree")]
+#[cfg(feature = "tree")]
 pub use wheels::rw_tree::{Key, ReadTreeWheel, RwTreeWheel};
 
 /// A type containing error variants that may arise when using a wheel

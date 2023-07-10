@@ -51,28 +51,32 @@ mod tests {
     use crate::{
         aggregator::{top_k::TopKAggregator, AllAggregator, U64SumAggregator},
         Entry,
-        Wheel,
+        RwWheel,
     };
 
     use super::state::TopKState;
 
     #[test]
     fn top_k_all_aggregator_test() {
-        let mut wheel: Wheel<TopKAggregator<10, 4, AllAggregator>> = Wheel::new(0);
+        let mut wheel: RwWheel<TopKAggregator<10, 4, AllAggregator>> = RwWheel::new(0);
 
         wheel
+            .write()
             .insert(Entry::new((1u32.to_le_bytes(), 10.0), 1000))
             .unwrap();
         wheel
+            .write()
             .insert(Entry::new((2u32.to_le_bytes(), 50.0), 1000))
             .unwrap();
         wheel
+            .write()
             .insert(Entry::new((3u32.to_le_bytes(), 30.0), 1000))
             .unwrap();
 
         wheel.advance_to(2000);
 
-        let state: TopKState<10, 4, AllAggregator> = wheel.seconds_unchecked().interval(1).unwrap();
+        let state: TopKState<10, 4, AllAggregator> =
+            wheel.read().raw().seconds_unchecked().interval(1).unwrap();
         let arr = state.iter();
         assert_eq!(arr[0].unwrap().data.sum(), 10.0);
         assert_eq!(arr[1].unwrap().data.sum(), 30.0);
@@ -87,23 +91,29 @@ mod tests {
 
         // insert same keys with different values at different timestamp
         wheel
+            .write()
             .insert(Entry::new((1u32.to_le_bytes(), 100.0), 2000))
             .unwrap();
         wheel
+            .write()
             .insert(Entry::new((2u32.to_le_bytes(), 10.0), 2000))
             .unwrap();
         wheel
+            .write()
             .insert(Entry::new((3u32.to_le_bytes(), 20.0), 2000))
             .unwrap();
 
         // insert some new keys
         wheel
+            .write()
             .insert(Entry::new((4u32.to_le_bytes(), 15.0), 2000))
             .unwrap();
         wheel
+            .write()
             .insert(Entry::new((5u32.to_le_bytes(), 1.0), 2000))
             .unwrap();
         wheel
+            .write()
             .insert(Entry::new((6u32.to_le_bytes(), 5000.0), 2000))
             .unwrap();
 
@@ -111,7 +121,8 @@ mod tests {
         wheel.advance_to(3000);
 
         // interval of last 2 seconds should be two TopKState's combined
-        let state: TopKState<10, 4, AllAggregator> = wheel.seconds_unchecked().interval(2).unwrap();
+        let state: TopKState<10, 4, AllAggregator> =
+            wheel.read().raw().seconds_unchecked().interval(2).unwrap();
         let arr = state.iter();
         assert_eq!(arr[0].unwrap().data.sum(), 1.0);
         assert_eq!(arr[1].unwrap().data.sum(), 15.0);
@@ -126,22 +137,25 @@ mod tests {
     }
     #[test]
     fn top_k_u64_sum_aggregator_test() {
-        let mut wheel: Wheel<TopKAggregator<10, 4, U64SumAggregator>> = Wheel::new(0);
+        let mut wheel: RwWheel<TopKAggregator<10, 4, U64SumAggregator>> = RwWheel::new(0);
 
         wheel
+            .write()
             .insert(Entry::new((1u32.to_le_bytes(), 10), 1000))
             .unwrap();
         wheel
+            .write()
             .insert(Entry::new((2u32.to_le_bytes(), 50), 1000))
             .unwrap();
         wheel
+            .write()
             .insert(Entry::new((3u32.to_le_bytes(), 30), 1000))
             .unwrap();
 
         wheel.advance_to(2000);
 
         let state: TopKState<10, 4, U64SumAggregator> =
-            wheel.seconds_unchecked().interval(1).unwrap();
+            wheel.read().raw().seconds_unchecked().interval(1).unwrap();
         let arr = state.iter();
         assert_eq!(arr[0].unwrap().data, 10);
         assert_eq!(arr[1].unwrap().data, 30);
@@ -156,23 +170,29 @@ mod tests {
 
         // insert same keys with different values at different timestamp
         wheel
+            .write()
             .insert(Entry::new((1u32.to_le_bytes(), 100), 2000))
             .unwrap();
         wheel
+            .write()
             .insert(Entry::new((2u32.to_le_bytes(), 10), 2000))
             .unwrap();
         wheel
+            .write()
             .insert(Entry::new((3u32.to_le_bytes(), 20), 2000))
             .unwrap();
 
         // insert some new keys
         wheel
+            .write()
             .insert(Entry::new((4u32.to_le_bytes(), 15), 2000))
             .unwrap();
         wheel
+            .write()
             .insert(Entry::new((5u32.to_le_bytes(), 1), 2000))
             .unwrap();
         wheel
+            .write()
             .insert(Entry::new((6u32.to_le_bytes(), 5000), 2000))
             .unwrap();
 
@@ -181,7 +201,7 @@ mod tests {
 
         // interval of last 2 seconds should be two TopKState's combined
         let state: TopKState<10, 4, U64SumAggregator> =
-            wheel.seconds_unchecked().interval(2).unwrap();
+            wheel.read().raw().seconds_unchecked().interval(2).unwrap();
         let arr = state.iter();
         assert_eq!(arr[0].unwrap().data, 1);
         assert_eq!(arr[1].unwrap().data, 15);

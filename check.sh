@@ -15,11 +15,11 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --  -D warnings -W clippy::all
 cargo test --workspace --doc
 
-(cd crates/haw && cargo test --features "sync")
+(cd crates/haw && cargo test --features "tree, sync")
+(cd crates/haw && cargo check --features "tree")
 
 (cd crates/haw && cargo check --features "rkyv")
 (cd crates/haw && cargo check --features "top_k")
-(cd crates/haw && cargo check --features "rw_tree")
 (cd crates/haw && cargo check --features "sync")
 
 (cd crates/haw/fuzz && cargo check)
