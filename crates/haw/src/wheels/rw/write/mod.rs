@@ -28,10 +28,10 @@ impl<A: Aggregator> Default for WriteAheadWheel<A> {
 }
 
 impl<A: Aggregator> WriteAheadWheel<A> {
-    pub(super) fn with_watermark(watermark: u64) -> Self {
+    pub(crate) fn with_watermark(watermark: u64) -> Self {
         Self::with_capacity_and_watermark(DEFAULT_WRITE_AHEAD_SLOTS, watermark)
     }
-    pub(super) fn with_capacity_and_watermark(capacity: usize, watermark: u64) -> Self {
+    pub(crate) fn with_capacity_and_watermark(capacity: usize, watermark: u64) -> Self {
         assert_capacity!(capacity);
         Self {
             capacity,

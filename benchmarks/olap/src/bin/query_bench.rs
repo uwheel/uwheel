@@ -2,7 +2,7 @@ use minstant::Instant;
 
 use clap::Parser;
 use duckdb::Result;
-use haw::{aggregator::AllAggregator, time, Entry, ReadWheel, RwWheel};
+use haw::{aggregator::AllAggregator, time, Entry, RwTreeWheel};
 use hdrhistogram::Histogram;
 use olap::*;
 use std::time::Duration;
@@ -34,12 +34,17 @@ fn main() -> Result<()> {
     let (watermark, batches) = DataGenerator::generate_query_data(events_per_min);
     let duckdb_batches = batches.clone();
 
-    //let point_queries_low_interval =
-    //   QueryGenerator::generate_low_interval_point_queries(total_queries);
-    //let point_queries_high_interval =
-    //   QueryGenerator::generate_high_interval_point_queries(total_queries);
+    let point_queries_low_interval =
+        QueryGenerator::generate_low_interval_point_queries(total_queries);
+    let point_queries_high_interval =
+        QueryGenerator::generate_high_interval_point_queries(total_queries);
     let olap_queries_low_interval = QueryGenerator::generate_low_interval_olap(total_queries);
     let olap_queries_high_interval = QueryGenerator::generate_high_interval_olap(total_queries);
+
+    let olap_range_queries_low_interval =
+        QueryGenerator::generate_low_interval_range_queries(total_queries);
+    let olap_range_queries_high_interval =
+        QueryGenerator::generate_high_interval_range_queries(total_queries);
 
     //let wheeldb_point_queries_low_interval = point_queries_low_interval.clone();
     //let wheeldb_point_queries_high_interval = point_queries_high_interval.clone();
@@ -59,16 +64,40 @@ fn main() -> Result<()> {
     dbg!(watermark);
 
     duckdb_run(
-        "DuckDB OLAP Low Intervals",
+        "DuckDB ALL Low Intervals",
         watermark,
         &duckdb,
         olap_queries_low_interval,
     );
     duckdb_run(
-        "DuckDB OLAP High Intervals",
+        "DuckDB ALL High Intervals",
         watermark,
         &duckdb,
         olap_queries_high_interval,
+    );
+    duckdb_run(
+        "DuckDB POINT Low Intervals",
+        watermark,
+        &duckdb,
+        point_queries_low_interval.clone(),
+    );
+    duckdb_run(
+        "DuckDB POINT High Intervals",
+        watermark,
+        &duckdb,
+        point_queries_high_interval.clone(),
+    );
+    duckdb_run(
+        "DuckDB RANGE Low Intervals",
+        watermark,
+        &duckdb,
+        olap_range_queries_low_interval.clone(),
+    );
+    duckdb_run(
+        "DuckDB RANGE High Intervals",
+        watermark,
+        &duckdb,
+        olap_range_queries_high_interval.clone(),
     );
     /*
     duckdb_run(
@@ -85,29 +114,56 @@ fn main() -> Result<()> {
     );
     */
 
-    let mut wheel: RwWheel<AllAggregator> = RwWheel::new(0);
+    let mut rw_tree: RwTreeWheel<u64, AllAggregator> = RwTreeWheel::new(0);
     for batch in batches {
         for record in batch {
-            wheel
-                .write()
-                .insert(Entry::new(record.fare_amount, record.do_time))
+            rw_tree
+                .insert(
+                    record.pu_location_id,
+                    Entry::new(record.fare_amount, record.do_time),
+                )
                 .unwrap();
         }
         use haw::time::NumericalDuration;
-        wheel.advance(60.seconds());
+        rw_tree.advance(60.seconds());
     }
     println!("Finished preparing HAW");
     haw_run(
-        "HAW OLAP Low Intervals",
+        "RwTreeWheel ALL Low Intervals",
         watermark,
-        wheel.read().clone(),
+        &rw_tree,
         haw_olap_queries_low_interval,
     );
     haw_run(
-        "HAW OLAP High Intervals",
+        "RwTreeWheel ALL High Intervals",
         watermark,
-        wheel.read().clone(),
+        &rw_tree,
         haw_olap_queries_high_interval,
+    );
+    haw_run(
+        "RwTreeWheel POINT Low Intervals",
+        watermark,
+        &rw_tree,
+        point_queries_low_interval,
+    );
+    haw_run(
+        "RwTreeWheel POINT High Intervals",
+        watermark,
+        &rw_tree,
+        point_queries_high_interval,
+    );
+
+    haw_run(
+        "RwTreeWheel RANGE Low Intervals",
+        watermark,
+        &rw_tree,
+        olap_range_queries_low_interval,
+    );
+    haw_run(
+        "RwTreeWheel RANGE High Intervals",
+        watermark,
+        &rw_tree,
+        olap_range_queries_high_interval,
     );
 
     //wheeldb_run("WheelDB OLAP Low Intervals", watermark, &wheeldb, wheeldb_olap_queries_low_interval);
@@ -115,21 +171,83 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-fn haw_run(id: &str, _watermark: u64, wheel: ReadWheel<AllAggregator>, queries: Vec<Query>) {
+fn haw_run(
+    id: &str,
+    _watermark: u64,
+    wheel: &RwTreeWheel<u64, AllAggregator>,
+    queries: Vec<Query>,
+) {
     let total_queries = queries.len();
     let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
     let full = Instant::now();
     for query in queries {
         let now = Instant::now();
-        let res = match query.interval {
-            QueryInterval::Seconds(secs) => wheel.interval(time::Duration::seconds(secs as i64)),
-            QueryInterval::Minutes(mins) => wheel.interval(time::Duration::minutes(mins as i64)),
-            QueryInterval::Hours(hours) => wheel.interval(time::Duration::hours(hours as i64)),
-            QueryInterval::Days(days) => wheel.interval(time::Duration::days(days as i64)),
-            QueryInterval::Landmark => wheel.landmark(),
+        match query.query_type {
+            QueryType::Keyed(pu_location_id) => {
+                let _res = match query.interval {
+                    QueryInterval::Seconds(secs) => wheel
+                        .read()
+                        .get(&pu_location_id)
+                        .map(|rw| rw.interval(time::Duration::seconds(secs as i64))),
+                    QueryInterval::Minutes(mins) => wheel
+                        .read()
+                        .get(&pu_location_id)
+                        .map(|rw| rw.interval(time::Duration::minutes(mins as i64))),
+                    QueryInterval::Hours(hours) => wheel
+                        .read()
+                        .get(&pu_location_id)
+                        .map(|rw| rw.interval(time::Duration::hours(hours as i64))),
+                    QueryInterval::Days(days) => wheel
+                        .read()
+                        .get(&pu_location_id)
+                        .map(|rw| rw.interval(time::Duration::days(days as i64))),
+                    QueryInterval::Landmark => {
+                        wheel.read().get(&pu_location_id).map(|rw| rw.landmark())
+                    }
+                };
+                //assert!(res.is_some());
+                hist.record(now.elapsed().as_nanos() as u64).unwrap();
+            }
+            QueryType::Range(start, end) => {
+                let range = start..end;
+                let _res = match query.interval {
+                    QueryInterval::Seconds(secs) => wheel
+                        .read()
+                        .interval_range(time::Duration::seconds(secs as i64), range),
+                    QueryInterval::Minutes(mins) => wheel
+                        .read()
+                        .interval_range(time::Duration::minutes(mins as i64), range),
+                    QueryInterval::Hours(hours) => wheel
+                        .read()
+                        .interval_range(time::Duration::hours(hours as i64), range),
+                    QueryInterval::Days(days) => wheel
+                        .read()
+                        .interval_range(time::Duration::days(days as i64), range),
+                    QueryInterval::Landmark => wheel.read().landmark_range(range),
+                };
+                //assert!(res.is_some());
+                hist.record(now.elapsed().as_nanos() as u64).unwrap();
+            }
+            QueryType::All => {
+                let _res = match query.interval {
+                    QueryInterval::Seconds(secs) => wheel
+                        .star_wheel()
+                        .interval(time::Duration::seconds(secs as i64)),
+                    QueryInterval::Minutes(mins) => wheel
+                        .star_wheel()
+                        .interval(time::Duration::minutes(mins as i64)),
+                    QueryInterval::Hours(hours) => wheel
+                        .star_wheel()
+                        .interval(time::Duration::hours(hours as i64)),
+                    QueryInterval::Days(days) => wheel
+                        .star_wheel()
+                        .interval(time::Duration::days(days as i64)),
+                    QueryInterval::Landmark => wheel.star_wheel().landmark(),
+                };
+                //assert!(res.is_some());
+                hist.record(now.elapsed().as_nanos() as u64).unwrap();
+            }
         };
-        assert!(res.is_some());
-        hist.record(now.elapsed().as_nanos() as u64).unwrap();
     }
     let runtime = full.elapsed();
     println!(
@@ -156,6 +274,13 @@ fn duckdb_run(id: &str, watermark: u64, db: &duckdb::Connection, queries: Vec<Qu
                         format!("WHERE pu_location_id={}", pu_location_id)
                     } else {
                         format!("WHERE pu_location_id={} AND", pu_location_id)
+                    }
+                }
+                QueryType::Range(start, end) => {
+                    if let QueryInterval::Landmark = query.interval {
+                        format!("WHERE pu_location_id BETWEEN {} AND {}", start, end)
+                    } else {
+                        format!("WHERE pu_location_id BETWEEN {} AND {} AND", start, end)
                     }
                 }
                 QueryType::All => {

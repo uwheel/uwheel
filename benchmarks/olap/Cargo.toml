@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 duckdb = { version = "0.8.1", features = ["bundled"] }
-haw = { workspace = true, features = ["sync", "stats"] }
+haw = { workspace = true, features = ["rw_tree", "sync", "stats"] }
 clap.workspace = true
 fastrand.workspace = true
 hdrhistogram.workspace = true

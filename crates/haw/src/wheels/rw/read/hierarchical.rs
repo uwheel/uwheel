@@ -448,7 +448,7 @@ where
 
     /// Executes a Landmark Window that combines total partial aggregates across all wheels
     #[inline]
-    pub fn landmark(&self) -> Option<A::Aggregate> {
+    pub fn landmark(&self) -> Option<A::PartialAggregate> {
         let wheels = [
             self.seconds_wheel.total(),
             self.minutes_wheel.total(),
@@ -457,7 +457,12 @@ where
             self.weeks_wheel.total(),
             self.years_wheel.total(),
         ];
-        Self::reduce(wheels).map(|partial_agg| A::lower(partial_agg))
+        Self::reduce(wheels)
+    }
+    /// Executes a Landmark Window that combines total partial aggregates across all wheels and lowers the result
+    #[inline]
+    pub fn landmark_and_lower(&self) -> Option<A::Aggregate> {
+        self.landmark().map(|partial| A::lower(partial))
     }
 
     #[inline]
