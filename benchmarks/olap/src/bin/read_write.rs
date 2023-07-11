@@ -112,8 +112,8 @@ fn main() -> Result<()> {
             }
             let runtime = write_now.elapsed();
             println!(
-                "ran with {} advance Mops/s (took {:.2}s)",
-                (args.advances as f64 / runtime.as_secs_f64()) as u64 / 1_000_000,
+                "ran with {} advance ops/s (took {:.2}s)",
+                (args.advances as f64 / runtime.as_secs_f64()),
                 runtime.as_secs_f64(),
             );
         }

@@ -99,7 +99,7 @@ fn main() {
     let before_writes = std::time::Instant::now();
     for k in keys.iter() {
         assert!(rw_tree.insert(*k, Entry::new(VALUE, TIMESTAMP)).is_ok());
-        if (k + 1) % (total_random_keys as u64 / 10) == 0 {
+        if (k + 1) % (runs as u64 / 10) == 0 {
             println!(
                 "{:.2} million wps {} mb allocated {} mb freed {} mb resident",
                 *k as f64 / (before_writes.elapsed().as_micros().max(1)) as f64,
@@ -112,9 +112,9 @@ fn main() {
     let elapsed = before_writes.elapsed();
     dbg!(elapsed);
     println!(
-        "ingestion ran at {} ops/s (took {:?})",
-        (runs as f64 / elapsed.as_secs_f64()),
-        elapsed,
+        "ran with {} insert Mops/s (took {:.2}s)",
+        (runs as f64 / elapsed.as_secs_f64()) as u64 / 1_000_000,
+        elapsed.as_secs_f64(),
     );
 
     let before_advance = std::time::Instant::now();

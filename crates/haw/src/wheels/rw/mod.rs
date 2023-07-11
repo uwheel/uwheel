@@ -12,30 +12,6 @@ use core::fmt::Debug;
 use read::ReadWheel;
 use write::{WriteAheadWheel, DEFAULT_WRITE_AHEAD_SLOTS};
 
-#[derive(Debug, Clone)]
-pub struct Options {
-    drill_down: bool,
-    write_ahead_capacity: usize,
-}
-impl Default for Options {
-    fn default() -> Self {
-        Self {
-            drill_down: false,
-            write_ahead_capacity: DEFAULT_WRITE_AHEAD_SLOTS,
-        }
-    }
-}
-impl Options {
-    pub fn with_drill_down(mut self) -> Self {
-        self.drill_down = true;
-        self
-    }
-    pub fn with_write_ahead(mut self, capacity: usize) -> Self {
-        self.write_ahead_capacity = capacity;
-        self
-    }
-}
-
 /// A Reader-Writer Wheel
 #[derive(Debug, Clone)]
 pub struct RwWheel<A: Aggregator> {
@@ -99,6 +75,30 @@ impl<A: Aggregator> RwWheel<A> {
     pub fn advance_to(&mut self, watermark: u64) {
         self.read.advance_to(watermark, &mut self.write);
         debug_assert_eq!(self.write.watermark(), self.read.watermark());
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Options {
+    drill_down: bool,
+    write_ahead_capacity: usize,
+}
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            drill_down: false,
+            write_ahead_capacity: DEFAULT_WRITE_AHEAD_SLOTS,
+        }
+    }
+}
+impl Options {
+    pub fn with_drill_down(mut self) -> Self {
+        self.drill_down = true;
+        self
+    }
+    pub fn with_write_ahead(mut self, capacity: usize) -> Self {
+        self.write_ahead_capacity = capacity;
+        self
     }
 }
 

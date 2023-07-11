@@ -46,8 +46,6 @@ fn main() -> Result<()> {
     let olap_range_queries_high_interval =
         QueryGenerator::generate_high_interval_range_queries(total_queries);
 
-    //let wheeldb_point_queries_low_interval = point_queries_low_interval.clone();
-    //let wheeldb_point_queries_high_interval = point_queries_high_interval.clone();
     let haw_olap_queries_low_interval = olap_queries_low_interval.clone();
     let haw_olap_queries_high_interval = olap_queries_high_interval.clone();
 
@@ -99,20 +97,6 @@ fn main() -> Result<()> {
         &duckdb,
         olap_range_queries_high_interval.clone(),
     );
-    /*
-    duckdb_run(
-        "DuckDB Point Queries Low Intervals",
-        watermark,
-        &duckdb,
-        point_queries_low_interval,
-    );
-    duckdb_run(
-        "DuckDB Point Queries High Intervals",
-        watermark,
-        &duckdb,
-        point_queries_high_interval,
-    );
-    */
 
     let mut rw_tree: RwTreeWheel<u64, AllAggregator> = RwTreeWheel::new(0);
     for batch in batches {
@@ -165,9 +149,6 @@ fn main() -> Result<()> {
         &rw_tree,
         olap_range_queries_high_interval,
     );
-
-    //wheeldb_run("WheelDB OLAP Low Intervals", watermark, &wheeldb, wheeldb_olap_queries_low_interval);
-    //wheeldb_run("WheelDB OLAP High Intervals", watermark, &wheeldb, wheeldb_olap_queries_high_interval);
 
     Ok(())
 }
@@ -230,19 +211,17 @@ fn haw_run(
             }
             QueryType::All => {
                 let _res = match query.interval {
-                    QueryInterval::Seconds(secs) => wheel
-                        .star_wheel()
-                        .interval(time::Duration::seconds(secs as i64)),
-                    QueryInterval::Minutes(mins) => wheel
-                        .star_wheel()
-                        .interval(time::Duration::minutes(mins as i64)),
-                    QueryInterval::Hours(hours) => wheel
-                        .star_wheel()
-                        .interval(time::Duration::hours(hours as i64)),
-                    QueryInterval::Days(days) => wheel
-                        .star_wheel()
-                        .interval(time::Duration::days(days as i64)),
-                    QueryInterval::Landmark => wheel.star_wheel().landmark(),
+                    QueryInterval::Seconds(secs) => {
+                        wheel.interval(time::Duration::seconds(secs as i64))
+                    }
+                    QueryInterval::Minutes(mins) => {
+                        wheel.interval(time::Duration::minutes(mins as i64))
+                    }
+                    QueryInterval::Hours(hours) => {
+                        wheel.interval(time::Duration::hours(hours as i64))
+                    }
+                    QueryInterval::Days(days) => wheel.interval(time::Duration::days(days as i64)),
+                    QueryInterval::Landmark => wheel.landmark(),
                 };
                 //assert!(res.is_some());
                 hist.record(now.elapsed().as_nanos() as u64).unwrap();

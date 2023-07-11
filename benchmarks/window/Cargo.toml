@@ -4,7 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
-haw = { workspace = true, features = ["stats", "sync"] }
+haw = { workspace = true, features = ["window", "stats", "sync"] }
 fiba_rs.workspace = true
 clap.workspace = true
 fastrand.workspace = true
