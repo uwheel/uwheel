@@ -4,6 +4,7 @@ pub mod rw;
 #[cfg(feature = "tree")]
 pub mod rw_tree;
 /// Wheels that are tailored for Sliding Window Aggregation
+#[cfg(feature = "window")]
 pub mod window;
 
 pub use rw::{

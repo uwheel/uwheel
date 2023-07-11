@@ -13,14 +13,14 @@ targets = []
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["std", "tree", "top_k"]
+default = ["std"]
 std = ["rkyv?/std"]
-rkyv = ["dep:rkyv"]
+window = []
 top_k = ["dep:hashbrown"]
 tree = ["dep:hashbrown"]
+rkyv = ["dep:rkyv"]
 stats = ["dep:sketches-ddsketch", "dep:minstant", "std"]
 sync = ["dep:parking_lot", "std"]
-nightly = ["parking_lot?/nightly", "hashbrown?/nightly"]
 
 [dependencies]
 smallvec = "1.10.0"

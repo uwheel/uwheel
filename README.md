@@ -52,12 +52,16 @@ To implement your own custom aggregator, you have to implement the [Aggregator](
 ## Feature Flags
 - `std` (_enabled by default_)
     - Enables features that rely on the standard library
+- `window`
+    - Enables wheels for streaming window aggregation
+- `tree`
+    - Enables the multi-key ``RwTreeWheel``
+- `top_k`
+    - Enables top_k aggregation
 - `sync` (_implicitly enables `std`_)
     - Enables a sync version of ``ReadWheel`` that can be queried across threads
 - `stats` (_implicitly enables `std`_)
     - Enables recording of latencies for various operations
-- `top_k`
-    - Enables top_k aggregation using the [hashbrown](https://github.com/rust-lang/hashbrown) crate.
 - `rkyv`
     - Enables serialisation & deserialisation using the [rkyv](https://docs.rs/rkyv/latest/rkyv/) framework.
 
