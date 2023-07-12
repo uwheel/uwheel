@@ -47,7 +47,7 @@ To implement your own custom aggregator, you have to implement the [Aggregator](
 | MIN |  Minimum value of all inputs |  u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
 | MAX |  Maximum value of all inputs | u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
 | ALL |  Pre-computed SUM, AVG, MIN, MAX, COUNT | f64 |
-| TOP_K (_feature_) |  Top K of all inputs | ``Aggregator`` with aggregate data that implements ``Ord`` |
+| TOP_K  |  Top K of all inputs | ``Aggregator`` with aggregate data that implements ``Ord`` |
 
 ## Feature Flags
 - `std` (_enabled by default_)

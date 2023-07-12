@@ -5,25 +5,32 @@ use core::{
 };
 
 /// An All Aggregator enabling the following functions (MAX, MIN, SUM, COUNT, AVG).
+#[cfg(feature = "all")]
 pub mod all;
 /// Incremental AVG aggregation
+#[cfg(feature = "avg")]
 pub mod avg;
 /// Incremental MAX aggregation
+#[cfg(feature = "max")]
 pub mod max;
 /// Incremental MIN aggregation
+#[cfg(feature = "min")]
 pub mod min;
 /// Incremental SUM aggregation
+#[cfg(feature = "sum")]
 pub mod sum;
 
 #[cfg(feature = "top_k")]
 /// Top-K Aggregation using a nested Aggregator which has a PartialAggregate that implements `Ord`
 pub mod top_k;
 
+#[cfg(feature = "all")]
 pub use all::{AggState, AllAggregator};
+#[cfg(feature = "sum")]
 pub use sum::*;
 
 /// Aggregation interface that library users must implement to use Hierarchical Aggregation Wheels
-pub trait Aggregator: Default + Debug + 'static {
+pub trait Aggregator: Default + Debug + Clone + 'static {
     /// Input type that can be inserted into [Self::MutablePartialAggregate]
     type Input: Debug + Copy + Send;
 

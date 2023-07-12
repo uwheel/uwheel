@@ -1,14 +1,15 @@
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::{aggregator::PartialAggregateType, Aggregator, Option::Some};
+use crate::{aggregator::PartialAggregateType, Aggregator};
+
 use core::{
     clone::Clone,
     cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd},
     default::Default,
     fmt::Debug,
     marker::Copy,
-    option::Option,
+    option::{Option, Option::Some},
 };
 
 #[repr(C)]

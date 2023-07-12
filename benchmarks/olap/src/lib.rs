@@ -126,6 +126,16 @@ impl QueryType {
             QueryType::All
         }
     }
+    pub fn random() -> Self {
+        let pick = fastrand::u8(0..3);
+        if pick == 0u8 {
+            Self::olap()
+        } else if pick == 1 {
+            Self::point()
+        } else {
+            Self::range()
+        }
+    }
     pub fn olap() -> Self {
         QueryType::All
     }
@@ -199,6 +209,20 @@ impl Query {
         }
     }
     #[inline]
+    pub fn random_queries_low_intervals() -> Self {
+        Self {
+            query_type: QueryType::random(),
+            interval: QueryInterval::generate_stream(),
+        }
+    }
+    #[inline]
+    pub fn random_queries_high_intervals() -> Self {
+        Self {
+            query_type: QueryType::random(),
+            interval: QueryInterval::generate_olap(),
+        }
+    }
+    #[inline]
     pub fn point_queries_low_intervals() -> Self {
         Self {
             query_type: QueryType::point(),
@@ -247,6 +271,16 @@ impl QueryGenerator {
     pub fn generate_high_interval_range_queries(total: usize) -> Vec<Query> {
         (0..total)
             .map(|_| Query::olap_range_high_intervals())
+            .collect()
+    }
+    pub fn generate_low_interval_random_queries(total: usize) -> Vec<Query> {
+        (0..total)
+            .map(|_| Query::random_queries_low_intervals())
+            .collect()
+    }
+    pub fn generate_high_interval_random_queries(total: usize) -> Vec<Query> {
+        (0..total)
+            .map(|_| Query::random_queries_high_intervals())
             .collect()
     }
 }
@@ -336,8 +370,19 @@ pub fn duckdb_append_batch(batch: Vec<RideData>, db: &mut Connection) -> Result<
     app.flush();
     Ok(())
 }
+pub fn duckdb_query_sum(query: &str, db: &Connection) -> Result<()> {
+    let mut stmt = db.prepare(query)?;
+    let _sum_res = stmt.query_map([], |row| {
+        let sum: f64 = row.get(0).unwrap_or(0.0);
+        Ok(sum)
+    })?;
+    for res in _sum_res {
+        assert!(res.is_ok());
+    }
+    Ok(())
+}
 
-pub fn duckdb_query(query: &str, db: &Connection) -> Result<()> {
+pub fn duckdb_query_all(query: &str, db: &Connection) -> Result<()> {
     let mut stmt = db.prepare(query)?;
     let _sum_res = stmt.query_map([], |row| {
         let avg: f64 = row.get(0).unwrap_or(0.0);

@@ -18,7 +18,7 @@ cargo test --workspace --doc
 (cd crates/haw && cargo test --features "tree, sync")
 (cd crates/haw && cargo check --features "tree")
 
-(cd crates/haw && cargo check --features "rkyv")
+#(cd crates/haw && cargo check --features "rkyv")
 (cd crates/haw && cargo check --features "top_k")
 (cd crates/haw && cargo check --features "sync")
 

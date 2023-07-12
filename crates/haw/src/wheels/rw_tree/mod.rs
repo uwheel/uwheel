@@ -42,6 +42,9 @@ impl<K: Key, A: Aggregator + Clone + 'static> RwTreeWheel<K, A> {
     pub fn watermark(&self) -> u64 {
         self.star_wheel.watermark()
     }
+    pub fn star_wheel(&self) -> &ReadWheel<A> {
+        self.star_wheel.read()
+    }
     #[inline]
     pub fn insert(&mut self, key: K, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
         self.star_wheel.write().insert(entry)?;

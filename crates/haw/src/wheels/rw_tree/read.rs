@@ -97,7 +97,7 @@ impl<K: Key, A: Aggregator + Clone + 'static> ReadTreeWheel<K, A> {
         self.interval_range(dur, range)
             .map(|partial| A::lower(partial))
     }
-    /// Advance the watermark of the wheel by the given [time::Duration]
+    // Advance the watermark of all wheels by the given [time::Duration]
     #[inline]
     pub(crate) fn advance(&self, duration: time::Duration, waws: IterMut<K, WriteAheadWheel<A>>) {
         let mut inner = self.inner.write();
