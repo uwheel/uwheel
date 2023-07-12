@@ -15,7 +15,6 @@ use core::{
     fmt,
     fmt::{Debug, Display},
     matches,
-    option::Option,
     write,
 };
 
@@ -32,7 +31,7 @@ pub mod time;
 /// Module containing various wheel implementations
 pub mod wheels;
 
-use aggregator::Aggregator;
+pub use aggregator::Aggregator;
 
 pub use wheels::rw::{
     read::{

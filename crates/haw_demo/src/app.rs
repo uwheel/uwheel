@@ -150,38 +150,38 @@ impl HawLabels {
         let remaining_ticks_label = wheel.read().remaining_ticks().to_string();
         let seconds_ticks_label = wheel
             .read()
-            .raw()
             .seconds()
+            .as_ref()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let minutes_ticks_label = wheel
             .read()
-            .raw()
             .minutes()
+            .as_ref()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let hours_ticks_label = wheel
             .read()
-            .raw()
             .hours()
+            .as_ref()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let days_ticks_label = wheel
             .read()
-            .raw()
             .days()
+            .as_ref()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let weeks_ticks_label = wheel
             .read()
-            .raw()
             .weeks()
+            .as_ref()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let years_ticks_label = wheel
             .read()
-            .raw()
             .years()
+            .as_ref()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let landmark_window_label = wheel.read().landmark().unwrap_or(0).to_string();
@@ -285,8 +285,8 @@ impl TemplateApp {
 
         let watermark_agg = wheel
             .read()
-            .raw()
             .seconds()
+            .as_ref()
             .map(|w| w.lower_at(0).unwrap_or(0))
             .unwrap_or(0) as f64;
         let bar = Bar::new(0.5, watermark_agg)
@@ -299,7 +299,7 @@ impl TemplateApp {
 
         let mut pos = 1.5;
         let mut bars = Vec::new();
-        if let Some(seconds_wheel) = wheel.read().raw().seconds() {
+        if let Some(seconds_wheel) = wheel.read().seconds().as_ref() {
             for i in 1..=haw::SECONDS {
                 let val = seconds_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Second));
@@ -315,7 +315,7 @@ impl TemplateApp {
 
         // MINUTES
         let mut bars = Vec::new();
-        if let Some(minutes_wheel) = wheel.read().raw().minutes() {
+        if let Some(minutes_wheel) = wheel.read().minutes().as_ref() {
             for i in 1..=haw::MINUTES {
                 let val = minutes_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Minute));
@@ -331,7 +331,7 @@ impl TemplateApp {
 
         // HOURS
         let mut bars = Vec::new();
-        if let Some(hours_wheel) = wheel.read().raw().hours() {
+        if let Some(hours_wheel) = wheel.read().hours().as_ref() {
             for i in 1..=haw::HOURS {
                 let val = hours_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Hour));
@@ -346,7 +346,7 @@ impl TemplateApp {
             .name("Hours");
 
         let mut bars = Vec::new();
-        if let Some(days_wheel) = wheel.read().raw().days() {
+        if let Some(days_wheel) = wheel.read().days().as_ref() {
             for i in 1..=haw::DAYS {
                 let val = days_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Day));
@@ -361,7 +361,7 @@ impl TemplateApp {
             .name("Days");
 
         let mut bars = Vec::new();
-        if let Some(weeks_wheel) = wheel.read().raw().weeks() {
+        if let Some(weeks_wheel) = wheel.read().weeks().as_ref() {
             for i in 1..=haw::WEEKS {
                 let val = weeks_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Week));
@@ -376,7 +376,7 @@ impl TemplateApp {
             .name("Weeks");
 
         let mut bars = Vec::new();
-        if let Some(years_wheel) = wheel.read().raw().years() {
+        if let Some(years_wheel) = wheel.read().years().as_ref() {
             for i in 1..=haw::YEARS {
                 let val = years_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Year));
@@ -440,7 +440,7 @@ impl TemplateApp {
                                         empty_plot(ui);
                                     }
                                     Some((Granularity::Minute, pos)) => {
-                                        if let Some(minutes) = wheel.read().raw().minutes() {
+                                        if let Some(minutes) = wheel.read().minutes().as_ref() {
                                             if let Some(slots) = measure(|| minutes.drill_down(pos))
                                             {
                                                 let mut bars = Vec::new();
@@ -468,7 +468,7 @@ impl TemplateApp {
                                         }
                                     }
                                     Some((Granularity::Hour, pos)) => {
-                                        if let Some(hours) = wheel.read().raw().hours() {
+                                        if let Some(hours) = wheel.read().hours().as_ref() {
                                             if let Some(slots) = measure(|| hours.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -495,7 +495,7 @@ impl TemplateApp {
                                         }
                                     }
                                     Some((Granularity::Day, pos)) => {
-                                        if let Some(days) = wheel.read().raw().days() {
+                                        if let Some(days) = wheel.read().days().as_ref() {
                                             if let Some(slots) = measure(|| days.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -521,7 +521,7 @@ impl TemplateApp {
                                         }
                                     }
                                     Some((Granularity::Week, pos)) => {
-                                        if let Some(weeks) = wheel.read().raw().weeks() {
+                                        if let Some(weeks) = wheel.read().weeks().as_ref() {
                                             if let Some(slots) = measure(|| weeks.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -547,7 +547,7 @@ impl TemplateApp {
                                         }
                                     }
                                     Some((Granularity::Year, pos)) => {
-                                        if let Some(years) = wheel.read().raw().years() {
+                                        if let Some(years) = wheel.read().years().as_ref() {
                                             if let Some(slots) = measure(|| years.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -624,38 +624,38 @@ impl eframe::App for TemplateApp {
                 labels.landmark_window_label = wheel.read().landmark().unwrap_or(0).to_string();
                 labels.seconds_ticks_label = wheel
                     .read()
-                    .raw()
                     .seconds()
+                    .as_ref()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.minutes_ticks_label = wheel
                     .read()
-                    .raw()
                     .minutes()
+                    .as_ref()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.hours_ticks_label = wheel
                     .read()
-                    .raw()
                     .hours()
+                    .as_ref()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.days_ticks_label = wheel
                     .read()
-                    .raw()
                     .days()
+                    .as_ref()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.weeks_ticks_label = wheel
                     .read()
-                    .raw()
                     .weeks()
+                    .as_ref()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.years_ticks_label = wheel
                     .read()
-                    .raw()
                     .years()
+                    .as_ref()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
             };

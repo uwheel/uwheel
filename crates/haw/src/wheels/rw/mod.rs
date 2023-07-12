@@ -140,19 +140,20 @@ mod tests {
         assert_eq!(
             &wheel
                 .read()
-                .raw()
-                .seconds_unchecked()
+                .seconds()
+                .as_ref()
+                .unwrap()
                 .iter()
                 .collect::<Vec<&Option<u32>>>(),
             expected
         );
 
         assert_eq!(
-            wheel.read().raw().seconds_unchecked().interval(5),
+            wheel.read().seconds().as_ref().unwrap().interval(5),
             Some(6u32)
         );
         assert_eq!(
-            wheel.read().raw().seconds_unchecked().interval(1),
+            wheel.read().seconds().as_ref().unwrap().interval(1),
             Some(5u32)
         );
 
@@ -181,13 +182,14 @@ mod tests {
         time = 6000; // new watermark
         wheel.advance_to(time);
 
-        assert_eq!(wheel.read().raw().seconds_unchecked().total(), Some(6u32));
+        assert_eq!(wheel.read().seconds().as_ref().unwrap().total(), Some(6u32));
         // check we get the same result by combining the range of last 6 seconds
         assert_eq!(
             wheel
                 .read()
-                .raw()
-                .seconds_unchecked()
+                .seconds()
+                .as_ref()
+                .unwrap()
                 .combine_and_lower_range(0..5),
             Some(6u32)
         );
@@ -229,27 +231,27 @@ mod tests {
 
         // one tick away from full cycle clear
         assert_eq!(
-            wheel.read().raw().seconds_unchecked().rotation_count(),
+            wheel.read().seconds().as_ref().unwrap().rotation_count(),
             SECONDS - 1
         );
         assert_eq!(
-            wheel.read().raw().minutes_unchecked().rotation_count(),
+            wheel.read().minutes().as_ref().unwrap().rotation_count(),
             MINUTES - 1
         );
         assert_eq!(
-            wheel.read().raw().hours_unchecked().rotation_count(),
+            wheel.read().hours().as_ref().unwrap().rotation_count(),
             HOURS - 1
         );
         assert_eq!(
-            wheel.read().raw().days_unchecked().rotation_count(),
+            wheel.read().days().as_ref().unwrap().rotation_count(),
             DAYS - 1
         );
         assert_eq!(
-            wheel.read().raw().weeks_unchecked().rotation_count(),
+            wheel.read().weeks().as_ref().unwrap().rotation_count(),
             WEEKS - 1
         );
         assert_eq!(
-            wheel.read().raw().years_unchecked().rotation_count(),
+            wheel.read().years().as_ref().unwrap().rotation_count(),
             YEARS - 1
         );
 
@@ -257,20 +259,20 @@ mod tests {
         wheel.advance(1.seconds());
 
         // rotation count of all wheels should be zero
-        assert_eq!(wheel.read().raw().seconds_unchecked().rotation_count(), 0,);
-        assert_eq!(wheel.read().raw().minutes_unchecked().rotation_count(), 0,);
-        assert_eq!(wheel.read().raw().hours_unchecked().rotation_count(), 0,);
-        assert_eq!(wheel.read().raw().days_unchecked().rotation_count(), 0,);
-        assert_eq!(wheel.read().raw().weeks_unchecked().rotation_count(), 0,);
-        assert_eq!(wheel.read().raw().years_unchecked().rotation_count(), 0,);
+        assert_eq!(wheel.read().seconds().as_ref().unwrap().rotation_count(), 0,);
+        assert_eq!(wheel.read().minutes().as_ref().unwrap().rotation_count(), 0,);
+        assert_eq!(wheel.read().hours().as_ref().unwrap().rotation_count(), 0,);
+        assert_eq!(wheel.read().days().as_ref().unwrap().rotation_count(), 0,);
+        assert_eq!(wheel.read().weeks().as_ref().unwrap().rotation_count(), 0,);
+        assert_eq!(wheel.read().years().as_ref().unwrap().rotation_count(), 0,);
 
         // Verify len of all wheels
-        assert_eq!(wheel.read().raw().seconds_unchecked().len(), SECONDS);
-        assert_eq!(wheel.read().raw().minutes_unchecked().len(), MINUTES);
-        assert_eq!(wheel.read().raw().hours_unchecked().len(), HOURS);
-        assert_eq!(wheel.read().raw().days_unchecked().len(), DAYS);
-        assert_eq!(wheel.read().raw().weeks_unchecked().len(), WEEKS);
-        assert_eq!(wheel.read().raw().years_unchecked().len(), YEARS);
+        assert_eq!(wheel.read().seconds().as_ref().unwrap().len(), SECONDS);
+        assert_eq!(wheel.read().minutes().as_ref().unwrap().len(), MINUTES);
+        assert_eq!(wheel.read().hours().as_ref().unwrap().len(), HOURS);
+        assert_eq!(wheel.read().days().as_ref().unwrap().len(), DAYS);
+        assert_eq!(wheel.read().weeks().as_ref().unwrap().len(), WEEKS);
+        assert_eq!(wheel.read().years().as_ref().unwrap().len(), YEARS);
 
         assert!(wheel.read().is_full());
         assert!(!wheel.read().is_empty());
@@ -296,8 +298,9 @@ mod tests {
         // can't drill down on seconds wheel as it is the first wheel
         assert!(wheel
             .read()
-            .raw()
-            .seconds_unchecked()
+            .seconds()
+            .as_ref()
+            .unwrap()
             .drill_down(1)
             .is_none());
 
@@ -306,8 +309,9 @@ mod tests {
         assert_eq!(
             wheel
                 .read()
-                .raw()
-                .minutes_unchecked()
+                .minutes()
+                .as_ref()
+                .unwrap()
                 .drill_down(1)
                 .unwrap()
                 .iter()
@@ -318,8 +322,9 @@ mod tests {
         assert_eq!(
             wheel
                 .read()
-                .raw()
-                .hours_unchecked()
+                .hours()
+                .as_ref()
+                .unwrap()
                 .drill_down(1)
                 .unwrap()
                 .iter()
@@ -330,8 +335,9 @@ mod tests {
         assert_eq!(
             wheel
                 .read()
-                .raw()
-                .days_unchecked()
+                .days()
+                .as_ref()
+                .unwrap()
                 .drill_down(1)
                 .unwrap()
                 .iter()
@@ -342,8 +348,9 @@ mod tests {
         // drill down range of 3 and confirm combined aggregates
         let decoded = wheel
             .read()
-            .raw()
-            .minutes_unchecked()
+            .minutes()
+            .as_ref()
+            .unwrap()
             .combine_drill_down_range(..3);
         assert_eq!(decoded[0], 3);
         assert_eq!(decoded[1], 3);
@@ -352,8 +359,9 @@ mod tests {
         // test cut of last 5 seconds of last 1 minute + first 10 aggregates of last 2 min
         let decoded = wheel
             .read()
-            .raw()
-            .minutes_unchecked()
+            .minutes()
+            .as_ref()
+            .unwrap()
             .drill_down_cut(
                 DrillCut {
                     slot: 1,
@@ -372,8 +380,9 @@ mod tests {
         // drill down whole of minutes wheel
         let decoded = wheel
             .read()
-            .raw()
-            .minutes_unchecked()
+            .minutes()
+            .as_ref()
+            .unwrap()
             .combine_drill_down_range(..);
         let sum = decoded.iter().sum::<u64>();
         assert_eq!(sum, 3600u64);
@@ -396,8 +405,9 @@ mod tests {
         // confirm there are "holes" as we bump time by 2 seconds above
         let decoded = wheel
             .read()
-            .raw()
-            .minutes_unchecked()
+            .minutes()
+            .as_ref()
+            .unwrap()
             .drill_down(1)
             .unwrap()
             .to_vec();
@@ -418,7 +428,7 @@ mod tests {
         let entry = Entry::new(1u32, 5000);
         wheel.write().insert(entry).unwrap();
 
-        wheel.advance(7.days());
+        wheel.advance(60.minutes());
 
         let fresh_wheel_time = 0;
         let fresh_wheel = RwWheel::<U32SumAggregator>::new(fresh_wheel_time);
@@ -464,8 +474,9 @@ mod tests {
         // same as drill_down_holes test but confirm that drill down slots have be merged between wheels
         let decoded = wheel
             .read()
-            .raw()
-            .minutes_unchecked()
+            .minutes()
+            .as_ref()
+            .unwrap()
             .drill_down(1)
             .unwrap()
             .to_vec();

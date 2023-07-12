@@ -1,11 +1,24 @@
 use minstant::Instant;
 
-use clap::Parser;
+use clap::{ArgEnum, Parser};
 use duckdb::Result;
-use haw::{aggregator::AllAggregator, time, Entry, RwTreeWheel};
+use haw::{
+    aggregator::{Aggregator, AllAggregator, F64SumAggregator},
+    time,
+    Entry,
+    RwTreeWheel,
+};
 use hdrhistogram::Histogram;
 use olap::*;
 use std::time::Duration;
+
+#[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
+pub enum Workload {
+    /// AllAggregator
+    All,
+    /// F64SumAggregator
+    Sum,
+}
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -22,12 +35,15 @@ struct Args {
     queries: usize,
     #[clap(short, long, action)]
     disk: bool,
+    #[clap(arg_enum, value_parser, default_value_t = Workload::All)]
+    workload: Workload,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
     let total_queries = args.queries;
     let events_per_min = args.events_per_min;
+    let workload = args.workload;
 
     println!("Running with {:#?}", args);
 
@@ -40,6 +56,11 @@ fn main() -> Result<()> {
         QueryGenerator::generate_high_interval_point_queries(total_queries);
     let olap_queries_low_interval = QueryGenerator::generate_low_interval_olap(total_queries);
     let olap_queries_high_interval = QueryGenerator::generate_high_interval_olap(total_queries);
+
+    let random_queries_low_interval =
+        QueryGenerator::generate_low_interval_random_queries(total_queries);
+    let random_queries_high_interval =
+        QueryGenerator::generate_high_interval_random_queries(total_queries);
 
     let olap_range_queries_low_interval =
         QueryGenerator::generate_low_interval_range_queries(total_queries);
@@ -64,53 +85,175 @@ fn main() -> Result<()> {
     duckdb_run(
         "DuckDB ALL Low Intervals",
         watermark,
+        workload,
         &duckdb,
         olap_queries_low_interval,
     );
     duckdb_run(
         "DuckDB ALL High Intervals",
         watermark,
+        workload,
         &duckdb,
         olap_queries_high_interval,
     );
     duckdb_run(
         "DuckDB POINT Low Intervals",
         watermark,
+        workload,
         &duckdb,
         point_queries_low_interval.clone(),
     );
     duckdb_run(
         "DuckDB POINT High Intervals",
         watermark,
+        workload,
         &duckdb,
         point_queries_high_interval.clone(),
     );
     duckdb_run(
         "DuckDB RANGE Low Intervals",
         watermark,
+        workload,
         &duckdb,
         olap_range_queries_low_interval.clone(),
     );
     duckdb_run(
         "DuckDB RANGE High Intervals",
         watermark,
+        workload,
         &duckdb,
         olap_range_queries_high_interval.clone(),
     );
+    duckdb_run(
+        "DuckDB RANDOM Low Intervals",
+        watermark,
+        workload,
+        &duckdb,
+        random_queries_low_interval.clone(),
+    );
+    duckdb_run(
+        "DuckDB RANDOM High Intervals",
+        watermark,
+        workload,
+        &duckdb,
+        random_queries_high_interval.clone(),
+    );
 
-    let mut rw_tree: RwTreeWheel<u64, AllAggregator> = RwTreeWheel::new(0);
-    for batch in batches {
-        for record in batch {
-            rw_tree
-                .insert(
-                    record.pu_location_id,
-                    Entry::new(record.fare_amount, record.do_time),
-                )
-                .unwrap();
+    fn fill_rw_tree<A: Aggregator<Input = f64> + Clone>(
+        batches: Vec<Vec<RideData>>,
+        rw_tree: &mut RwTreeWheel<u64, A>,
+    ) {
+        for batch in batches {
+            for record in batch {
+                rw_tree
+                    .insert(
+                        record.pu_location_id,
+                        Entry::new(record.fare_amount, record.do_time),
+                    )
+                    .unwrap();
+            }
+            use haw::time::NumericalDuration;
+            rw_tree.advance(60.seconds());
         }
-        use haw::time::NumericalDuration;
-        rw_tree.advance(60.seconds());
     }
+
+    match workload {
+        Workload::All => {
+            let mut rw_tree: RwTreeWheel<u64, AllAggregator> = RwTreeWheel::new(0);
+            fill_rw_tree(batches, &mut rw_tree);
+            haw_run(
+                "RwTreeWheel ALL Low Intervals",
+                watermark,
+                &rw_tree,
+                haw_olap_queries_low_interval,
+            );
+            haw_run(
+                "RwTreeWheel ALL High Intervals",
+                watermark,
+                &rw_tree,
+                haw_olap_queries_high_interval,
+            );
+            haw_run(
+                "RwTreeWheel POINT Low Intervals",
+                watermark,
+                &rw_tree,
+                point_queries_low_interval,
+            );
+            haw_run(
+                "RwTreeWheel POINT High Intervals",
+                watermark,
+                &rw_tree,
+                point_queries_high_interval,
+            );
+
+            haw_run(
+                "RwTreeWheel RANGE Low Intervals",
+                watermark,
+                &rw_tree,
+                olap_range_queries_low_interval,
+            );
+            haw_run(
+                "RwTreeWheel RANGE High Intervals",
+                watermark,
+                &rw_tree,
+                olap_range_queries_high_interval,
+            );
+            haw_run(
+                "RwTreeWheel RANDOM Low Intervals",
+                watermark,
+                &rw_tree,
+                random_queries_low_interval,
+            );
+            haw_run(
+                "RwTreeWheel RANDOM High Intervals",
+                watermark,
+                &rw_tree,
+                random_queries_high_interval,
+            );
+        }
+        Workload::Sum => {
+            let mut rw_tree: RwTreeWheel<u64, F64SumAggregator> = RwTreeWheel::new(0);
+            fill_rw_tree(batches, &mut rw_tree);
+            haw_run(
+                "RwTreeWheel ALL Low Intervals",
+                watermark,
+                &rw_tree,
+                haw_olap_queries_low_interval,
+            );
+            haw_run(
+                "RwTreeWheel ALL High Intervals",
+                watermark,
+                &rw_tree,
+                haw_olap_queries_high_interval,
+            );
+            haw_run(
+                "RwTreeWheel POINT Low Intervals",
+                watermark,
+                &rw_tree,
+                point_queries_low_interval,
+            );
+            haw_run(
+                "RwTreeWheel POINT High Intervals",
+                watermark,
+                &rw_tree,
+                point_queries_high_interval,
+            );
+
+            haw_run(
+                "RwTreeWheel RANGE Low Intervals",
+                watermark,
+                &rw_tree,
+                olap_range_queries_low_interval,
+            );
+            haw_run(
+                "RwTreeWheel RANGE High Intervals",
+                watermark,
+                &rw_tree,
+                olap_range_queries_high_interval,
+            );
+        }
+    };
+    /*
     println!("Finished preparing HAW");
     haw_run(
         "RwTreeWheel ALL Low Intervals",
@@ -149,13 +292,14 @@ fn main() -> Result<()> {
         &rw_tree,
         olap_range_queries_high_interval,
     );
+    */
 
     Ok(())
 }
-fn haw_run(
+fn haw_run<A: Aggregator + Clone>(
     id: &str,
     _watermark: u64,
-    wheel: &RwTreeWheel<u64, AllAggregator>,
+    wheel: &RwTreeWheel<u64, A>,
     queries: Vec<Query>,
 ) {
     let total_queries = queries.len();
@@ -239,10 +383,22 @@ fn haw_run(
     print_hist(id, &hist);
 }
 
-fn duckdb_run(id: &str, watermark: u64, db: &duckdb::Connection, queries: Vec<Query>) {
+fn duckdb_run(
+    id: &str,
+    watermark: u64,
+    workload: Workload,
+    db: &duckdb::Connection,
+    queries: Vec<Query>,
+) {
     let total_queries = queries.len();
     let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
-    let base_str = "SELECT AVG(fare_amount), SUM(fare_amount), MIN(fare_amount), MAX(fare_amount), COUNT(fare_amount) FROM rides";
+    let base_str = match workload {
+        Workload::All => "SELECT AVG(fare_amount), SUM(fare_amount), MIN(fare_amount), MAX(fare_amount), COUNT(fare_amount) FROM rides",
+        Workload::Sum => "SELECT SUM(fare_amount) FROM rides",
+        //Workload::Avg => "SELECT AVG(fare_amount) FROM rides",
+        //Workload::Min => "SELECT MIN(fare_amount) FROM rides",
+        //Workload::Max => "SELECT MAX(fare_amount) FROM rides",
+    };
     let sql_queries: Vec<String> = queries
         .iter()
         .map(|query| {
@@ -307,7 +463,11 @@ fn duckdb_run(id: &str, watermark: u64, db: &duckdb::Connection, queries: Vec<Qu
     let full = Instant::now();
     for sql_query in sql_queries {
         let now = Instant::now();
-        duckdb_query(&sql_query, db).unwrap();
+        match workload {
+            Workload::All => duckdb_query_all(&sql_query, db).unwrap(),
+            Workload::Sum => duckdb_query_sum(&sql_query, db).unwrap(),
+        }
+        //duckdb_query(&sql_query, db).unwrap();
         hist.record(now.elapsed().as_nanos() as u64).unwrap();
     }
     let runtime = full.elapsed();

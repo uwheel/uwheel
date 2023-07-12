@@ -30,9 +30,10 @@ use alloc::boxed::Box;
 
 use super::{
     super::write::WriteAheadWheel,
-    aggregation::{AggregationWheel, MaybeWheel},
+    aggregation::{AggWheelRef, AggregationWheel, MaybeWheel},
 };
 use crate::{aggregator::Aggregator, time};
+pub use watermark_impl::Watermark;
 
 pub const SECONDS: usize = 60;
 pub const MINUTES: usize = 60;
@@ -51,16 +52,23 @@ const YEARS_CAP: usize = YEARS.next_power_of_two();
 
 /// Type alias for an AggregationWheel representing seconds
 pub type SecondsWheel<A> = AggregationWheel<SECONDS_CAP, A>;
+pub type SecondsWheelRef<'a, A> = AggWheelRef<'a, SECONDS_CAP, A>;
 /// Type alias for an AggregationWheel representing minutes
 pub type MinutesWheel<A> = AggregationWheel<MINUTES_CAP, A>;
+pub type MinutesWheelRef<'a, A> = AggWheelRef<'a, MINUTES_CAP, A>;
 /// Type alias for an AggregationWheel representing hours
 pub type HoursWheel<A> = AggregationWheel<HOURS_CAP, A>;
+pub type HoursWheelRef<'a, A> = AggWheelRef<'a, HOURS_CAP, A>;
 /// Type alias for an AggregationWheel representing days
 pub type DaysWheel<A> = AggregationWheel<DAYS_CAP, A>;
+/// Type alias for an AggregationWheel representing days
+pub type DaysWheelRef<'a, A> = AggWheelRef<'a, DAYS_CAP, A>;
 /// Type alias for an AggregationWheel representing weeks
 pub type WeeksWheel<A> = AggregationWheel<WEEKS_CAP, A>;
+pub type WeeksWheelRef<'a, A> = AggWheelRef<'a, WEEKS_CAP, A>;
 /// Type alias for an AggregationWheel representing years
 pub type YearsWheel<A> = AggregationWheel<YEARS_CAP, A>;
+pub type YearsWheelRef<'a, A> = AggWheelRef<'a, YEARS_CAP, A>;
 
 cfg_rkyv! {
     // Alias for an aggregators [`MutablePartialAggregate`] type
@@ -96,7 +104,7 @@ pub struct Haw<A>
 where
     A: Aggregator,
 {
-    watermark: u64,
+    watermark: Watermark,
     #[cfg_attr(feature = "rkyv", omit_bounds)]
     seconds_wheel: MaybeWheel<SECONDS_CAP, A>,
     #[cfg_attr(feature = "rkyv", omit_bounds)]
@@ -152,7 +160,7 @@ where
 
     fn base(time: u64) -> Self {
         Self {
-            watermark: time,
+            watermark: Watermark::new(time),
             seconds_wheel: MaybeWheel::with_capacity(SECONDS),
             minutes_wheel: MaybeWheel::with_capacity(MINUTES),
             hours_wheel: MaybeWheel::with_capacity(HOURS),
@@ -165,7 +173,7 @@ where
     }
     fn base_drill_down(time: u64) -> Self {
         Self {
-            watermark: time,
+            watermark: Watermark::new(time),
             seconds_wheel: MaybeWheel::with_capacity_and_drill_down(SECONDS),
             minutes_wheel: MaybeWheel::with_capacity_and_drill_down(MINUTES),
             hours_wheel: MaybeWheel::with_capacity_and_drill_down(HOURS),
@@ -217,11 +225,11 @@ where
 
     /// Advance the watermark of the wheel by the given [time::Duration]
     #[inline(always)]
-    pub fn advance(&mut self, duration: time::Duration, waw: &mut WriteAheadWheel<A>) {
+    pub(crate) fn advance(&self, duration: time::Duration, waw: &mut WriteAheadWheel<A>) {
         let mut ticks: usize = duration.whole_seconds() as usize;
 
         // helper fn to tick N times
-        let tick_n = |ticks: usize, haw: &mut Self, waw: &mut WriteAheadWheel<A>| {
+        let tick_n = |ticks: usize, haw: &Self, waw: &mut WriteAheadWheel<A>| {
             for _ in 0..ticks {
                 haw.tick(waw);
             }
@@ -231,7 +239,12 @@ where
             tick_n(ticks, self, waw);
         } else if ticks <= Self::CYCLE_LENGTH_SECS as usize {
             // force full rotation
-            let rem_ticks = self.seconds_wheel.get_or_insert().ticks_remaining();
+            let rem_ticks = self
+                .seconds_wheel
+                .get_or_insert()
+                .as_ref()
+                .unwrap()
+                .ticks_remaining();
             tick_n(rem_ticks, self, waw);
             ticks -= rem_ticks;
 
@@ -246,8 +259,12 @@ where
                 // NOTE: currently a fast tick is a full SECONDS rotation.
                 let fast_tick_ms = (SECONDS - 1) as u64 * Self::SECOND_AS_MS;
                 for _ in 0..fast_ticks {
-                    self.seconds_wheel.get_or_insert().fast_skip_tick();
-                    self.watermark += fast_tick_ms;
+                    self.seconds_wheel
+                        .get_or_insert()
+                        .as_mut()
+                        .unwrap()
+                        .fast_skip_tick();
+                    *self.watermark.write() += fast_tick_ms;
                     *waw.watermark_mut() += fast_tick_ms;
                     self.tick(waw);
                     ticks -= SECONDS;
@@ -263,13 +280,13 @@ where
 
     /// Advances the time of the wheel aligned by the lowest unit (Second)
     #[inline]
-    pub fn advance_to(&mut self, watermark: u64, waw: &mut WriteAheadWheel<A>) {
+    pub(crate) fn advance_to(&self, watermark: u64, waw: &mut WriteAheadWheel<A>) {
         let diff = watermark.saturating_sub(self.watermark());
         self.advance(time::Duration::milliseconds(diff as i64), waw);
     }
 
     /// Clears the state of all wheels
-    pub fn clear(&mut self) {
+    pub fn clear(&self) {
         self.seconds_wheel.clear();
         self.minutes_wheel.clear();
         self.hours_wheel.clear();
@@ -281,7 +298,7 @@ where
     /// Return the current watermark as milliseconds for this wheel
     #[inline]
     pub fn watermark(&self) -> u64 {
-        self.watermark
+        *self.watermark.read()
     }
     /// Returns the aggregate in the given time interval
     pub fn interval_and_lower(&self, dur: time::Duration) -> Option<A::Aggregate> {
@@ -483,52 +500,52 @@ where
     ///
     /// In the worst case, a tick may cause a rotation of all the wheels in the hierarchy.
     #[inline]
-    fn tick(&mut self, waw: &mut WriteAheadWheel<A>) {
-        self.watermark += Self::SECOND_AS_MS;
+    fn tick(&self, waw: &mut WriteAheadWheel<A>) {
+        *self.watermark.write() += Self::SECOND_AS_MS;
 
-        let seconds = self.seconds_wheel.get_or_insert();
+        let mut seconds = self.seconds_wheel.get_or_insert();
 
         // Tick the Write-ahead wheel, if new entry insert into head of seconds wheel
         if let Some(window) = waw.tick() {
             let partial_agg = A::freeze(window);
-            seconds.insert_head(partial_agg)
+            seconds.as_mut().unwrap().insert_head(partial_agg)
         }
 
         // full rotation of seconds wheel
-        if let Some(rot_data) = seconds.tick() {
+        if let Some(rot_data) = seconds.as_mut().unwrap().tick() {
             // insert 60 seconds worth of partial aggregates into minute wheel and then tick it
-            let minutes = self.minutes_wheel.get_or_insert();
+            let mut minutes = self.minutes_wheel.get_or_insert();
 
-            minutes.insert_rotation_data(rot_data);
+            minutes.as_mut().unwrap().insert_rotation_data(rot_data);
 
             // full rotation of minutes wheel
-            if let Some(rot_data) = minutes.tick() {
+            if let Some(rot_data) = minutes.as_mut().unwrap().tick() {
                 // insert 60 minutes worth of partial aggregates into hours wheel and then tick it
-                let hours = self.hours_wheel.get_or_insert();
+                let mut hours = self.hours_wheel.get_or_insert();
 
-                hours.insert_rotation_data(rot_data);
+                hours.as_mut().unwrap().insert_rotation_data(rot_data);
 
                 // full rotation of hours wheel
-                if let Some(rot_data) = hours.tick() {
+                if let Some(rot_data) = hours.as_mut().unwrap().tick() {
                     // insert 24 hours worth of partial aggregates into days wheel and then tick it
-                    let days = self.days_wheel.get_or_insert();
-                    days.insert_rotation_data(rot_data);
+                    let mut days = self.days_wheel.get_or_insert();
+                    days.as_mut().unwrap().insert_rotation_data(rot_data);
 
                     // full rotation of days wheel
-                    if let Some(rot_data) = days.tick() {
+                    if let Some(rot_data) = days.as_mut().unwrap().tick() {
                         // insert 7 days worth of partial aggregates into weeks wheel and then tick it
-                        let weeks = self.weeks_wheel.get_or_insert();
+                        let mut weeks = self.weeks_wheel.get_or_insert();
 
-                        weeks.insert_rotation_data(rot_data);
+                        weeks.as_mut().unwrap().insert_rotation_data(rot_data);
 
                         // full rotation of weeks wheel
-                        if let Some(rot_data) = weeks.tick() {
+                        if let Some(rot_data) = weeks.as_mut().unwrap().tick() {
                             // insert 1 years worth of partial aggregates into year wheel and then tick it
-                            let years = self.years_wheel.get_or_insert();
-                            years.insert_rotation_data(rot_data);
+                            let mut years = self.years_wheel.get_or_insert();
+                            years.as_mut().unwrap().insert_rotation_data(rot_data);
 
                             // tick but ignore full rotations as this is the last hierarchy
-                            let _ = years.tick();
+                            let _ = years.as_mut().unwrap().tick();
                         }
                     }
                 }
@@ -537,55 +554,37 @@ where
     }
 
     /// Returns a reference to the seconds wheel
-    pub fn seconds(&self) -> Option<&SecondsWheel<A>> {
-        self.seconds_wheel.as_deref()
-    }
-    pub fn seconds_unchecked(&self) -> &SecondsWheel<A> {
-        self.seconds_wheel.as_deref().unwrap()
+    pub fn seconds(&self) -> SecondsWheelRef<'_, A> {
+        self.seconds_wheel.read()
     }
 
     /// Returns a reference to the minutes wheel
-    pub fn minutes(&self) -> Option<&MinutesWheel<A>> {
-        self.minutes_wheel.as_deref()
-    }
-    pub fn minutes_unchecked(&self) -> &MinutesWheel<A> {
-        self.minutes_wheel.as_deref().unwrap()
+    pub fn minutes(&self) -> MinutesWheelRef<'_, A> {
+        self.minutes_wheel.read()
     }
     /// Returns a reference to the hours wheel
-    pub fn hours(&self) -> Option<&HoursWheel<A>> {
-        self.hours_wheel.as_deref()
-    }
-    pub fn hours_unchecked(&self) -> &HoursWheel<A> {
-        self.hours_wheel.as_deref().unwrap()
+    pub fn hours(&self) -> HoursWheelRef<'_, A> {
+        self.hours_wheel.read()
     }
     /// Returns a reference to the days wheel
-    pub fn days(&self) -> Option<&DaysWheel<A>> {
-        self.days_wheel.as_deref()
-    }
-    pub fn days_unchecked(&self) -> &DaysWheel<A> {
-        self.days_wheel.as_deref().unwrap()
+    pub fn days(&self) -> DaysWheelRef<'_, A> {
+        self.days_wheel.read()
     }
 
     /// Returns a reference to the weeks wheel
-    pub fn weeks(&self) -> Option<&WeeksWheel<A>> {
-        self.weeks_wheel.as_deref()
-    }
-    pub fn weeks_unchecked(&self) -> &WeeksWheel<A> {
-        self.weeks_wheel.as_deref().unwrap()
+    pub fn weeks(&self) -> WeeksWheelRef<'_, A> {
+        self.weeks_wheel.read()
     }
 
     /// Returns a reference to the years wheel
-    pub fn years(&self) -> Option<&YearsWheel<A>> {
-        self.years_wheel.as_deref()
-    }
-    pub fn years_unchecked(&self) -> &YearsWheel<A> {
-        self.years_wheel.as_deref().unwrap()
+    pub fn years(&self) -> YearsWheelRef<'_, A> {
+        self.years_wheel.read()
     }
 
     /// Merges two wheels
     ///
     /// Note that the time in `other` may be advanced and thus change state
-    pub fn merge(&mut self, other: &mut Self) {
+    pub(crate) fn merge(&self, other: &Self) {
         let other_watermark = other.watermark();
 
         // make sure both wheels are aligned by time
@@ -730,3 +729,73 @@ unsafe impl<A: Aggregator> Send for Haw<A> {}
 #[cfg(feature = "sync")]
 #[allow(unsafe_code)]
 unsafe impl<A: Aggregator> Sync for Haw<A> {}
+
+#[cfg(feature = "sync")]
+mod watermark_impl {
+    use parking_lot::{MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock};
+    use std::sync::Arc;
+
+    /// The lock you get from [`RwLock::read`].
+    pub type WatermarkRef<'a> = MappedRwLockReadGuard<'a, u64>;
+    /// The lock you get from [`RwLock::write`].
+    pub type WatermarkRefMut<'a> = MappedRwLockWriteGuard<'a, u64>;
+
+    /// A watermark backed by interior mutability
+    ///
+    /// ``RefCell`` for single threded exuections and ``Arc<RwLock<_>>`` with the sync feature enabled
+    #[derive(Clone, Debug)]
+    pub struct Watermark(Arc<RwLock<u64>>);
+    impl Watermark {
+        #[inline(always)]
+        pub fn new(watermark: u64) -> Self {
+            Self(Arc::new(RwLock::new(watermark)))
+        }
+
+        #[inline(always)]
+        pub fn read(&self) -> WatermarkRef<'_> {
+            parking_lot::RwLockReadGuard::map(self.0.read(), |v| v)
+        }
+
+        #[inline(always)]
+        pub fn write(&self) -> WatermarkRefMut<'_> {
+            parking_lot::RwLockWriteGuard::map(self.0.write(), |v| v)
+        }
+    }
+    #[allow(unsafe_code)]
+    unsafe impl Send for Watermark {}
+    #[allow(unsafe_code)]
+    unsafe impl Sync for Watermark {}
+}
+
+#[cfg(not(feature = "sync"))]
+mod watermark_impl {
+    use core::cell::RefCell;
+
+    /// An immutably borrowed Watermark from [`RefCell::borrow´]
+    pub type WatermarkRef<'a> = core::cell::Ref<'a, u64>;
+    /// A mutably borrowed Watermark from [`RefCell::borrow_mut´]
+    pub type WatermarkRefMut<'a> = core::cell::RefMut<'a, u64>;
+
+    /// A watermark backed by interior mutability
+    ///
+    /// ``RefCell`` for single threded exuections and ``Arc<RwLock<_>>`` with the sync feature enabled
+    #[derive(Clone, Debug)]
+    pub struct Watermark(RefCell<u64>);
+
+    impl Watermark {
+        #[inline(always)]
+        pub fn new(watermark: u64) -> Self {
+            Self(RefCell::new(watermark))
+        }
+
+        #[inline(always)]
+        pub fn read(&self) -> WatermarkRef<'_> {
+            self.0.borrow()
+        }
+
+        #[inline(always)]
+        pub fn write(&self) -> WatermarkRefMut<'_> {
+            self.0.borrow_mut()
+        }
+    }
+}

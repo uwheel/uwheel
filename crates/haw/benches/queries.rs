@@ -44,29 +44,33 @@ fn random_interval(wheel: &RwWheel<AllAggregator>) {
     if pick == 0usize {
         assert!(wheel
             .read()
-            .raw()
-            .seconds_unchecked()
+            .seconds()
+            .as_ref()
+            .unwrap()
             .interval(random_seconds())
             .is_some());
     } else if pick == 1usize {
         assert!(wheel
             .read()
-            .raw()
-            .minutes_unchecked()
+            .minutes()
+            .as_ref()
+            .unwrap()
             .interval(random_minute())
             .is_some());
     } else if pick == 2usize {
         assert!(wheel
             .read()
-            .raw()
-            .hours_unchecked()
+            .hours()
+            .as_ref()
+            .unwrap()
             .interval(random_hours())
             .is_some());
     } else {
         assert!(wheel
             .read()
-            .raw()
-            .days_unchecked()
+            .days()
+            .as_ref()
+            .unwrap()
             .interval(random_days())
             .is_some());
     }
@@ -77,22 +81,25 @@ fn random_drill_down_interval(wheel: &RwWheel<AllAggregator>) {
     if pick == 0usize {
         assert!(wheel
             .read()
-            .raw()
-            .minutes_unchecked()
+            .minutes()
+            .as_ref()
+            .unwrap()
             .drill_down_interval(random_minute())
             .is_some());
     } else if pick == 1usize {
         assert!(wheel
             .read()
-            .raw()
-            .hours_unchecked()
+            .hours()
+            .as_ref()
+            .unwrap()
             .drill_down_interval(random_hours())
             .is_some());
     } else {
         assert!(wheel
             .read()
-            .raw()
-            .days_unchecked()
+            .days()
+            .as_ref()
+            .unwrap()
             .drill_down_interval(random_days())
             .is_some());
     }
@@ -143,8 +150,9 @@ fn random_seconds_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .raw()
-            .seconds_unchecked()
+            .seconds()
+            .as_ref()
+            .unwrap()
             .interval(random_seconds())
             .is_some());
     });
@@ -154,8 +162,9 @@ fn random_minutes_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .raw()
-            .minutes_unchecked()
+            .minutes()
+            .as_ref()
+            .unwrap()
             .interval(random_minute())
             .is_some());
     });
@@ -166,8 +175,9 @@ fn random_hour_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .raw()
-            .hours_unchecked()
+            .hours()
+            .as_ref()
+            .unwrap()
             .interval(random_hours())
             .is_some());
     });
@@ -177,8 +187,9 @@ fn random_days_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .raw()
-            .days_unchecked()
+            .days()
+            .as_ref()
+            .unwrap()
             .interval(random_days())
             .is_some());
     });
@@ -189,8 +200,9 @@ fn random_minutes_drill_down_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .raw()
-            .minutes_unchecked()
+            .minutes()
+            .as_ref()
+            .unwrap()
             .drill_down_interval(random_minute())
             .is_some());
     });
@@ -201,8 +213,9 @@ fn random_hours_drill_down_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .raw()
-            .hours_unchecked()
+            .hours()
+            .as_ref()
+            .unwrap()
             .drill_down_interval(random_hours())
             .is_some());
     });
@@ -212,8 +225,9 @@ fn random_days_drill_down_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .raw()
-            .days_unchecked()
+            .days()
+            .as_ref()
+            .unwrap()
             .drill_down_interval(random_days())
             .is_some());
     });

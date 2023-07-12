@@ -21,7 +21,7 @@ use crate::wheels::rw::read::hierarchical::{DefaultSerializer, PartialAggregate}
 pub(crate) mod iter;
 mod maybe;
 
-pub use maybe::MaybeWheel;
+pub use maybe::{AggWheelRef, MaybeWheel};
 
 use iter::{DrillIter, Iter};
 
@@ -677,3 +677,10 @@ impl<const CAP: usize, A: Aggregator> WheelExt for AggregationWheel<CAP, A> {
         self.tail
     }
 }
+#[cfg(feature = "sync")]
+#[allow(unsafe_code)]
+unsafe impl<const CAP: usize, A: Aggregator> Send for AggregationWheel<CAP, A> {}
+
+#[cfg(feature = "sync")]
+#[allow(unsafe_code)]
+unsafe impl<const CAP: usize, A: Aggregator> Sync for AggregationWheel<CAP, A> {}
