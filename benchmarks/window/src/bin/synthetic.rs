@@ -121,8 +121,8 @@ fn main() {
         cg_bfinger_eight_wheel,
         &args,
     );
-    let fiba_pairs_wheel = fiba_wheel::PairsFiBA::new(0, range, slide);
-    run("FiBA Pairs Wheel SUM", seconds, fiba_pairs_wheel, &args);
+    //let fiba_pairs_wheel = fiba_wheel::PairsFiBA::new(0, range, slide);
+    //run("FiBA Pairs Wheel SUM", seconds, fiba_pairs_wheel, &args);
 }
 
 fn run(id: &str, seconds: u64, mut window: impl WindowWheel<U64SumAggregator>, args: &Args) {

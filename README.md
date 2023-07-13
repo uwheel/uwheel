@@ -47,23 +47,45 @@ To implement your own custom aggregator, you have to implement the [Aggregator](
 | MIN |  Minimum value of all inputs |  u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
 | MAX |  Maximum value of all inputs | u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
 | ALL |  Pre-computed SUM, AVG, MIN, MAX, COUNT | f64 |
-| TOP_K  |  Top K of all inputs | ``Aggregator`` with aggregate data that implements ``Ord`` |
+| TOP N  |  Top N of all inputs | ``Aggregator`` with aggregate data that implements ``Ord`` |
 
 ## Feature Flags
 - `std` (_enabled by default_)
     - Enables features that rely on the standard library
-- `window`
+- `window` (_enabled by default_)
     - Enables wheels for streaming window aggregation
-- `tree`
-    - Enables the multi-key ``RwTreeWheel``
-- `top_k`
-    - Enables top_k aggregation
+- `sum` (_enabled by default_)
+    - Enables sum aggregation
+- `avg` (_enabled by default_)
+    - Enables avg aggregation
+- `min` (_enabled by default_)
+    - Enables min aggregation
+- `max` (_enabled by default_)
+    - Enables max aggregation
+- `top_n`
+    - Enables top_n aggregation
 - `sync` (_implicitly enables `std`_)
     - Enables a sync version of ``ReadWheel`` that can be queried across threads
 - `stats` (_implicitly enables `std`_)
     - Enables recording of latencies for various operations
+- `tree`
+    - Enables the multi-key ``RwTreeWheel``
 - `rkyv`
     - Enables serialisation & deserialisation using the [rkyv](https://docs.rs/rkyv/latest/rkyv/) framework.
+
+
+## Usage
+
+By default the library relies on ``std`` and compiles pre-defined aggregators:
+
+```toml
+haw = "0.1.0"
+```
+For ``no_std`` support and no default aggregators:
+
+```toml
+haw = { version = "0.1.0", default-features = false }
+```
 
 ## Examples
 

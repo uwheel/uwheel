@@ -370,6 +370,15 @@ pub fn duckdb_append_batch(batch: Vec<RideData>, db: &mut Connection) -> Result<
     app.flush();
     Ok(())
 }
+pub fn duckdb_query_topn(query: &str, db: &Connection) -> Result<()> {
+    let mut stmt = db.prepare(query)?;
+    let _sum_res = stmt.query_map([], |row| {
+        let res: Result<f64> = row.get(0);
+        assert!(res.is_ok());
+        Ok(())
+    })?;
+    Ok(())
+}
 pub fn duckdb_query_sum(query: &str, db: &Connection) -> Result<()> {
     let mut stmt = db.prepare(query)?;
     let _sum_res = stmt.query_map([], |row| {
