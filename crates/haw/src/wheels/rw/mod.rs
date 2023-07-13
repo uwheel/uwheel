@@ -13,7 +13,7 @@ use read::ReadWheel;
 use write::{WriteAheadWheel, DEFAULT_WRITE_AHEAD_SLOTS};
 
 /// A Reader-Writer Wheel
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RwWheel<A: Aggregator> {
     write: WriteAheadWheel<A>,
     read: ReadWheel<A>,

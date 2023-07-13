@@ -264,7 +264,7 @@ where
                         .as_mut()
                         .unwrap()
                         .fast_skip_tick();
-                    *self.watermark.write() += fast_tick_ms;
+                    self.watermark.inc(fast_tick_ms);
                     *waw.watermark_mut() += fast_tick_ms;
                     self.tick(waw);
                     ticks -= SECONDS;
@@ -298,7 +298,7 @@ where
     /// Return the current watermark as milliseconds for this wheel
     #[inline]
     pub fn watermark(&self) -> u64 {
-        *self.watermark.read()
+        self.watermark.get()
     }
     /// Returns the aggregate in the given time interval
     pub fn interval_and_lower(&self, dur: time::Duration) -> Option<A::Aggregate> {
@@ -501,7 +501,7 @@ where
     /// In the worst case, a tick may cause a rotation of all the wheels in the hierarchy.
     #[inline]
     fn tick(&self, waw: &mut WriteAheadWheel<A>) {
-        *self.watermark.write() += Self::SECOND_AS_MS;
+        self.watermark.inc(Self::SECOND_AS_MS);
 
         let mut seconds = self.seconds_wheel.get_or_insert();
 
@@ -732,33 +732,26 @@ unsafe impl<A: Aggregator> Sync for Haw<A> {}
 
 #[cfg(feature = "sync")]
 mod watermark_impl {
-    use parking_lot::{MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock};
+    use core::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
-
-    /// The lock you get from [`RwLock::read`].
-    pub type WatermarkRef<'a> = MappedRwLockReadGuard<'a, u64>;
-    /// The lock you get from [`RwLock::write`].
-    pub type WatermarkRefMut<'a> = MappedRwLockWriteGuard<'a, u64>;
 
     /// A watermark backed by interior mutability
     ///
-    /// ``RefCell`` for single threded exuections and ``Arc<RwLock<_>>`` with the sync feature enabled
+    /// ``Cell`` for single threded exuections and ``Arc<AtomicU64<_>>`` with the sync feature enabled
     #[derive(Clone, Debug)]
-    pub struct Watermark(Arc<RwLock<u64>>);
+    pub struct Watermark(Arc<AtomicU64>);
     impl Watermark {
         #[inline(always)]
         pub fn new(watermark: u64) -> Self {
-            Self(Arc::new(RwLock::new(watermark)))
+            Self(Arc::new(AtomicU64::new(watermark)))
         }
-
         #[inline(always)]
-        pub fn read(&self) -> WatermarkRef<'_> {
-            parking_lot::RwLockReadGuard::map(self.0.read(), |v| v)
+        pub fn get(&self) -> u64 {
+            self.0.load(Ordering::Relaxed)
         }
-
         #[inline(always)]
-        pub fn write(&self) -> WatermarkRefMut<'_> {
-            parking_lot::RwLockWriteGuard::map(self.0.write(), |v| v)
+        pub fn inc(&self, step: u64) {
+            let _ = self.0.fetch_add(step, Ordering::Relaxed);
         }
     }
     #[allow(unsafe_code)]
@@ -769,33 +762,27 @@ mod watermark_impl {
 
 #[cfg(not(feature = "sync"))]
 mod watermark_impl {
-    use core::cell::RefCell;
-
-    /// An immutably borrowed Watermark from [`RefCell::borrow´]
-    pub type WatermarkRef<'a> = core::cell::Ref<'a, u64>;
-    /// A mutably borrowed Watermark from [`RefCell::borrow_mut´]
-    pub type WatermarkRefMut<'a> = core::cell::RefMut<'a, u64>;
+    use core::cell::Cell;
 
     /// A watermark backed by interior mutability
     ///
-    /// ``RefCell`` for single threded exuections and ``Arc<RwLock<_>>`` with the sync feature enabled
+    /// ``Cell`` for single threded exuections and ``Arc<AtomicU64<_>>`` with the sync feature enabled
     #[derive(Clone, Debug)]
-    pub struct Watermark(RefCell<u64>);
+    pub struct Watermark(Cell<u64>);
 
     impl Watermark {
         #[inline(always)]
         pub fn new(watermark: u64) -> Self {
-            Self(RefCell::new(watermark))
+            Self(Cell::new(watermark))
         }
-
         #[inline(always)]
-        pub fn read(&self) -> WatermarkRef<'_> {
-            self.0.borrow()
+        pub fn get(&self) -> u64 {
+            self.0.get()
         }
-
         #[inline(always)]
-        pub fn write(&self) -> WatermarkRefMut<'_> {
-            self.0.borrow_mut()
+        pub fn inc(&self, step: u64) {
+            let curr = self.get();
+            self.0.set(curr + step);
         }
     }
 }

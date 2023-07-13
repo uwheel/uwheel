@@ -20,9 +20,9 @@ pub mod min;
 #[cfg(feature = "sum")]
 pub mod sum;
 
-#[cfg(feature = "top_k")]
-/// Top-K Aggregation using a nested Aggregator which has a PartialAggregate that implements `Ord`
-pub mod top_k;
+#[cfg(feature = "top_n")]
+/// Top-N Aggregation using a nested Aggregator which has a PartialAggregate that implements `Ord`
+pub mod top_n;
 
 #[cfg(feature = "all")]
 pub use all::{AggState, AllAggregator};
@@ -35,7 +35,7 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     type Input: Debug + Copy + Send;
 
     /// Mutable Partial Aggregate type
-    type MutablePartialAggregate: Debug + Clone;
+    type MutablePartialAggregate: Clone;
 
     /// Partial Aggregate type
     type PartialAggregate: PartialAggregateType;

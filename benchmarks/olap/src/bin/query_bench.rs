@@ -18,6 +18,7 @@ pub enum Workload {
     All,
     /// F64SumAggregator
     Sum,
+    TopK,
 }
 
 #[derive(Parser, Debug)]
@@ -251,6 +252,21 @@ fn main() -> Result<()> {
                 &rw_tree,
                 olap_range_queries_high_interval,
             );
+            haw_run(
+                "RwTreeWheel RANDOM Low Intervals",
+                watermark,
+                &rw_tree,
+                random_queries_low_interval,
+            );
+            haw_run(
+                "RwTreeWheel RANDOM High Intervals",
+                watermark,
+                &rw_tree,
+                random_queries_high_interval,
+            );
+        }
+        Workload::TopK => {
+            unimplemented!();
         }
     };
     /*
@@ -395,6 +411,7 @@ fn duckdb_run(
     let base_str = match workload {
         Workload::All => "SELECT AVG(fare_amount), SUM(fare_amount), MIN(fare_amount), MAX(fare_amount), COUNT(fare_amount) FROM rides",
         Workload::Sum => "SELECT SUM(fare_amount) FROM rides",
+        Workload::TopK => unimplemented!(),
         //Workload::Avg => "SELECT AVG(fare_amount) FROM rides",
         //Workload::Min => "SELECT MIN(fare_amount) FROM rides",
         //Workload::Max => "SELECT MAX(fare_amount) FROM rides",
@@ -466,6 +483,7 @@ fn duckdb_run(
         match workload {
             Workload::All => duckdb_query_all(&sql_query, db).unwrap(),
             Workload::Sum => duckdb_query_sum(&sql_query, db).unwrap(),
+            Workload::TopK => unimplemented!(),
         }
         //duckdb_query(&sql_query, db).unwrap();
         hist.record(now.elapsed().as_nanos() as u64).unwrap();
