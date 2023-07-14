@@ -1,14 +1,14 @@
 use minstant::Instant;
 
-use clap::Parser;
-use duckdb::Result;
-use haw::{
+use awheel::{
     aggregator::{top_n::TopNAggregator, U64SumAggregator},
     time,
     Entry,
     ReadWheel,
     RwWheel,
 };
+use clap::Parser;
+use duckdb::Result;
 use hdrhistogram::Histogram;
 use olap::*;
 use std::time::Duration;
@@ -78,17 +78,17 @@ fn main() -> Result<()> {
                 ))
                 .unwrap();
         }
-        use haw::time::NumericalDuration;
+        use awheel::time::NumericalDuration;
         rw_wheel.advance(60.seconds());
     }
     println!("Finished preparing RwWheel");
-    haw_run(
+    awheel_run(
         "RwWheel TopN Low Intervals",
         watermark,
         rw_wheel.read(),
         topn_queries_low_interval,
     );
-    haw_run(
+    awheel_run(
         "RwWheel TopN High Intervals",
         watermark,
         rw_wheel.read(),
@@ -97,7 +97,7 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-fn haw_run(
+fn awheel_run(
     id: &str,
     _watermark: u64,
     wheel: &ReadWheel<TopNAggregator<u64, 10, U64SumAggregator>>,

@@ -1,0 +1,20 @@
+[package]
+name = "awheel-window"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+targets = []
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["std"]
+std = []
+stats = []
+
+[dependencies]
+awheel-core.workspace = true

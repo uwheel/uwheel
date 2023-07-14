@@ -1,22 +1,26 @@
 [workspace]
-resolver = "1" # needed for haw_demo to work on web
-members = [
-    "crates/*",
-    "benchmarks/*"
-]
+resolver = "1"                         # needed for awheel-demo to work on web
+members = ["crates/*", "benchmarks/*"]
 
 [workspace.package]
 authors = ["Max Meldrum <max@meldrum.se>"]
 edition = "2021"
+categories = ["index", "temporal warehousing", "streaming", "no-std"]
 license = "MIT OR Apache-2.0"
+readme = "README.md"
 
 [profile.release]
 opt-level = 2 # fast and small wasm
 
 [workspace.dependencies]
-haw = { path = "crates/haw", version = "0.1.0" }
 fiba_rs = { path = "crates/fiba_rs", version = "0.1.0" }
+awheel = { path = "crates/awheel", version = "0.1.0" }
+awheel-core = { path = "crates/awheel-core", version = "0.1.0", default-features = false }
+awheel-window = { path = "crates/awheel-window", version = "0.1.0" }
+awheel-tree = { path = "crates/awheel-tree", version = "0.1.0" }
 
+parking_lot = "0.12"
+hashbrown = "0.13"
 sketches-ddsketch = "0.1"
 minstant = "0.1"
 fastrand = "1.8.0"
@@ -24,3 +28,4 @@ rand = "0.8.5"
 hdrhistogram = "7"
 clap = { version = "3.2", features = ["derive"] }
 criterion = "0.4"
+duckdb = { version = "0.8.1", features = ["bundled"] }

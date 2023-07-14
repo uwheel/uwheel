@@ -1,13 +1,13 @@
 use minstant::Instant;
 
-use clap::{ArgEnum, Parser};
-use duckdb::Result;
-use haw::{
+use awheel::{
     aggregator::{Aggregator, AllAggregator, F64SumAggregator},
     time,
+    tree::RwTreeWheel,
     Entry,
-    RwTreeWheel,
 };
+use clap::{ArgEnum, Parser};
+use duckdb::Result;
 use hdrhistogram::Histogram;
 use olap::*;
 use std::time::Duration;
@@ -68,8 +68,8 @@ fn main() -> Result<()> {
     let olap_range_queries_high_interval =
         QueryGenerator::generate_high_interval_range_queries(total_queries);
 
-    let haw_olap_queries_low_interval = olap_queries_low_interval.clone();
-    let haw_olap_queries_high_interval = olap_queries_high_interval.clone();
+    let awheel_olap_queries_low_interval = olap_queries_low_interval.clone();
+    let awheel_olap_queries_high_interval = olap_queries_high_interval.clone();
 
     let total_entries = batches.len() * events_per_min;
     println!("Running with total entries {}", total_entries);
@@ -153,7 +153,7 @@ fn main() -> Result<()> {
                     )
                     .unwrap();
             }
-            use haw::time::NumericalDuration;
+            use awheel::time::NumericalDuration;
             rw_tree.advance(60.seconds());
         }
     }
@@ -162,50 +162,50 @@ fn main() -> Result<()> {
         Workload::All => {
             let mut rw_tree: RwTreeWheel<u64, AllAggregator> = RwTreeWheel::new(0);
             fill_rw_tree(batches, &mut rw_tree);
-            haw_run(
+            awheel_run(
                 "RwTreeWheel ALL Low Intervals",
                 watermark,
                 &rw_tree,
-                haw_olap_queries_low_interval,
+                awheel_olap_queries_low_interval,
             );
-            haw_run(
+            awheel_run(
                 "RwTreeWheel ALL High Intervals",
                 watermark,
                 &rw_tree,
-                haw_olap_queries_high_interval,
+                awheel_olap_queries_high_interval,
             );
-            haw_run(
+            awheel_run(
                 "RwTreeWheel POINT Low Intervals",
                 watermark,
                 &rw_tree,
                 point_queries_low_interval,
             );
-            haw_run(
+            awheel_run(
                 "RwTreeWheel POINT High Intervals",
                 watermark,
                 &rw_tree,
                 point_queries_high_interval,
             );
 
-            haw_run(
+            awheel_run(
                 "RwTreeWheel RANGE Low Intervals",
                 watermark,
                 &rw_tree,
                 olap_range_queries_low_interval,
             );
-            haw_run(
+            awheel_run(
                 "RwTreeWheel RANGE High Intervals",
                 watermark,
                 &rw_tree,
                 olap_range_queries_high_interval,
             );
-            haw_run(
+            awheel_run(
                 "RwTreeWheel RANDOM Low Intervals",
                 watermark,
                 &rw_tree,
                 random_queries_low_interval,
             );
-            haw_run(
+            awheel_run(
                 "RwTreeWheel RANDOM High Intervals",
                 watermark,
                 &rw_tree,
@@ -215,50 +215,50 @@ fn main() -> Result<()> {
         Workload::Sum => {
             let mut rw_tree: RwTreeWheel<u64, F64SumAggregator> = RwTreeWheel::new(0);
             fill_rw_tree(batches, &mut rw_tree);
-            haw_run(
+            awheel_run(
                 "RwTreeWheel ALL Low Intervals",
                 watermark,
                 &rw_tree,
-                haw_olap_queries_low_interval,
+                awheel_olap_queries_low_interval,
             );
-            haw_run(
+            awheel_run(
                 "RwTreeWheel ALL High Intervals",
                 watermark,
                 &rw_tree,
-                haw_olap_queries_high_interval,
+                awheel_olap_queries_high_interval,
             );
-            haw_run(
+            awheel_run(
                 "RwTreeWheel POINT Low Intervals",
                 watermark,
                 &rw_tree,
                 point_queries_low_interval,
             );
-            haw_run(
+            awheel_run(
                 "RwTreeWheel POINT High Intervals",
                 watermark,
                 &rw_tree,
                 point_queries_high_interval,
             );
 
-            haw_run(
+            awheel_run(
                 "RwTreeWheel RANGE Low Intervals",
                 watermark,
                 &rw_tree,
                 olap_range_queries_low_interval,
             );
-            haw_run(
+            awheel_run(
                 "RwTreeWheel RANGE High Intervals",
                 watermark,
                 &rw_tree,
                 olap_range_queries_high_interval,
             );
-            haw_run(
+            awheel_run(
                 "RwTreeWheel RANDOM Low Intervals",
                 watermark,
                 &rw_tree,
                 random_queries_low_interval,
             );
-            haw_run(
+            awheel_run(
                 "RwTreeWheel RANDOM High Intervals",
                 watermark,
                 &rw_tree,
@@ -270,39 +270,39 @@ fn main() -> Result<()> {
         }
     };
     /*
-    println!("Finished preparing HAW");
-    haw_run(
+    println!("Finished preparing awheel");
+    awheel_run(
         "RwTreeWheel ALL Low Intervals",
         watermark,
         &rw_tree,
-        haw_olap_queries_low_interval,
+        awheel_olap_queries_low_interval,
     );
-    haw_run(
+    awheel_run(
         "RwTreeWheel ALL High Intervals",
         watermark,
         &rw_tree,
-        haw_olap_queries_high_interval,
+        awheel_olap_queries_high_interval,
     );
-    haw_run(
+    awheel_run(
         "RwTreeWheel POINT Low Intervals",
         watermark,
         &rw_tree,
         point_queries_low_interval,
     );
-    haw_run(
+    awheel_run(
         "RwTreeWheel POINT High Intervals",
         watermark,
         &rw_tree,
         point_queries_high_interval,
     );
 
-    haw_run(
+    awheel_run(
         "RwTreeWheel RANGE Low Intervals",
         watermark,
         &rw_tree,
         olap_range_queries_low_interval,
     );
-    haw_run(
+    awheel_run(
         "RwTreeWheel RANGE High Intervals",
         watermark,
         &rw_tree,
@@ -312,7 +312,7 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-fn haw_run<A: Aggregator + Clone>(
+fn awheel_run<A: Aggregator + Clone>(
     id: &str,
     _watermark: u64,
     wheel: &RwTreeWheel<u64, A>,

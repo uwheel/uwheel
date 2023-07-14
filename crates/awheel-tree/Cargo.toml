@@ -1,0 +1,22 @@
+[package]
+name = "awheel-tree"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+targets = []
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["std"]
+std = []
+sync = ["std", "parking_lot"]
+
+[dependencies]
+awheel-core.workspace = true
+hashbrown.workspace = true
+parking_lot = { workspace = true, optional = true }

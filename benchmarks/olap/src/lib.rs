@@ -1,5 +1,5 @@
+use awheel::time;
 use duckdb::{params, Connection, DropBehavior, Result};
-use haw::time;
 
 const MAX_FARE: u64 = 1000;
 
