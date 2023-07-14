@@ -1,0 +1,68 @@
+[package]
+name = "awheel-core"
+version = "0.1.0"
+categories.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+targets = []
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["all", "avg", "sum", "min", "max"]
+std = ["rkyv?/std"]
+all = []
+avg = []
+sum = []
+min = []
+max = []
+top_n = ["dep:hashbrown"]
+rkyv = ["dep:rkyv"]
+stats = ["dep:sketches-ddsketch", "dep:minstant", "std"]
+sync = ["dep:parking_lot", "std"]
+
+[dependencies]
+parking_lot = { workspace = true, optional = true }
+hashbrown = { workspace = true, optional = true }
+# Stats 
+sketches-ddsketch = { workspace = true, optional = true }
+minstant = { workspace = true, optional = true }
+rkyv = { version = "0.7.39", features = [
+    "copy",
+    "copy_unsafe",
+    "smallvec",
+], optional = true }
+
+[dev-dependencies]
+fastrand.workspace = true
+rand.workspace = true
+criterion.workspace = true
+fiba_rs.workspace = true
+clap.workspace = true
+lz4_flex = { version = "0.11", default-features = false }
+zipf = "7.0.0"
+
+[[bench]]
+name = "insert"
+harness = false
+
+[[bench]]
+name = "advance"
+harness = false
+
+[[bench]]
+name = "queries"
+harness = false
+
+[[bench]]
+name = "merge"
+harness = false
+
+[[bench]]
+name = "serde"
+harness = false
+required-features = ["rkyv"]

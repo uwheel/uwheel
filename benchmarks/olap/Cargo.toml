@@ -4,14 +4,13 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
-duckdb = { version = "0.8.1", features = ["bundled"] }
-haw = { workspace = true, features = ["tree", "sync", "stats", "top_n"] }
+duckdb.workspace = true
+awheel = { workspace = true, features = ["tree", "sync", "stats", "top_n"] }
 clap.workspace = true
 fastrand.workspace = true
 hdrhistogram.workspace = true
 minstant.workspace = true
 sketches-ddsketch.workspace = true
-
 
 [dev-dependencies]
 fastrand.workspace = true

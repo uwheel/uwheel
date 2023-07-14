@@ -6,9 +6,9 @@ use std::{
     time::Duration,
 };
 
+use awheel::{aggregator::AllAggregator, time, Entry, RwWheel};
 use clap::{ArgEnum, Parser};
 use duckdb::Result;
-use haw::{aggregator::AllAggregator, time, Entry, RwWheel};
 use minstant::Instant;
 use olap::*;
 use sketches_ddsketch::{Config, DDSketch};
@@ -55,10 +55,10 @@ fn main() -> Result<()> {
                 .insert(Entry::new(record.fare_amount, record.do_time))
                 .unwrap();
         }
-        use haw::time::NumericalDuration;
+        use awheel::time::NumericalDuration;
         wheel.advance(60.seconds());
     }
-    println!("Finished preparing HAW");
+    println!("Finished preparing awheel");
 
     let read_wheel = wheel.read().clone();
 
@@ -131,7 +131,7 @@ fn main() -> Result<()> {
     for s in skecthes {
         sketch.merge(&s).unwrap();
     }
-    let percentiles = haw::stats::sketch_percentiles(&sketch);
+    let percentiles = awheel::stats::sketch_percentiles(&sketch);
     let total_queries = sketch.count();
     println!("{:#?}", percentiles);
 

@@ -1,4 +1,4 @@
-use haw::time::Duration;
+use awheel::time::Duration;
 
 #[inline]
 fn align_to_closest_thousand(timestamp: u64) -> u64 {

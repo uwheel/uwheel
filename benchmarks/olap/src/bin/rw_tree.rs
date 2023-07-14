@@ -1,8 +1,8 @@
 use minstant::Instant;
 
+use awheel::{aggregator::AllAggregator, time, tree::RwTreeWheel, Entry};
 use clap::{ArgEnum, Parser};
 use duckdb::Result;
-use haw::{aggregator::AllAggregator, time, Entry, RwTreeWheel};
 use olap::*;
 use sketches_ddsketch::{Config, DDSketch};
 use std::{
@@ -56,7 +56,7 @@ fn main() -> Result<()> {
                 )
                 .unwrap();
         }
-        use haw::time::NumericalDuration;
+        use awheel::time::NumericalDuration;
         rw_tree.advance(60.seconds());
     }
     let read_wheel = rw_tree.read().clone();
@@ -151,7 +151,7 @@ fn main() -> Result<()> {
     for s in skecthes {
         sketch.merge(&s).unwrap();
     }
-    let percentiles = haw::stats::sketch_percentiles(&sketch);
+    let percentiles = awheel::stats::sketch_percentiles(&sketch);
     let total_queries = sketch.count();
     println!("{:#?}", percentiles);
 

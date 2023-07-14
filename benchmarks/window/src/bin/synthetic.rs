@@ -1,10 +1,10 @@
-use clap::Parser;
-use haw::{
+use awheel::{
     aggregator::U64SumAggregator,
     time::Duration,
-    wheels::window::{eager, eager_window_query_cost, lazy, lazy_window_query_cost, WindowWheel},
+    window::{eager, eager_window_query_cost, lazy, lazy_window_query_cost, WindowWheel},
     Entry,
 };
+use clap::Parser;
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},

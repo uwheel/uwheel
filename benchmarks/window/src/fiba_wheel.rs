@@ -1,10 +1,10 @@
 use fiba_rs::*;
 
-use haw::{
+use awheel::{
     aggregator::U64SumAggregator,
     stats::Measure,
     time::Duration,
-    wheels::window::{
+    window::{
         lazy::PairsWheel,
         stats::Stats,
         util::{create_pair_type, pairs_capacity, pairs_space, PairType},
@@ -32,10 +32,10 @@ impl BFingerTwoWheel {
 impl WindowWheel<U64SumAggregator> for BFingerTwoWheel {
     fn advance(
         &mut self,
-        _duration: haw::time::Duration,
+        _duration: awheel::time::Duration,
     ) -> Vec<(
         u64,
-        Option<<U64SumAggregator as haw::aggregator::Aggregator>::Aggregate>,
+        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
     )> {
         Vec::new()
     }
@@ -44,7 +44,7 @@ impl WindowWheel<U64SumAggregator> for BFingerTwoWheel {
         watermark: u64,
     ) -> Vec<(
         u64,
-        Option<<U64SumAggregator as haw::aggregator::Aggregator>::Aggregate>,
+        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
     )> {
         let _adv_measure = Measure::new(&self.stats.advance_ns);
         let mut res = Vec::new();
@@ -68,12 +68,13 @@ impl WindowWheel<U64SumAggregator> for BFingerTwoWheel {
     #[inline]
     fn insert(
         &mut self,
-        entry: haw::Entry<<U64SumAggregator as haw::aggregator::Aggregator>::Input>,
-    ) -> Result<(), haw::Error<<U64SumAggregator as haw::aggregator::Aggregator>::Input>> {
+        entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
+    ) -> Result<(), awheel::Error<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>>
+    {
         self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
         Ok(())
     }
-    fn wheel(&self) -> &haw::ReadWheel<U64SumAggregator> {
+    fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
     fn print_stats(&self) {
@@ -102,10 +103,10 @@ impl BFingerFourWheel {
 impl WindowWheel<U64SumAggregator> for BFingerFourWheel {
     fn advance(
         &mut self,
-        _duration: haw::time::Duration,
+        _duration: awheel::time::Duration,
     ) -> Vec<(
         u64,
-        Option<<U64SumAggregator as haw::aggregator::Aggregator>::Aggregate>,
+        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
     )> {
         Vec::new()
     }
@@ -114,7 +115,7 @@ impl WindowWheel<U64SumAggregator> for BFingerFourWheel {
         watermark: u64,
     ) -> Vec<(
         u64,
-        Option<<U64SumAggregator as haw::aggregator::Aggregator>::Aggregate>,
+        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
     )> {
         let _adv_measure = Measure::new(&self.stats.advance_ns);
         let mut res = Vec::new();
@@ -138,13 +139,14 @@ impl WindowWheel<U64SumAggregator> for BFingerFourWheel {
     #[inline]
     fn insert(
         &mut self,
-        entry: haw::Entry<<U64SumAggregator as haw::aggregator::Aggregator>::Input>,
-    ) -> Result<(), haw::Error<<U64SumAggregator as haw::aggregator::Aggregator>::Input>> {
+        entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
+    ) -> Result<(), awheel::Error<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>>
+    {
         let _measure = Measure::new(&self.stats.insert_ns);
         self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
         Ok(())
     }
-    fn wheel(&self) -> &haw::ReadWheel<U64SumAggregator> {
+    fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
     fn print_stats(&self) {
@@ -173,10 +175,10 @@ impl BFingerEightWheel {
 impl WindowWheel<U64SumAggregator> for BFingerEightWheel {
     fn advance(
         &mut self,
-        _duration: haw::time::Duration,
+        _duration: awheel::time::Duration,
     ) -> Vec<(
         u64,
-        Option<<U64SumAggregator as haw::aggregator::Aggregator>::Aggregate>,
+        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
     )> {
         Vec::new()
     }
@@ -185,7 +187,7 @@ impl WindowWheel<U64SumAggregator> for BFingerEightWheel {
         watermark: u64,
     ) -> Vec<(
         u64,
-        Option<<U64SumAggregator as haw::aggregator::Aggregator>::Aggregate>,
+        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
     )> {
         let _adv_measure = Measure::new(&self.stats.advance_ns);
         let mut res = Vec::new();
@@ -213,13 +215,14 @@ impl WindowWheel<U64SumAggregator> for BFingerEightWheel {
     #[inline]
     fn insert(
         &mut self,
-        entry: haw::Entry<<U64SumAggregator as haw::aggregator::Aggregator>::Input>,
-    ) -> Result<(), haw::Error<<U64SumAggregator as haw::aggregator::Aggregator>::Input>> {
+        entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
+    ) -> Result<(), awheel::Error<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>>
+    {
         let _measure = Measure::new(&self.stats.insert_ns);
         self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
         Ok(())
     }
-    fn wheel(&self) -> &haw::ReadWheel<U64SumAggregator> {
+    fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
     fn print_stats(&self) {
@@ -294,10 +297,10 @@ impl PairsFiBA {
 impl WindowWheel<U64SumAggregator> for PairsFiBA {
     fn advance(
         &mut self,
-        duration: haw::time::Duration,
+        duration: awheel::time::Duration,
     ) -> Vec<(
         u64,
-        Option<<U64SumAggregator as haw::aggregator::Aggregator>::Aggregate>,
+        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
     )> {
         let ticks = duration.whole_seconds();
         let mut window_results = Vec::new();
@@ -322,7 +325,7 @@ impl WindowWheel<U64SumAggregator> for PairsFiBA {
                 if self.watermark == self.next_window_end {
                     // Window computation:
                     let window = self.compute_window();
-                    use haw::aggregator::Aggregator;
+                    use awheel::aggregator::Aggregator;
                     window_results.push((self.watermark, Some(U64SumAggregator::lower(window))));
 
                     let _measure = Measure::new(&self.stats.cleanup_ns);
@@ -349,7 +352,7 @@ impl WindowWheel<U64SumAggregator> for PairsFiBA {
         watermark: u64,
     ) -> Vec<(
         u64,
-        Option<<U64SumAggregator as haw::aggregator::Aggregator>::Aggregate>,
+        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
     )> {
         let diff = watermark.saturating_sub(self.watermark);
         let _measure = Measure::new(&self.stats.advance_ns);
@@ -358,12 +361,13 @@ impl WindowWheel<U64SumAggregator> for PairsFiBA {
     #[inline]
     fn insert(
         &mut self,
-        entry: haw::Entry<<U64SumAggregator as haw::aggregator::Aggregator>::Input>,
-    ) -> Result<(), haw::Error<<U64SumAggregator as haw::aggregator::Aggregator>::Input>> {
+        entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
+    ) -> Result<(), awheel::Error<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>>
+    {
         self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
         Ok(())
     }
-    fn wheel(&self) -> &haw::ReadWheel<U64SumAggregator> {
+    fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
     fn print_stats(&self) {

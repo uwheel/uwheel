@@ -1,7 +1,8 @@
-# Hierarchical Aggregation Wheel (HAW)
+# awheel
 
 ## What it is
-HAW is a lightweight index for unified stream and temporal warehousing.
+
+awheel (aggregation wheel) is a lightweight index for unified stream and temporal warehousing.
 
 Features:
 
@@ -14,29 +15,9 @@ Features:
 - Low-latency query execution
 - Compatible with `#[no_std]` with the ``alloc`` crate
 
-## How it works
-
-Similarly to Hierarchical Wheel Timers, HAW exploits the hierarchical nature of time and utilise several aggregation wheels,
-each with a different time granularity. This enables a compact representation of aggregates across time
-with a low memory footprint and makes it highly compressible and efficient to store on disk. HAWs are event-time driven and uses the notion of a Watermark which means that no timestamps are stored as they are implicit in the wheel slots. It is up to the user of the wheel to advance the watermark and thus roll up aggregates continously up the time hierarchy.
-
-For instance, to store aggregates with second granularity up to 10 years, we would need the following aggregation wheels:
-
-* Seconds wheel with 60 slots
-* Minutes wheel with 60 slots
-* Hours wheel with 24 slots
-* Days wheel with 7 slots
-* Weeks wheel with 52 slots
-* Years wheel with 10 slots
-
-The above scheme results in a total of 213 wheel slots. This is the minimum number of slots
-required to support rolling up aggregates across 10 years with second granularity.
-
 ## Aggregation Framework
 
-HAWs Aggregation Interface is inspired by the work of [Tangwongsan et al.](http://www.vldb.org/pvldb/vol8/p702-tangwongsan.pdf). 
-
-To implement your own custom aggregator, you have to implement the [Aggregator](https://github.com/Max-Meldrum/haw/blob/42d413c54845ab4370115bf5afb9a3e383eecaaa/crates/haw/src/aggregator/mod.rs#L26C11-L26C21) trait for your type.
+The Aggregation Interface is inspired by the work of [Tangwongsan et al.](http://www.vldb.org/pvldb/vol8/p702-tangwongsan.pdf). 
 
 **Pre-defined Aggregators:**
 
@@ -62,6 +43,8 @@ To implement your own custom aggregator, you have to implement the [Aggregator](
     - Enables min aggregation
 - `max` (_enabled by default_)
     - Enables max aggregation
+- `all` (_enabled by default_)
+    - Enables all aggregation
 - `top_n`
     - Enables top_n aggregation
 - `sync` (_implicitly enables `std`_)
@@ -76,21 +59,21 @@ To implement your own custom aggregator, you have to implement the [Aggregator](
 
 ## Usage
 
-By default the library relies on ``std`` and compiles pre-defined aggregators:
+For ``std`` support and compilation of built-in aggregators:
 
 ```toml
-haw = "0.1.0"
+awheel  = "0.1.0"
 ```
-For ``no_std`` support and no default aggregators:
+For ``no_std`` support and minimal compile time:
 
 ```toml
-haw = { version = "0.1.0", default-features = false }
+awheel = { version = "0.1.0", default-features = false }
 ```
 
 ## Examples
 
 ```rust
-use haw::{aggregator::U32SumAggregator, time::NumericalDuration, Entry, RwWheel};
+use awheel::{aggregator::U32SumAggregator, time::NumericalDuration, Entry, RwWheel};
 
 // Initial start time (represented as milliseconds)
 let mut time = 0;

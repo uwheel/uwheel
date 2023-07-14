@@ -1,0 +1,32 @@
+[package]
+name = "awheel"
+version = "0.1.0"
+categories = ["index", "temporal warehousing", "streaming", "no-std"]
+authors = ["Max Meldrum <max@meldrum.se>"]
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+targets = []
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["std", "all", "avg", "sum", "min", "max"]
+std = ["awheel-core/std", "awheel-window?/std", "awheel-tree?/std"]
+all = ["awheel-core/all"]
+avg = ["awheel-core/avg"]
+sum = ["awheel-core/sum"]
+min = ["awheel-core/min"]
+max = ["awheel-core/max"]
+top_n = ["awheel-core/top_n"]
+sync = ["awheel-core/sync", "awheel-tree?/sync"]
+window = ["dep:awheel-window"]
+tree = ["dep:awheel-tree"]
+stats = ["awheel-core/stats", "awheel-window?/stats"]
+
+[dependencies]
+awheel-core = { workspace = true, default-features = false }
+awheel-window = { workspace = true, optional = true }
+awheel-tree = { workspace = true, optional = true }
