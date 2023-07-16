@@ -14,3 +14,6 @@ pub use awheel_window as window;
 
 #[cfg(feature = "tree")]
 pub use awheel_tree as tree;
+
+#[cfg(feature = "stats")]
+pub use awheel_stats as stats;

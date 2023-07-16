@@ -28,23 +28,6 @@ pub struct Percentiles {
     max: f64,
 }
 
-impl Percentiles {
-    pub fn merge(&mut self, other: &Self) {
-        self.count += other.count;
-        self.min = f64::min(self.min, other.min);
-        self.max = f64::max(self.max, other.max);
-
-        self.p50 += other.p50;
-        self.p99 += other.p99;
-        self.p99_9 += other.p99_9;
-        self.p99_99 += other.p99_99;
-        self.p99_999 += other.p99_999;
-    }
-}
-
-use crate::aggregator::PartialAggregateType;
-impl PartialAggregateType for Percentiles {}
-
 impl std::fmt::Debug for Percentiles {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("Percentiles")

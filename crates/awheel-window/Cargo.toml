@@ -14,7 +14,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 default = ["std"]
 std = []
-stats = []
+stats = ["awheel-stats"]
 
 [dependencies]
 awheel-core.workspace = true
+awheel-stats = { workspace = true, optional = true }

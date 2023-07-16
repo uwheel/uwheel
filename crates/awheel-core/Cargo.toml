@@ -22,15 +22,11 @@ min = []
 max = []
 top_n = ["dep:hashbrown"]
 rkyv = ["dep:rkyv"]
-stats = ["dep:sketches-ddsketch", "dep:minstant", "std"]
 sync = ["dep:parking_lot", "std"]
 
 [dependencies]
 parking_lot = { workspace = true, optional = true }
 hashbrown = { workspace = true, optional = true }
-# Stats 
-sketches-ddsketch = { workspace = true, optional = true }
-minstant = { workspace = true, optional = true }
 rkyv = { version = "0.7.39", features = [
     "copy",
     "copy_unsafe",

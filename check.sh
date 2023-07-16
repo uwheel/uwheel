@@ -13,6 +13,7 @@ cargo check -p awheel-demo --target wasm32-unknown-unknown
 cargo check --workspace --all-targets
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --  -D warnings -W clippy::all
+cargo test --workspace
 cargo test --workspace --doc
 
 (cd crates/awheel && cargo test --features "tree, sync")

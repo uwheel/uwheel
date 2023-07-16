@@ -17,7 +17,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use alloc::{boxed::Box, vec::Vec};
 
 #[cfg(feature = "stats")]
-use awheel_core::stats::Measure;
+use awheel_stats::Measure;
 
 use super::WindowWheel;
 

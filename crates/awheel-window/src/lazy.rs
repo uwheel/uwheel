@@ -24,7 +24,7 @@ use alloc::{boxed::Box, vec::Vec};
 use rkyv::{Archive, Deserialize, Serialize};
 
 #[cfg(feature = "stats")]
-use awheel_core::stats::Measure;
+use awheel_stats::Measure;
 
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]

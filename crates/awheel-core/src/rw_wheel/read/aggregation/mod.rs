@@ -150,7 +150,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
 
     /// Creates a new AggregationWheel using `num_slots`
     pub fn with_capacity(num_slots: usize) -> Self {
-        assert_capacity!(CAP);
+        crate::assert_capacity!(CAP);
         let slots: [Option<A::PartialAggregate>; CAP] = [Self::INIT_VALUE; CAP];
 
         Self {

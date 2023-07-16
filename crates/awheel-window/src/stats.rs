@@ -1,4 +1,4 @@
-use awheel_core::stats::Sketch;
+use awheel_stats::Sketch;
 use core::fmt;
 
 #[derive(Default)]
