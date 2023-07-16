@@ -24,9 +24,10 @@ top_n = ["awheel-core/top_n"]
 sync = ["awheel-core/sync", "awheel-tree?/sync"]
 window = ["dep:awheel-window"]
 tree = ["dep:awheel-tree"]
-stats = ["awheel-core/stats", "awheel-window?/stats"]
+stats = ["std", "dep:awheel-stats", "awheel-window?/stats"]
 
 [dependencies]
 awheel-core = { workspace = true, default-features = false }
 awheel-window = { workspace = true, optional = true }
 awheel-tree = { workspace = true, optional = true }
+awheel-stats = { workspace = true, optional = true }

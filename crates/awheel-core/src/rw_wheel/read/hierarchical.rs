@@ -70,7 +70,7 @@ pub type WeeksWheelRef<'a, A> = AggWheelRef<'a, WEEKS_CAP, A>;
 pub type YearsWheel<A> = AggregationWheel<YEARS_CAP, A>;
 pub type YearsWheelRef<'a, A> = AggWheelRef<'a, YEARS_CAP, A>;
 
-cfg_rkyv! {
+crate::cfg_rkyv! {
     // Alias for an aggregators [`MutablePartialAggregate`] type
     pub type MutablePartialAggregate<A> = <A as Aggregator>::MutablePartialAggregate;
     // Alias for an aggregators [`PartialAggregate`] type
@@ -97,6 +97,22 @@ impl Options {
 }
 
 /// Hierarchical Aggregation Wheel
+///
+/// Similarly to Hierarchical Wheel Timers, HAW exploits the hierarchical nature of time and utilise several aggregation wheels,
+/// each with a different time granularity. This enables a compact representation of aggregates across time
+/// with a low memory footprint and makes it highly compressible and efficient to store on disk. HAWs are event-time driven and uses the notion of a Watermark which means that no timestamps are stored as they are implicit in the wheel slots. It is up to the user of the wheel to advance the watermark and thus roll up aggregates continously up the time hierarchy.
+
+/// For instance, to store aggregates with second granularity up to 10 years, we would need the following aggregation wheels:
+
+/// * Seconds wheel with 60 slots
+/// * Minutes wheel with 60 slots
+/// * Hours wheel with 24 slots
+/// * Days wheel with 7 slots
+/// * Weeks wheel with 52 slots
+/// * Years wheel with 10 slots
+///
+/// The above scheme results in a total of 213 wheel slots. This is the minimum number of slots
+/// required to support rolling up aggregates across 10 years with second granularity.
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[derive(Clone, Debug)]

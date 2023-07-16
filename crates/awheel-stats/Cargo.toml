@@ -1,0 +1,12 @@
+[package]
+name = "awheel-stats"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+categories.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[dependencies]
+sketches-ddsketch.workspace = true
+minstant.workspace = true

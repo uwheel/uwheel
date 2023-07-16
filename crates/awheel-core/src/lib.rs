@@ -6,10 +6,6 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-#[doc(hidden)]
-#[macro_use]
-pub mod macros;
-
 use core::{
     fmt,
     fmt::{Debug, Display},
@@ -23,8 +19,6 @@ use core::{
 pub mod aggregator;
 /// Reader-Writer Wheel
 pub mod rw_wheel;
-#[cfg(feature = "stats")]
-pub mod stats;
 /// Time utilities
 ///
 /// Heavily borrowed from the [time](https://docs.rs/time/latest/time/) crate
@@ -107,4 +101,27 @@ impl<T: Debug> fmt::Display for Entry<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(data: {:?}, timestamp: {})", self.data, self.timestamp)
     }
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! cfg_rkyv {
+    ($($item:item)*) => {
+        $(
+            #[cfg(feature = "rkyv")]
+            $item
+        )*
+    }
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! assert_capacity {
+    ($capacity:tt) => {
+        assert!($capacity != 0, "Capacity is not allowed to be zero");
+        assert!(
+            $capacity.is_power_of_two(),
+            "Capacity must be a power of two"
+        );
+    };
 }

@@ -32,7 +32,7 @@ impl<A: Aggregator> WriteAheadWheel<A> {
         Self::with_capacity_and_watermark(DEFAULT_WRITE_AHEAD_SLOTS, watermark)
     }
     pub fn with_capacity_and_watermark(capacity: usize, watermark: u64) -> Self {
-        assert_capacity!(capacity);
+        crate::assert_capacity!(capacity);
         Self {
             capacity,
             watermark,
