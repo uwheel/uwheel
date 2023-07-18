@@ -18,6 +18,9 @@ use rkyv::{ser::Serializer, AlignedVec, Archive, Deserialize, Serialize};
 #[cfg(feature = "rkyv")]
 use crate::wheels::rw::read::hierarchical::{DefaultSerializer, PartialAggregate};
 
+#[cfg(feature = "serde")]
+use serde_big_array::BigArray;
+
 pub mod iter;
 pub mod maybe;
 
@@ -45,7 +48,7 @@ pub fn combine_or_insert<A: Aggregator>(
 }
 
 /// Type alias for drill down slots
-type DrillDownSlots<A, const CAP: usize> = Option<Box<[Option<Vec<A>>; CAP]>>;
+type DrillDownSlots<A> = Option<Box<[Option<Vec<A>>]>>;
 
 /// Defines a drill-down cut
 pub struct DrillCut<R>
@@ -106,6 +109,7 @@ impl<A: Aggregator> RotationData<A> {
 /// * `CAP` defines the circular buffer capacity (power of two).
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Debug)]
 pub struct AggregationWheel<const CAP: usize, A: Aggregator> {
     /// Number of slots (60 seconds => 60 slots)
@@ -113,12 +117,13 @@ pub struct AggregationWheel<const CAP: usize, A: Aggregator> {
     /// Note that CAP is aligned up to power of two due to circular buffer
     num_slots: usize,
     /// Slots for Partial Aggregates
+    #[cfg_attr(feature = "serde", serde(with = "BigArray"))]
     pub(crate) slots: [Option<A::PartialAggregate>; CAP],
     /// Slots used for drill-down operations
     ///
-    /// The slots hold encoded entries from a different granularity.
+    /// The slots hold entries from a different granularity.
     /// Example: Drill down slots for a day would hold 24 hour slots
-    drill_down_slots: DrillDownSlots<A::PartialAggregate, CAP>,
+    drill_down_slots: DrillDownSlots<A::PartialAggregate>,
     /// A flag indicating whether drill down is enabled
     drill_down: bool,
     /// Partial aggregate for a full rotation
@@ -139,7 +144,6 @@ pub struct AggregationWheel<const CAP: usize, A: Aggregator> {
 
 impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     const INIT_VALUE: Option<A::PartialAggregate> = None;
-    const INIT_DRILL_DOWN_VALUE: Option<Vec<A::PartialAggregate>> = None;
 
     /// Creates a new AggregationWheel with drill-down enabled
     pub fn with_capacity_and_drill_down(num_slots: usize) -> Self {
@@ -248,7 +252,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
             None
         } else {
             let tail = self.slot_idx_backward_from_head(subtrahend);
-            let iter: DrillIter<CAP, A> =
+            let iter: DrillIter<A> =
                 DrillIter::new(self.drill_down_slots.as_ref().unwrap(), tail, self.head);
             Some(self.combine_drill_down_slots(iter))
         }
@@ -412,7 +416,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     ///
     /// Panics if the wheel has not been configured with drill-down or
     /// if drill down slots has yet been allocated.
-    pub fn drill_down_range<R>(&self, range: R) -> DrillIter<'_, CAP, A>
+    pub fn drill_down_range<R>(&self, range: R) -> DrillIter<'_, A>
     where
         R: RangeBounds<usize>,
     {
@@ -465,7 +469,11 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     fn insert_drill_down_slots(&mut self, encoded_slots_opt: Option<Vec<A::PartialAggregate>>) {
         // if drill down slots have not been allocated
         if self.drill_down_slots.is_none() {
-            self.drill_down_slots = Some(Box::new([Self::INIT_DRILL_DOWN_VALUE; CAP]));
+            let slots = (0..CAP)
+                .map(|_| None)
+                .collect::<Vec<_>>()
+                .into_boxed_slice();
+            self.drill_down_slots = Some(slots);
         }
         // insert drill down slots into the current head
         if let Some(ref mut drill_down_slots) = &mut self.drill_down_slots {
@@ -507,8 +515,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         }
         match (&mut self.drill_down_slots, &other.drill_down_slots) {
             (Some(slots), Some(other_slots)) => {
-                for (mut self_slot, other_slot) in
-                    slots.iter_mut().zip(other_slots.clone().into_iter())
+                for (mut self_slot, other_slot) in slots.iter_mut().zip(other_slots.clone().iter())
                 {
                     match (&mut self_slot, other_slot) {
                         // if both wheels contains drill down slots, then decode, combine and encode into self
@@ -516,13 +523,13 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
                             let mut new_aggs = Vec::new();
 
                             for (x, y) in self_encodes.iter_mut().zip(other_encodes) {
-                                new_aggs.push(A::combine(*x, y));
+                                new_aggs.push(A::combine(*x, *y));
                             }
                             *self_slot = Some(new_aggs);
                         }
                         // if other wheel but not self, just move to self
                         (None, Some(other_encodes)) => {
-                            *self_slot = Some(other_encodes);
+                            *self_slot = Some(other_encodes.to_vec());
                         }
                         _ => {
                             // do nothing
@@ -562,8 +569,11 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         self.tail = 0;
 
         if let Some(drill_down_slots) = &mut self.drill_down_slots {
-            let slots: [Option<Vec<A::PartialAggregate>>; CAP] = [Self::INIT_DRILL_DOWN_VALUE; CAP];
-            **drill_down_slots = slots;
+            let slots = (0..CAP)
+                .map(|_| None)
+                .collect::<Vec<_>>()
+                .into_boxed_slice();
+            *drill_down_slots = slots;
         }
 
         // prepare fast tick
@@ -646,7 +656,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     /// # Panics
     ///
     /// Panics if the wheel has not been configured with drill-down capabilities.
-    pub fn drill_iter(&self) -> DrillIter<'_, CAP, A> {
+    pub fn drill_iter(&self) -> DrillIter<'_, A> {
         DrillIter::new(
             self.drill_down_slots.as_ref().unwrap(),
             self.tail,

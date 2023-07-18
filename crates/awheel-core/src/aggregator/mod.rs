@@ -69,7 +69,13 @@ pub trait InverseExt: Aggregator {
 }
 
 /// A Partial Aggregate Type which is used by an Aggregator
+#[cfg(not(feature = "serde"))]
 pub trait PartialAggregateType: Default + Debug + Clone + Copy + Send {}
+#[cfg(feature = "serde")]
+pub trait PartialAggregateType:
+    Default + Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
+{
+}
 
 macro_rules! primitive_partial {
     ($type:ty) => {
