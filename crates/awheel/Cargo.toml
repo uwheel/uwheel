@@ -25,6 +25,7 @@ sync = ["awheel-core/sync", "awheel-tree?/sync"]
 window = ["dep:awheel-window"]
 tree = ["dep:awheel-tree"]
 stats = ["std", "dep:awheel-stats", "awheel-window?/stats"]
+serde = ["awheel-core/serde"]
 
 [dependencies]
 awheel-core = { workspace = true, default-features = false }

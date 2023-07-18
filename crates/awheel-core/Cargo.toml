@@ -13,8 +13,8 @@ targets = []
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["all", "avg", "sum", "min", "max"]
-std = ["rkyv?/std"]
+default = ["std", "all", "avg", "sum", "min", "max"]
+std = ["rkyv?/std", "serde?/std"]
 all = []
 avg = []
 sum = []
@@ -22,6 +22,7 @@ min = []
 max = []
 top_n = ["dep:hashbrown"]
 rkyv = ["dep:rkyv"]
+serde = ["dep:serde", "dep:serde-big-array"]
 sync = ["dep:parking_lot", "std"]
 
 [dependencies]
@@ -32,6 +33,10 @@ rkyv = { version = "0.7.39", features = [
     "copy_unsafe",
     "smallvec",
 ], optional = true }
+serde = { version = "1.0", default-features = false, optional = true, features = [
+    "derive",
+] }
+serde-big-array = { version = "0.5.1", optional = true }
 
 [dev-dependencies]
 fastrand.workspace = true

@@ -15,6 +15,7 @@ use core::{
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct AggState {
     min: f64,
     max: f64,
