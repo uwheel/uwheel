@@ -14,6 +14,8 @@ use rkyv::{Archive, Deserialize, Serialize};
 // An internal wrapper Struct that containing a possible AggregationWheel
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Debug, Clone)]
 pub struct MaybeWheel<const CAP: usize, A: Aggregator> {
     slots: usize,
@@ -123,6 +125,8 @@ mod inner_impl {
     /// An AggregationWheel backed by interior mutability
     ///
     /// ``RefCell`` for single threded exuections and ``Arc<RwLock<_>>`` with the sync feature enabled
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+    #[cfg_attr(feature = "serde", serde(bound = "T: Default"))]
     #[derive(Clone, Debug)]
     pub struct AggWheel<const CAP: usize, T: Aggregator + Clone>(
         Arc<RwLock<Option<Box<AggregationWheel<CAP, T>>>>>,
@@ -167,6 +171,8 @@ mod inner_impl {
     /// An AggregationWheel backed by interior mutability
     ///
     /// ``RefCell`` for single threded exuections and ``Arc<RwLock<_>>`` with the sync feature enabled
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+    #[cfg_attr(feature = "serde", serde(bound = "T: Default"))]
     #[derive(Clone, Debug)]
     pub struct AggWheel<const CAP: usize, T: Aggregator + Clone>(
         RefCell<Option<Box<AggregationWheel<CAP, T>>>>,

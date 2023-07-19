@@ -35,7 +35,7 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     type Input: Debug + Copy + Send;
 
     /// Mutable Partial Aggregate type
-    type MutablePartialAggregate: Clone;
+    type MutablePartialAggregate: MutablePartialAggregateType;
 
     /// Partial Aggregate type
     type PartialAggregate: PartialAggregateType;
@@ -66,6 +66,23 @@ pub trait InverseExt: Aggregator {
         a: Self::PartialAggregate,
         b: Self::PartialAggregate,
     ) -> Self::PartialAggregate;
+}
+
+#[cfg(not(feature = "serde"))]
+pub trait MutablePartialAggregateType: Clone {}
+#[cfg(feature = "serde")]
+pub trait MutablePartialAggregateType:
+    Clone + serde::Serialize + for<'a> serde::Deserialize<'a>
+{
+}
+
+#[cfg(not(feature = "serde"))]
+impl<T> MutablePartialAggregateType for T where T: Clone {}
+
+#[cfg(feature = "serde")]
+impl<T> MutablePartialAggregateType for T where
+    T: Clone + serde::Serialize + for<'a> serde::Deserialize<'a> + 'static
+{
 }
 
 /// A Partial Aggregate Type which is used by an Aggregator

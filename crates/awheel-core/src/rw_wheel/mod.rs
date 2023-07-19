@@ -24,6 +24,8 @@ pub use read::{aggregation::DrillCut, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEAR
 ///
 /// The ``ReadWheel`` is backed by interior mutability and by default supports a single reader. For multiple readers,
 /// the ``sync`` feature must be enabled.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone)]
 pub struct RwWheel<A: Aggregator> {
     write: WriteAheadWheel<A>,

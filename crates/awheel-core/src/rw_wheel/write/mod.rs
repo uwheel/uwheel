@@ -13,6 +13,7 @@ use alloc::{boxed::Box, vec::Vec};
 
 /// A fixed-sized Write-ahead Wheel where slots are represented as seconds
 #[repr(C)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone)]
 pub struct WriteAheadWheel<A: Aggregator> {
     watermark: u64,
