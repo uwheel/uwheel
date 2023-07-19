@@ -31,6 +31,8 @@ use crate::aggregator::Aggregator;
 /// By default allows a single reader using `RefCell`, and multiple-readers with `sync` flag enabled using `parking_lot`
 ///
 /// `ReadWheel<A: Aggregator>` maintains a [Haw] which is accesible through `Deref<Target = Haw<A>>`
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone, Debug)]
 pub struct ReadWheel<A: Aggregator> {
     inner: Haw<A>,

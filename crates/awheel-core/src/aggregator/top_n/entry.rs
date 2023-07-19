@@ -5,6 +5,11 @@ use core::{cmp::Ordering, fmt::Debug};
 use rkyv::{Archive, Deserialize, Serialize};
 
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound = "A: serde::Serialize + for<'a> serde::Deserialize<'a>")
+)]
 #[derive(Debug, Copy, Clone, Eq)]
 pub struct TopNEntry<Key, A>
 where

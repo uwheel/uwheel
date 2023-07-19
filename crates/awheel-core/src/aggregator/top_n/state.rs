@@ -8,7 +8,12 @@ use rkyv::{Archive, Deserialize, Serialize};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
+#[cfg(feature = "serde")]
+use serde_big_array::BigArray;
+
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Debug, Copy, Clone)]
 pub struct TopNState<Key, const N: usize, A>
 where
@@ -16,6 +21,7 @@ where
     A: Aggregator,
     A::PartialAggregate: Ord + Copy,
 {
+    #[cfg_attr(feature = "serde", serde(with = "BigArray"))]
     pub(crate) top_n: [Option<TopNEntry<Key, A::PartialAggregate>>; N],
 }
 impl<Key, const N: usize, A> Default for TopNState<Key, N, A>

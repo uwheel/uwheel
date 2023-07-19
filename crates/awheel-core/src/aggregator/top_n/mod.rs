@@ -8,8 +8,39 @@ mod state;
 pub use map::TopNMap;
 pub use state::TopNState;
 
+#[cfg(not(feature = "serde"))]
 pub trait KeyBounds: Hash + Debug + Copy + Eq + Default + Send + 'static {}
+#[cfg(feature = "serde")]
+pub trait KeyBounds:
+    Hash
+    + Debug
+    + Copy
+    + Eq
+    + Default
+    + Send
+    + serde::Serialize
+    + for<'a> serde::Deserialize<'a>
+    + 'static
+{
+}
+
+#[cfg(not(feature = "serde"))]
 impl<T> KeyBounds for T where T: Hash + Debug + Copy + Eq + Default + Send + Clone + 'static {}
+
+#[cfg(feature = "serde")]
+impl<T> KeyBounds for T where
+    T: Hash
+        + Debug
+        + Copy
+        + Eq
+        + Default
+        + Send
+        + Clone
+        + serde::Serialize
+        + for<'a> serde::Deserialize<'a>
+        + 'static
+{
+}
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct TopNAggregator<Key: KeyBounds, const N: usize, A: Aggregator>(PhantomData<(Key, A)>);

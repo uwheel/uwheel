@@ -115,6 +115,8 @@ impl Options {
 /// required to support rolling up aggregates across 10 years with second granularity.
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone, Debug)]
 pub struct Haw<A>
 where
@@ -754,6 +756,7 @@ mod watermark_impl {
     /// A watermark backed by interior mutability
     ///
     /// ``Cell`` for single threded exuections and ``Arc<AtomicU64<_>>`` with the sync feature enabled
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     #[derive(Clone, Debug)]
     pub struct Watermark(Arc<AtomicU64>);
     impl Watermark {
@@ -783,6 +786,7 @@ mod watermark_impl {
     /// A watermark backed by interior mutability
     ///
     /// ``Cell`` for single threded exuections and ``Arc<AtomicU64<_>>`` with the sync feature enabled
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     #[derive(Clone, Debug)]
     pub struct Watermark(Cell<u64>);
 

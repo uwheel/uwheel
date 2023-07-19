@@ -22,7 +22,7 @@ min = []
 max = []
 top_n = ["dep:hashbrown"]
 rkyv = ["dep:rkyv"]
-serde = ["dep:serde", "dep:serde-big-array"]
+serde = ["dep:serde", "dep:serde-big-array", "parking_lot?/serde"]
 sync = ["dep:parking_lot", "std"]
 
 [dependencies]
@@ -35,8 +35,9 @@ rkyv = { version = "0.7.39", features = [
 ], optional = true }
 serde = { version = "1.0", default-features = false, optional = true, features = [
     "derive",
+    "rc",
 ] }
-serde-big-array = { version = "0.5.1", optional = true }
+serde-big-array = { version = "0.5.1", default-features = false, optional = true }
 
 [dev-dependencies]
 fastrand.workspace = true

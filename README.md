@@ -51,10 +51,10 @@ The Aggregation Interface is inspired by the work of [Tangwongsan et al.](http:/
     - Enables a sync version of ``ReadWheel`` that can be queried across threads
 - `stats` (_implicitly enables `std`_)
     - Enables recording of latencies for various operations
+- `serde`
+    - Enables serde support
 - `tree`
     - Enables the multi-key ``RwTreeWheel``
-- `rkyv`
-    - Enables serialisation & deserialisation using the [rkyv](https://docs.rs/rkyv/latest/rkyv/) framework.
 
 
 ## Usage
