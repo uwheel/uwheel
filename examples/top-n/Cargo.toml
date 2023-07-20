@@ -1,0 +1,7 @@
+[package]
+name = "top-n"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+awheel = { workspace = true, features = ["top_n"] }

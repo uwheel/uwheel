@@ -12,7 +12,7 @@ use std::{
     },
     time::Instant,
 };
-use window::{fiba_wheel, TimestampGenerator};
+use window_bench::{fiba_wheel, TimestampGenerator};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]

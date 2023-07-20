@@ -32,12 +32,3 @@ awheel-core = { workspace = true, default-features = false }
 awheel-window = { workspace = true, optional = true }
 awheel-tree = { workspace = true, optional = true }
 awheel-stats = { workspace = true, optional = true }
-
-[dev-dependencies]
-postcard = { version = "1.0.0", features = ["alloc"] }
-lz4_flex = { version = "0.11", default-features = false }
-
-[[example]]
-name = "serde"
-path = "examples/serde.rs"
-required-features = ["serde"]

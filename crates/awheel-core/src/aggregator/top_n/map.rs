@@ -8,6 +8,8 @@ use alloc::collections::BinaryHeap;
 #[cfg(feature = "std")]
 use std::collections::BinaryHeap;
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone, Debug, Default)]
 pub struct TopNMap<Key, A>
 where

@@ -1,8 +1,12 @@
-use std::time::Instant;
-
-use awheel::{rw_wheel::RwWheel, time::NumericalDuration, Entry};
-use awheel_core::{aggregator::U32SumAggregator, ReadWheel};
+use awheel::{
+    aggregator::U32SumAggregator,
+    rw_wheel::RwWheel,
+    time::NumericalDuration,
+    Entry,
+    ReadWheel,
+};
 use postcard::to_allocvec;
+use std::time::Instant;
 
 fn main() {
     let mut time = 0;
