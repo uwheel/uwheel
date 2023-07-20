@@ -14,6 +14,7 @@ use alloc::vec::Vec;
 pub mod eager;
 /// A Lazy Window Wheel which uses a Pairs Wheel + RwWheel to compute periodic window aggregation
 pub mod lazy;
+mod state;
 pub mod util;
 
 #[cfg(feature = "stats")]

@@ -33,8 +33,6 @@ The Aggregation Interface is inspired by the work of [Tangwongsan et al.](http:/
 ## Feature Flags
 - `std` (_enabled by default_)
     - Enables features that rely on the standard library
-- `window` (_enabled by default_)
-    - Enables wheels for streaming window aggregation
 - `sum` (_enabled by default_)
     - Enables sum aggregation
 - `avg` (_enabled by default_)
@@ -47,6 +45,8 @@ The Aggregation Interface is inspired by the work of [Tangwongsan et al.](http:/
     - Enables all aggregation
 - `top_n`
     - Enables top_n aggregation
+- `window`
+    - Enables wheels for streaming window aggregation
 - `sync` (_implicitly enables `std`_)
     - Enables a sync version of ``ReadWheel`` that can be queried across threads
 - `stats` (_implicitly enables `std`_)
@@ -97,6 +97,15 @@ assert_eq!(wheel.read().landmark(), Some(60));
 // interval of last 15 seconds
 assert_eq!(wheel.read().interval(15.seconds()), Some(15));
 ```
+
+See more examples [here](examples).
+
+## Demo
+
+<img src="crates/awheel-demo/assets/awheel_demo.gif">
+
+An interactive demo [application](crates/awheel-demo/) that works both natively and on the web.
+
 
 ## License
 

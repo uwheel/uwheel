@@ -1,4 +1,6 @@
-use super::util::{create_pair_type, pairs_capacity, PairType};
+use crate::state::State;
+
+use super::util::{pairs_capacity, PairType};
 use awheel_core::{
     aggregator::{Aggregator, InverseExt},
     rw_wheel::{
@@ -115,7 +117,10 @@ impl Builder {
         self
     }
     pub fn build<A: Aggregator + InverseExt>(self) -> EagerWindowWheel<A> {
-        // TODO: sanity check of range and slide
+        assert!(
+            self.range >= self.slide,
+            "Range must be larger or equal to slide"
+        );
         EagerWindowWheel::new(self.time, self.range, self.slide)
     }
 }
@@ -127,20 +132,11 @@ impl Builder {
 pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
     range: usize,
     slide: usize,
-    pair_ticks_remaining: usize,
-    current_pair_len: usize,
-    pair_type: PairType,
-    next_pair_end: u64,
-    in_p1: bool,
     // Inverse Wheel maintaining partial aggregates per slide
     inverse_wheel: InverseWheel<A>,
     // Regular HAW used together with inverse_wheel to answer a specific Sliding Window
     wheel: RwWheel<A>,
-    // When the next window starts
-    next_window_start: u64,
-    // When the next window ends
-    next_window_end: u64,
-    // When next full rotation has happend
+    state: State,
     next_full_rotation: u64,
     // How many seconds we are in the current rotation of ``RANGE``
     current_secs_rotation: u64,
@@ -152,25 +148,14 @@ pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
 
 impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
     pub fn new(time: u64, range: usize, slide: usize) -> Self {
-        let pair_type = create_pair_type(range, slide);
-        let current_pair_len = match pair_type {
-            PairType::Even(slide) => slide,
-            PairType::Uneven(_, p2) => p2,
-        };
-        let next_pair_end = time + current_pair_len as u64;
+        let state = State::new(time, range, slide);
         let pair_slots = pairs_capacity(range, slide);
         Self {
             range,
             slide,
-            pair_type,
-            next_pair_end,
-            current_pair_len,
-            pair_ticks_remaining: current_pair_len / 1000,
-            in_p1: false,
             inverse_wheel: InverseWheel::with_capacity(pair_slots),
             wheel: RwWheel::new(time),
-            next_window_start: time + slide as u64,
-            next_window_end: time + range as u64,
+            state,
             next_full_rotation: time + range as u64,
             current_secs_rotation: 0,
             last_rotation: None,
@@ -181,25 +166,11 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
     fn range_interval_duration(&self) -> Duration {
         Duration::seconds((self.range / 1000) as i64)
     }
-    fn current_pair_duration(&self) -> Duration {
-        Duration::milliseconds(self.current_pair_len as i64)
-    }
-    fn update_pair_len(&mut self) {
-        if let PairType::Uneven(p1, p2) = self.pair_type {
-            if self.in_p1 {
-                self.current_pair_len = p2;
-                self.in_p1 = false;
-            } else {
-                self.current_pair_len = p1;
-                self.in_p1 = true;
-            }
-        }
-    }
 
     #[inline]
     fn merge_pairs(&mut self) {
         // how many "pairs" we need to pop off from the Pairs wheel
-        let removals = match self.pair_type {
+        let removals = match self.state.pair_type {
             PairType::Even(_) => 1,
             PairType::Uneven(_, _) => 2,
         };
@@ -239,28 +210,30 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
         for _tick in 0..ticks {
             self.wheel.advance(1.seconds());
             self.current_secs_rotation += 1;
-            self.pair_ticks_remaining -= 1;
+            self.state.pair_ticks_remaining -= 1;
 
-            if self.pair_ticks_remaining == 0 {
+            if self.state.pair_ticks_remaining == 0 {
                 // pair ended
 
                 // Take partial aggregates from SLIDE interval and insert into InverseWheel
                 let partial = self
                     .wheel
                     .read()
-                    .interval(self.current_pair_duration())
+                    .interval(self.state.current_pair_duration())
                     .unwrap_or_default();
 
                 self.inverse_wheel.push(partial);
 
                 // Update pair metadata
-                self.update_pair_len();
+                self.state.update_pair_len();
 
-                self.next_pair_end = self.wheel.read().watermark() + self.current_pair_len as u64;
-                self.pair_ticks_remaining = self.current_pair_duration().whole_seconds() as usize;
+                self.state.next_pair_end =
+                    self.wheel.read().watermark() + self.state.current_pair_len as u64;
+                self.state.pair_ticks_remaining =
+                    self.state.current_pair_duration().whole_seconds() as usize;
 
-                if self.wheel.read().watermark() == self.next_window_end {
-                    if self.next_window_end == self.next_full_rotation {
+                if self.wheel.read().watermark() == self.state.next_window_end {
+                    if self.state.next_window_end == self.next_full_rotation {
                         {
                             // Need to scope the drop of Measure
                             #[cfg(feature = "stats")]
@@ -282,7 +255,7 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
                         let _measure = Measure::new(&self.stats.cleanup_ns);
 
                         // If we are working with uneven pairs, we need to adjust range.
-                        let next_rotation_distance = if self.pair_type.is_uneven() {
+                        let next_rotation_distance = if self.state.pair_type.is_uneven() {
                             self.range as u64 - 1000
                         } else {
                             self.range as u64
@@ -310,7 +283,7 @@ impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
                             .push((self.wheel.read().watermark(), Some(A::lower(window))));
                     }
                     // next window ends at next slide (p1+p2)
-                    self.next_window_end += self.slide as u64;
+                    self.state.next_window_end += self.slide as u64;
                 }
             }
         }
