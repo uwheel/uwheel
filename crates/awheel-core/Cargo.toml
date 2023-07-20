@@ -22,7 +22,7 @@ min = []
 max = []
 top_n = ["dep:hashbrown"]
 rkyv = ["dep:rkyv"]
-serde = ["dep:serde", "dep:serde-big-array", "parking_lot?/serde"]
+serde = ["dep:serde", "dep:serde-big-array", "parking_lot?/serde", "hashbrown?/serde"]
 sync = ["dep:parking_lot", "std"]
 
 [dependencies]
