@@ -72,6 +72,13 @@ impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
             None
         }
     }
+    pub fn size(&self) -> usize {
+        if self.inner.read().is_some() {
+            core::mem::size_of::<AggregationWheel<CAP, A>>()
+        } else {
+            0
+        }
+    }
     #[inline(always)]
     pub fn read(&self) -> AggWheelRef<'_, CAP, A> {
         self.inner.read()

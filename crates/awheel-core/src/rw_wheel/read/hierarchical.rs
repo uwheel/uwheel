@@ -222,6 +222,17 @@ where
     pub fn is_full(&self) -> bool {
         self.len() == Self::TOTAL_WHEEL_SLOTS
     }
+    /// Returns memory used in bytes for all levels
+    pub fn size(&self) -> usize {
+        let secs = self.seconds_wheel.size();
+        let min = self.minutes_wheel.size();
+        let hr = self.hours_wheel.size();
+        let day = self.days_wheel.size();
+        let week = self.weeks_wheel.size();
+        let year = self.years_wheel.size();
+
+        secs + min + hr + day + week + year
+    }
 
     /// Returns how many ticks (seconds) are left until the wheel is fully utilised
     pub fn remaining_ticks(&self) -> u64 {
