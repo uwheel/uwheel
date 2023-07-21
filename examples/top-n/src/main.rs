@@ -20,6 +20,7 @@ fn main() {
 
     wheel.advance_to(2000);
 
+    // print the result from the last second
     let state: TopNState<u32, N, U64SumAggregator> = wheel.read().interval(1.seconds()).unwrap();
     let arr = state.iter();
     println!("{:#?}", arr);

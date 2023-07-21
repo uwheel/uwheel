@@ -7,3 +7,4 @@ edition = "2021"
 awheel = { workspace = true, features = ["serde"] }
 postcard = { version = "1.0.0", features = ["alloc"] }
 lz4_flex = { version = "0.11", default-features = false }
+zstd = "0.12.4"
