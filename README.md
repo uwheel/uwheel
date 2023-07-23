@@ -6,14 +6,28 @@ awheel (aggregation wheel) is a lightweight index for unified stream and tempora
 
 Features:
 
-- Streaming Window Aggregation (Sliding, Tumbling, Landmark)
-- OLAP (Roll-ups, Drill-downs)
-- Event-time driven using low watermarking
-- Low memory footprint
-- Serializable and highly compressible
-- High-throughput ingestion
-- Low-latency query execution
-- Compatible with `#[no_std]` with the ``alloc`` crate
+- Versatile
+    - OLAP (Roll-ups, Drill-downs)
+    - Stream Analytics
+- Lightweight
+    - Exploits hierarchical nature of time
+    - Implicit timestamps (event-time indexed wheels)
+- Performance
+    - Decoupled write and read paths
+    - High-throughput ingestion
+    - Low-latency queries
+
+## Use cases
+
+- Unified OLAP and Stream Analytics
+    - Streaming Window Aggregation
+    - Index for speeding up temporal OLAP queries
+    - Materialized view with embedded time dimension
+- Analytics at the edge
+    - WASM + ``#[no_std]`` compatible
+    - Low memory footprint
+    - Serializable and highly compressible
+
 
 ## Aggregation Framework
 
