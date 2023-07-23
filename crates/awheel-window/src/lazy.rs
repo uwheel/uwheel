@@ -1,9 +1,6 @@
-use crate::state::State;
+use crate::{state::State, WindowExt};
 
-use super::{
-    util::{pairs_capacity, pairs_space, PairType},
-    WindowWheel,
-};
+use super::util::{pairs_capacity, pairs_space, PairType};
 use awheel_core::{
     aggregator::{Aggregator, InverseExt},
     rw_wheel::{
@@ -164,7 +161,7 @@ impl<A: Aggregator> LazyWindowWheel<A> {
     }
 }
 
-impl<A: Aggregator> WindowWheel<A> for LazyWindowWheel<A> {
+impl<A: Aggregator> WindowExt<A> for LazyWindowWheel<A> {
     fn advance(&mut self, duration: Duration) -> Vec<(u64, Option<A::Aggregate>)> {
         let ticks = duration.whole_seconds();
         let mut window_results = Vec::new();

@@ -1,4 +1,4 @@
-use crate::state::State;
+use crate::{state::State, WindowExt};
 
 use super::util::{pairs_capacity, PairType};
 use awheel_core::{
@@ -20,8 +20,6 @@ use alloc::{boxed::Box, vec::Vec};
 
 #[cfg(feature = "stats")]
 use awheel_stats::Measure;
-
-use super::WindowWheel;
 
 /// A fixed-sized wheel used to maintain partial aggregates for slides that can later
 /// be used to inverse windows.
@@ -203,7 +201,7 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
         A::combine(A::inverse_combine(last_rotation, inverse), current_rotation)
     }
 }
-impl<A: Aggregator + InverseExt> WindowWheel<A> for EagerWindowWheel<A> {
+impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
     fn advance(&mut self, duration: Duration) -> Vec<(u64, Option<A::Aggregate>)> {
         let ticks = duration.whole_seconds();
         let mut window_results = Vec::new();

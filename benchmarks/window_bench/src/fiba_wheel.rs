@@ -8,7 +8,7 @@ use awheel::{
         lazy::PairsWheel,
         stats::Stats,
         util::{create_pair_type, pairs_capacity, pairs_space, PairType},
-        WindowWheel,
+        WindowExt,
     },
 };
 pub struct BFingerTwoWheel {
@@ -29,7 +29,7 @@ impl BFingerTwoWheel {
         }
     }
 }
-impl WindowWheel<U64SumAggregator> for BFingerTwoWheel {
+impl WindowExt<U64SumAggregator> for BFingerTwoWheel {
     fn advance(
         &mut self,
         _duration: awheel::time::Duration,
@@ -100,7 +100,7 @@ impl BFingerFourWheel {
         }
     }
 }
-impl WindowWheel<U64SumAggregator> for BFingerFourWheel {
+impl WindowExt<U64SumAggregator> for BFingerFourWheel {
     fn advance(
         &mut self,
         _duration: awheel::time::Duration,
@@ -172,7 +172,7 @@ impl BFingerEightWheel {
         }
     }
 }
-impl WindowWheel<U64SumAggregator> for BFingerEightWheel {
+impl WindowExt<U64SumAggregator> for BFingerEightWheel {
     fn advance(
         &mut self,
         _duration: awheel::time::Duration,
@@ -294,7 +294,7 @@ impl PairsFiBA {
             .unwrap_or_default()
     }
 }
-impl WindowWheel<U64SumAggregator> for PairsFiBA {
+impl WindowExt<U64SumAggregator> for PairsFiBA {
     fn advance(
         &mut self,
         duration: awheel::time::Duration,
