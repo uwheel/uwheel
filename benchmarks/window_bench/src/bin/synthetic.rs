@@ -1,7 +1,7 @@
 use awheel::{
     aggregator::U64SumAggregator,
     time::Duration,
-    window::{eager, eager_window_query_cost, lazy, lazy_window_query_cost, WindowWheel},
+    window::{eager, eager_window_query_cost, lazy, lazy_window_query_cost, WindowExt},
     Entry,
 };
 use clap::Parser;
@@ -125,7 +125,7 @@ fn main() {
     //run("FiBA Pairs Wheel SUM", seconds, fiba_pairs_wheel, &args);
 }
 
-fn run(id: &str, seconds: u64, mut window: impl WindowWheel<U64SumAggregator>, args: &Args) {
+fn run(id: &str, seconds: u64, mut window: impl WindowExt<U64SumAggregator>, args: &Args) {
     let Args {
         events_per_sec,
         windows: _,

@@ -22,8 +22,8 @@ pub mod stats;
 
 pub use util::{eager_window_query_cost, lazy_window_query_cost, window_wheel};
 
-/// Interface a Window Wheel must implement
-pub trait WindowWheel<A: Aggregator> {
+/// Extension trait for becoming a window wheel
+pub trait WindowExt<A: Aggregator> {
     /// Inserts an entry to the Window Wheel
     fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>>;
     /// Advances time by the given duration
@@ -51,7 +51,7 @@ mod tests {
 
     use super::*;
 
-    fn window_60_sec_range_10_sec_slide(mut wheel: impl WindowWheel<U64SumAggregator>) {
+    fn window_60_sec_range_10_sec_slide(mut wheel: impl WindowExt<U64SumAggregator>) {
         wheel.insert(Entry::new(1, 9000)).unwrap();
         wheel.insert(Entry::new(1, 15000)).unwrap();
         wheel.insert(Entry::new(1, 25000)).unwrap();
@@ -96,7 +96,7 @@ mod tests {
         window_60_sec_range_10_sec_slide(wheel);
     }
 
-    fn window_120_sec_range_10_sec_slide(mut wheel: impl WindowWheel<U64SumAggregator>) {
+    fn window_120_sec_range_10_sec_slide(mut wheel: impl WindowExt<U64SumAggregator>) {
         wheel.insert(Entry::new(1, 9000)).unwrap();
         wheel.insert(Entry::new(1, 15000)).unwrap();
         wheel.insert(Entry::new(1, 25000)).unwrap();
@@ -166,7 +166,7 @@ mod tests {
         window_10_sec_range_3_sec_slide(wheel);
     }
 
-    fn window_10_sec_range_3_sec_slide(mut wheel: impl WindowWheel<U64SumAggregator>) {
+    fn window_10_sec_range_3_sec_slide(mut wheel: impl WindowExt<U64SumAggregator>) {
         // Based on Figure 4 in https://asterios.katsifodimos.com/assets/publications/window-semantics-encyclopediaBigDAta18.pdf
         for i in 1..=22 {
             wheel.insert(Entry::new(i, i * 1000 - 1)).unwrap();

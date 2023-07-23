@@ -3,7 +3,7 @@ use awheel_core::{
     time::Duration,
 };
 
-use super::WindowWheel;
+use super::WindowExt;
 
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
@@ -182,7 +182,7 @@ fn count_intervals(range: Duration) -> i64 {
 pub fn window_wheel<A: Aggregator + InverseExt>(
     range: Duration,
     slide: Duration,
-) -> Box<dyn WindowWheel<A>> {
+) -> Box<dyn WindowExt<A>> {
     let eager_cost = eager_window_query_cost(range, slide);
     let lazy_cost = lazy_window_query_cost(range, slide);
     if lazy_cost < eager_cost {
