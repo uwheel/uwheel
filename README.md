@@ -1,6 +1,8 @@
-# awheel
+<p align="center">
+  <img width="300" height="300" src="assets/logo.png">
+</p>
 
-## What it is
+# awheel
 
 awheel (aggregation wheel) is a lightweight index for unified stream and temporal warehousing.
 
