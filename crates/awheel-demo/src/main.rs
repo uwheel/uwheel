@@ -7,11 +7,17 @@ mod app;
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
     // tell puffin to collect data
+
+    use eframe::IconData;
     puffin::set_scopes_on(true);
     // Log to stdout (if you run with `RUST_LOG=debug`).
     tracing_subscriber::fmt::init();
 
-    let native_options = eframe::NativeOptions::default();
+    let mut native_options = eframe::NativeOptions::default();
+    //native_options.icon_data =
+    let icon_bytes = include_bytes!("../../../assets/logo.png");
+    //if let Err(err) =
+    native_options.icon_data = Some(IconData::try_from_png_bytes(icon_bytes).unwrap());
     eframe::run_native(
         "awheel demo",
         native_options,
