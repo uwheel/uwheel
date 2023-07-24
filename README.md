@@ -11,7 +11,9 @@ Features:
 - Versatile
     - OLAP (Roll-ups, Drill-downs)
     - Stream Analytics
+    - Time-Series Analysis
 - Lightweight
+    - Pre-aggregation
     - Exploits hierarchical nature of time
     - Implicit timestamps (event-time indexed wheels)
 - Performance
@@ -21,14 +23,14 @@ Features:
 
 ## Use cases
 
-- Unified OLAP and Stream Analytics
+- Materialized view for Streaming Data Warehousing
     - Streaming Window Aggregation
-    - Index for speeding up temporal OLAP queries
-    - Materialized view with embedded time dimension
+    - Ad-hoc querying
 - Analytics at the edge
     - WASM + ``#[no_std]`` compatible
     - Low memory footprint
     - Serializable and highly compressible
+- Index for speeding up temporal OLAP queries
 
 
 ## Aggregation Framework
