@@ -1,53 +1,29 @@
 use crate::aggregator::Aggregator;
-use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use core::{fmt::Debug, marker::PhantomData};
 
 mod entry;
-pub mod map;
+mod key;
+mod map;
+mod order;
 mod state;
 
+pub use key::KeyBounds;
 pub use map::TopNMap;
+pub use order::{Ascending, Descending, Order};
 pub use state::TopNState;
 
-#[cfg(not(feature = "serde"))]
-pub trait KeyBounds: Hash + Debug + Copy + Eq + Default + Send + 'static {}
-#[cfg(feature = "serde")]
-pub trait KeyBounds:
-    Hash
-    + Debug
-    + Copy
-    + Eq
-    + Default
-    + Send
-    + serde::Serialize
-    + for<'a> serde::Deserialize<'a>
-    + 'static
-{
-}
-
-#[cfg(not(feature = "serde"))]
-impl<T> KeyBounds for T where T: Hash + Debug + Copy + Eq + Default + Send + Clone + 'static {}
-
-#[cfg(feature = "serde")]
-impl<T> KeyBounds for T where
-    T: Hash
-        + Debug
-        + Copy
-        + Eq
-        + Default
-        + Send
-        + Clone
-        + serde::Serialize
-        + for<'a> serde::Deserialize<'a>
-        + 'static
-{
-}
-
+/// A Top-N Aggregator
+///
+/// Orders data in ascending order by default
 #[derive(Default, Debug, Clone, Copy)]
-pub struct TopNAggregator<Key: KeyBounds, const N: usize, A: Aggregator>(PhantomData<(Key, A)>);
+pub struct TopNAggregator<Key: KeyBounds, const N: usize, A: Aggregator, OrderBy = Ascending>(
+    PhantomData<(Key, OrderBy, A)>,
+);
 
-impl<Key, const N: usize, A> Aggregator for TopNAggregator<Key, N, A>
+impl<Key, const N: usize, A, OrderBy> Aggregator for TopNAggregator<Key, N, A, OrderBy>
 where
     Key: KeyBounds,
+    OrderBy: Order,
     A: Aggregator + Clone + Copy,
     A::PartialAggregate: Ord + Copy,
 {
@@ -68,12 +44,12 @@ where
         map.insert(input.0, A::freeze(inner_mutable));
     }
     fn freeze(mutable: Self::MutablePartialAggregate) -> Self::PartialAggregate {
-        mutable.to_state()
+        mutable.to_state(OrderBy::ordering())
     }
 
     #[inline]
     fn combine(mut a: Self::PartialAggregate, b: Self::PartialAggregate) -> Self::PartialAggregate {
-        a.merge(b);
+        a.merge(b, OrderBy::ordering());
         a
     }
     #[inline]

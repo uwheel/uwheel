@@ -1,6 +1,6 @@
 use super::{entry::TopNEntry, state::TopNState, KeyBounds};
 use crate::Aggregator;
-use core::cmp::Reverse;
+use core::{cmp::Ordering, fmt::Debug};
 use hashbrown::HashMap;
 
 #[cfg(not(feature = "std"))]
@@ -35,27 +35,23 @@ where
             })
             .or_insert(delta);
     }
-    pub fn to_state<const N: usize>(mut self) -> TopNState<Key, N, A> {
-        let mut top_n_heap = BinaryHeap::with_capacity(N);
+    pub fn to_state<const N: usize>(mut self, order: Ordering) -> TopNState<Key, N, A> {
+        let mut heap = BinaryHeap::with_capacity(N);
 
-        // build top-k from table
+        // build Top N state from table
         for (key, agg) in self.table.drain() {
             let entry = TopNEntry::new(key, agg);
-            if top_n_heap.len() < N {
-                top_n_heap.push(Reverse(entry));
-            } else if let Some(min_entry) = top_n_heap.peek() {
-                if entry > min_entry.0 {
-                    let _ = top_n_heap.pop();
-                    top_n_heap.push(Reverse(entry));
+            if heap.len() < N {
+                heap.push(entry);
+            } else if let Some(top) = heap.peek() {
+                if entry.cmp(top) == order {
+                    let _ = heap.pop();
+                    heap.push(entry);
                 }
             }
         }
 
-        // remove reverse
-        let top_n_unreversed: BinaryHeap<Option<TopNEntry<Key, A::PartialAggregate>>> =
-            top_n_heap.into_iter().map(|m| Some(m.0)).collect();
-
-        let mut sorted_vec = top_n_unreversed.into_sorted_vec();
+        let mut sorted_vec: Vec<_> = heap.into_sorted_vec().into_iter().map(Some).collect();
 
         // fill remainder if needed...
         let rem = N - sorted_vec.len();

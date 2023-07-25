@@ -17,6 +17,20 @@ fn main() {
     wheel.write().insert(Entry::new((1u32, 10), 1000)).unwrap();
     wheel.write().insert(Entry::new((2u32, 50), 1000)).unwrap();
     wheel.write().insert(Entry::new((3u32, 30), 1000)).unwrap();
+    wheel.write().insert(Entry::new((4u32, 20), 1000)).unwrap();
+    wheel.write().insert(Entry::new((5u32, 100), 1000)).unwrap();
+    wheel.write().insert(Entry::new((6u32, 60), 1000)).unwrap();
+    wheel.write().insert(Entry::new((7u32, 55), 1000)).unwrap();
+    wheel.write().insert(Entry::new((8u32, 45), 1000)).unwrap();
+    wheel.write().insert(Entry::new((9u32, 23), 1000)).unwrap();
+    wheel
+        .write()
+        .insert(Entry::new((10u32, 150), 1000))
+        .unwrap();
+    wheel
+        .write()
+        .insert(Entry::new((11u32, 1000), 1000))
+        .unwrap();
 
     wheel.advance_to(2000);
 

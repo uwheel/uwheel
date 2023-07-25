@@ -1,6 +1,6 @@
 use super::{entry::TopNEntry, map::TopNMap, KeyBounds};
 use crate::aggregator::{Aggregator, PartialAggregateType};
-use core::fmt::Debug;
+use core::{cmp::Ordering, fmt::Debug};
 
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
@@ -48,7 +48,7 @@ where
     pub fn iter(&self) -> &[Option<TopNEntry<Key, A::PartialAggregate>>; N] {
         &self.top_n
     }
-    pub fn merge(&mut self, other: Self) {
+    pub fn merge(&mut self, other: Self, order: Ordering) {
         let mut map = TopNMap::<Key, A>::default();
         for entry in self.top_n.iter().flatten() {
             map.insert(entry.key, entry.data);
@@ -57,7 +57,7 @@ where
         for entry in other.top_n.iter().flatten() {
             map.insert(entry.key, entry.data);
         }
-        *self = map.to_state();
+        *self = map.to_state(order);
     }
 }
 impl<Key, const N: usize, A> PartialAggregateType for TopNState<Key, N, A>
