@@ -195,13 +195,13 @@ where
         self.len() == Self::TOTAL_WHEEL_SLOTS
     }
     /// Returns memory used in bytes for all levels
-    pub fn size(&self) -> usize {
-        let secs = self.seconds_wheel.size();
-        let min = self.minutes_wheel.size();
-        let hr = self.hours_wheel.size();
-        let day = self.days_wheel.size();
-        let week = self.weeks_wheel.size();
-        let year = self.years_wheel.size();
+    pub fn size_bytes(&self) -> usize {
+        let secs = self.seconds_wheel.size_bytes();
+        let min = self.minutes_wheel.size_bytes();
+        let hr = self.hours_wheel.size_bytes();
+        let day = self.days_wheel.size_bytes();
+        let week = self.weeks_wheel.size_bytes();
+        let year = self.years_wheel.size_bytes();
 
         secs + min + hr + day + week + year
     }

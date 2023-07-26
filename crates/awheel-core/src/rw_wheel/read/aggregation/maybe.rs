@@ -69,9 +69,9 @@ impl<A: Aggregator> MaybeWheel<A> {
             None
         }
     }
-    pub fn size(&self) -> usize {
-        if self.inner.read().is_some() {
-            core::mem::size_of::<AggregationWheel<A>>()
+    pub fn size_bytes(&self) -> usize {
+        if let Some(inner) = self.inner.read().as_ref() {
+            inner.size_bytes()
         } else {
             0
         }

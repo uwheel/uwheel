@@ -55,7 +55,7 @@ fn main() {
     // advance again
     wheel.advance_to(3000);
 
-    // interval of last 2 seconds should be two TopKState's combined
+    // interval of last 2 seconds should be two states combined
     let state: TopNState<u32, N, U64SumAggregator> = wheel.read().interval(2.seconds()).unwrap();
     let arr = state.iter();
     println!("{:#?}", arr);

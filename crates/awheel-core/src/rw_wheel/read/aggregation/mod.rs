@@ -2,6 +2,7 @@ use crate::aggregator::Aggregator;
 use core::{
     assert,
     fmt::Debug,
+    mem,
     ops::{Range, RangeBounds},
     option::{
         Option,
@@ -180,6 +181,12 @@ impl<A: Aggregator> AggregationWheel<A> {
             #[cfg(test)]
             total_ticks: 0,
         }
+    }
+
+    pub fn size_bytes(&self) -> usize {
+        // TODO: does not include drill down slots
+        let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.capacity;
+        mem::size_of::<Self>() + inner_slots
     }
 
     /// Returns `true` if the wheel is empty or `false` if it contains slots

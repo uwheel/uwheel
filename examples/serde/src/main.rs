@@ -76,7 +76,7 @@ fn main() {
 }
 
 fn serialize_wheel(wheel: &ReadWheel<U32SumAggregator>) {
-    println!("Memory wheel size {} bytes", wheel.size());
+    println!("Memory wheel size {} bytes", wheel.size_bytes());
     let now = Instant::now();
     let bytes = to_allocvec(wheel).unwrap();
     println!(
