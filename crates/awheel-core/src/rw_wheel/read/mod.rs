@@ -7,22 +7,7 @@ pub mod hierarchical;
 
 use core::ops::Deref;
 
-pub use hierarchical::{
-    DaysWheel,
-    Haw,
-    HoursWheel,
-    MinutesWheel,
-    Options,
-    SecondsWheel,
-    WeeksWheel,
-    YearsWheel,
-    DAYS,
-    HOURS,
-    MINUTES,
-    SECONDS,
-    WEEKS,
-    YEARS,
-};
+pub use hierarchical::{Haw, Options, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 
 use crate::aggregator::Aggregator;
 

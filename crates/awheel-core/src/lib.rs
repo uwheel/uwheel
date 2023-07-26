@@ -26,21 +26,7 @@ pub mod time;
 
 pub use aggregator::Aggregator;
 pub use rw_wheel::{
-    read::{
-        DaysWheel,
-        HoursWheel,
-        MinutesWheel,
-        ReadWheel,
-        SecondsWheel,
-        WeeksWheel,
-        YearsWheel,
-        DAYS,
-        HOURS,
-        MINUTES,
-        SECONDS,
-        WEEKS,
-        YEARS,
-    },
+    read::{ReadWheel, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS},
     write::WriteAheadWheel,
     Options,
     RwWheel,

@@ -1,12 +1,9 @@
 use crate::aggregator::Aggregator;
 
 pub use self::inner_impl::AggWheelRef;
-use self::inner_impl::{AggWheel, AggWheelRefMut};
+use self::inner_impl::{AggWheelRefMut, Inner};
 use super::AggregationWheel;
 use crate::rw_wheel::WheelExt;
-
-#[cfg(not(feature = "std"))]
-use alloc::boxed::Box;
 
 #[cfg(feature = "rkyv")]
 use rkyv::{Archive, Deserialize, Serialize};
@@ -17,24 +14,24 @@ use rkyv::{Archive, Deserialize, Serialize};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Debug, Clone)]
-pub struct MaybeWheel<const CAP: usize, A: Aggregator> {
+pub struct MaybeWheel<A: Aggregator> {
     slots: usize,
     drill_down: bool,
-    inner: AggWheel<CAP, A>,
+    inner: Inner<A>,
 }
-impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
+impl<A: Aggregator> MaybeWheel<A> {
     pub fn with_capacity_and_drill_down(slots: usize) -> Self {
         Self {
             slots,
             drill_down: true,
-            inner: AggWheel::new(),
+            inner: Inner::new(),
         }
     }
     pub fn with_capacity(slots: usize) -> Self {
         Self {
             slots,
             drill_down: false,
-            inner: AggWheel::new(),
+            inner: Inner::new(),
         }
     }
     pub fn clear(&self) {
@@ -45,7 +42,7 @@ impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
     pub fn merge(&self, other: &Self) {
         if let Some(wheel) = self.inner.write().as_mut() {
             // TODO: fix better checks
-            wheel.merge(other.read().as_deref().unwrap());
+            wheel.merge(other.read().as_ref().unwrap());
         }
     }
     #[inline]
@@ -74,13 +71,13 @@ impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
     }
     pub fn size(&self) -> usize {
         if self.inner.read().is_some() {
-            core::mem::size_of::<AggregationWheel<CAP, A>>()
+            core::mem::size_of::<AggregationWheel<A>>()
         } else {
             0
         }
     }
     #[inline(always)]
-    pub fn read(&self) -> AggWheelRef<'_, CAP, A> {
+    pub fn read(&self) -> AggWheelRef<'_, A> {
         self.inner.read()
     }
     #[inline]
@@ -100,7 +97,7 @@ impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
         self.len() == 0
     }
     #[inline]
-    pub fn get_or_insert(&self) -> AggWheelRefMut<'_, CAP, A> {
+    pub fn get_or_insert(&self) -> AggWheelRefMut<'_, A> {
         let mut inner = self.inner.write();
         if inner.is_none() {
             let agg_wheel = {
@@ -110,7 +107,7 @@ impl<const CAP: usize, A: Aggregator> MaybeWheel<CAP, A> {
                     AggregationWheel::with_capacity(self.slots)
                 }
             };
-            *inner = Some(Box::new(agg_wheel));
+            *inner = Some(agg_wheel);
         }
         inner
     }
@@ -123,11 +120,9 @@ mod inner_impl {
     use std::sync::Arc;
 
     /// The lock you get from [`RwLock::read`].
-    pub type AggWheelRef<'a, const CAP: usize, T> =
-        MappedRwLockReadGuard<'a, Option<Box<AggregationWheel<CAP, T>>>>;
+    pub type AggWheelRef<'a, T> = MappedRwLockReadGuard<'a, Option<AggregationWheel<T>>>;
     /// The lock you get from [`RwLock::write`].
-    pub type AggWheelRefMut<'a, const CAP: usize, T> =
-        MappedRwLockWriteGuard<'a, Option<Box<AggregationWheel<CAP, T>>>>;
+    pub type AggWheelRefMut<'a, T> = MappedRwLockWriteGuard<'a, Option<AggregationWheel<T>>>;
 
     /// An AggregationWheel backed by interior mutability
     ///
@@ -135,45 +130,39 @@ mod inner_impl {
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     #[cfg_attr(feature = "serde", serde(bound = "T: Default"))]
     #[derive(Clone, Debug)]
-    pub struct AggWheel<const CAP: usize, T: Aggregator + Clone>(
-        Arc<RwLock<Option<Box<AggregationWheel<CAP, T>>>>>,
-    );
+    pub struct Inner<T: Aggregator + Clone>(Arc<RwLock<Option<AggregationWheel<T>>>>);
 
-    impl<const CAP: usize, T: Aggregator + Clone> AggWheel<CAP, T> {
+    impl<T: Aggregator + Clone> Inner<T> {
         #[inline(always)]
         pub fn new() -> Self {
             Self(Arc::new(RwLock::new(None)))
         }
 
         #[inline(always)]
-        pub fn read(&self) -> AggWheelRef<'_, CAP, T> {
+        pub fn read(&self) -> AggWheelRef<'_, T> {
             parking_lot::RwLockReadGuard::map(self.0.read(), |v| v)
         }
 
         #[inline(always)]
-        pub fn write(&self) -> AggWheelRefMut<'_, CAP, T> {
+        pub fn write(&self) -> AggWheelRefMut<'_, T> {
             parking_lot::RwLockWriteGuard::map(self.0.write(), |v| v)
         }
     }
     #[allow(unsafe_code)]
-    unsafe impl<const CAP: usize, T: Aggregator + Clone> Send for AggWheel<CAP, T> {}
+    unsafe impl<T: Aggregator + Clone> Send for Inner<T> {}
     #[allow(unsafe_code)]
-    unsafe impl<const CAP: usize, T: Aggregator + Clone> Sync for AggWheel<CAP, T> {}
+    unsafe impl<T: Aggregator + Clone> Sync for Inner<T> {}
 }
 
 #[cfg(not(feature = "sync"))]
 mod inner_impl {
     use super::{AggregationWheel, Aggregator};
-    #[cfg(not(feature = "std"))]
-    use alloc::boxed::Box;
     use core::cell::RefCell;
 
-    /// An immutably borrowed Option<Box<AggregationWheel<_>>> from [`RefCell::borrow´]
-    pub type AggWheelRef<'a, const CAP: usize, T> =
-        core::cell::Ref<'a, Option<Box<AggregationWheel<CAP, T>>>>;
-    /// An mutably borrowed Option<Box<AggregationWheel<_>>> from [`RefCell::borrow_mut´]
-    pub type AggWheelRefMut<'a, const CAP: usize, T> =
-        core::cell::RefMut<'a, Option<Box<AggregationWheel<CAP, T>>>>;
+    /// An immutably borrowed Option<AggregationWheel<_>> from [`RefCell::borrow´]
+    pub type AggWheelRef<'a, T> = core::cell::Ref<'a, Option<AggregationWheel<T>>>;
+    /// An mutably borrowed Option<AggregationWheel<_>> from [`RefCell::borrow_mut´]
+    pub type AggWheelRefMut<'a, T> = core::cell::RefMut<'a, Option<AggregationWheel<T>>>;
 
     /// An AggregationWheel backed by interior mutability
     ///
@@ -181,23 +170,21 @@ mod inner_impl {
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     #[cfg_attr(feature = "serde", serde(bound = "T: Default"))]
     #[derive(Clone, Debug)]
-    pub struct AggWheel<const CAP: usize, T: Aggregator + Clone>(
-        RefCell<Option<Box<AggregationWheel<CAP, T>>>>,
-    );
+    pub struct Inner<T: Aggregator + Clone>(RefCell<Option<AggregationWheel<T>>>);
 
-    impl<const CAP: usize, T: Aggregator + Clone> AggWheel<CAP, T> {
+    impl<T: Aggregator + Clone> Inner<T> {
         #[inline(always)]
         pub fn new() -> Self {
             Self(RefCell::new(None))
         }
 
         #[inline(always)]
-        pub fn read(&self) -> AggWheelRef<'_, CAP, T> {
+        pub fn read(&self) -> AggWheelRef<'_, T> {
             self.0.borrow()
         }
 
         #[inline(always)]
-        pub fn write(&self) -> AggWheelRefMut<'_, CAP, T> {
+        pub fn write(&self) -> AggWheelRefMut<'_, T> {
             self.0.borrow_mut()
         }
     }

@@ -30,7 +30,7 @@ use alloc::boxed::Box;
 
 use super::{
     super::write::WriteAheadWheel,
-    aggregation::{AggWheelRef, AggregationWheel, MaybeWheel},
+    aggregation::{AggWheelRef, MaybeWheel},
 };
 use crate::{aggregator::Aggregator, time};
 pub use watermark_impl::Watermark;
@@ -41,34 +41,6 @@ pub const HOURS: usize = 24;
 pub const DAYS: usize = 7;
 pub const WEEKS: usize = 52;
 pub const YEARS: usize = 10;
-
-// Default Wheel Capacities (power of two)
-const SECONDS_CAP: usize = 64;
-const MINUTES_CAP: usize = 64;
-const HOURS_CAP: usize = 32;
-const DAYS_CAP: usize = 8;
-const WEEKS_CAP: usize = 64;
-const YEARS_CAP: usize = YEARS.next_power_of_two();
-
-/// Type alias for an AggregationWheel representing seconds
-pub type SecondsWheel<A> = AggregationWheel<SECONDS_CAP, A>;
-pub type SecondsWheelRef<'a, A> = AggWheelRef<'a, SECONDS_CAP, A>;
-/// Type alias for an AggregationWheel representing minutes
-pub type MinutesWheel<A> = AggregationWheel<MINUTES_CAP, A>;
-pub type MinutesWheelRef<'a, A> = AggWheelRef<'a, MINUTES_CAP, A>;
-/// Type alias for an AggregationWheel representing hours
-pub type HoursWheel<A> = AggregationWheel<HOURS_CAP, A>;
-pub type HoursWheelRef<'a, A> = AggWheelRef<'a, HOURS_CAP, A>;
-/// Type alias for an AggregationWheel representing days
-pub type DaysWheel<A> = AggregationWheel<DAYS_CAP, A>;
-/// Type alias for an AggregationWheel representing days
-pub type DaysWheelRef<'a, A> = AggWheelRef<'a, DAYS_CAP, A>;
-/// Type alias for an AggregationWheel representing weeks
-pub type WeeksWheel<A> = AggregationWheel<WEEKS_CAP, A>;
-pub type WeeksWheelRef<'a, A> = AggWheelRef<'a, WEEKS_CAP, A>;
-/// Type alias for an AggregationWheel representing years
-pub type YearsWheel<A> = AggregationWheel<YEARS_CAP, A>;
-pub type YearsWheelRef<'a, A> = AggWheelRef<'a, YEARS_CAP, A>;
 
 crate::cfg_rkyv! {
     // Alias for an aggregators [`MutablePartialAggregate`] type
@@ -124,13 +96,13 @@ where
 {
     watermark: Watermark,
     #[cfg_attr(feature = "rkyv", omit_bounds)]
-    seconds_wheel: MaybeWheel<SECONDS_CAP, A>,
+    seconds_wheel: MaybeWheel<A>,
     #[cfg_attr(feature = "rkyv", omit_bounds)]
-    minutes_wheel: MaybeWheel<MINUTES_CAP, A>,
-    hours_wheel: MaybeWheel<HOURS_CAP, A>,
-    days_wheel: MaybeWheel<DAYS_CAP, A>,
-    weeks_wheel: MaybeWheel<WEEKS_CAP, A>,
-    years_wheel: MaybeWheel<YEARS_CAP, A>,
+    minutes_wheel: MaybeWheel<A>,
+    hours_wheel: MaybeWheel<A>,
+    days_wheel: MaybeWheel<A>,
+    weeks_wheel: MaybeWheel<A>,
+    years_wheel: MaybeWheel<A>,
     // for some reason rkyv fails to compile without this.
     #[cfg(feature = "rkyv")]
     _marker: A::PartialAggregate,
@@ -583,30 +555,30 @@ where
     }
 
     /// Returns a reference to the seconds wheel
-    pub fn seconds(&self) -> SecondsWheelRef<'_, A> {
+    pub fn seconds(&self) -> AggWheelRef<'_, A> {
         self.seconds_wheel.read()
     }
 
     /// Returns a reference to the minutes wheel
-    pub fn minutes(&self) -> MinutesWheelRef<'_, A> {
+    pub fn minutes(&self) -> AggWheelRef<'_, A> {
         self.minutes_wheel.read()
     }
     /// Returns a reference to the hours wheel
-    pub fn hours(&self) -> HoursWheelRef<'_, A> {
+    pub fn hours(&self) -> AggWheelRef<'_, A> {
         self.hours_wheel.read()
     }
     /// Returns a reference to the days wheel
-    pub fn days(&self) -> DaysWheelRef<'_, A> {
+    pub fn days(&self) -> AggWheelRef<'_, A> {
         self.days_wheel.read()
     }
 
     /// Returns a reference to the weeks wheel
-    pub fn weeks(&self) -> WeeksWheelRef<'_, A> {
+    pub fn weeks(&self) -> AggWheelRef<'_, A> {
         self.weeks_wheel.read()
     }
 
     /// Returns a reference to the years wheel
-    pub fn years(&self) -> YearsWheelRef<'_, A> {
+    pub fn years(&self) -> AggWheelRef<'_, A> {
         self.years_wheel.read()
     }
 

@@ -18,9 +18,6 @@ use rkyv::{ser::Serializer, AlignedVec, Archive, Deserialize, Serialize};
 #[cfg(feature = "rkyv")]
 use crate::wheels::rw::read::hierarchical::{DefaultSerializer, PartialAggregate};
 
-#[cfg(feature = "serde")]
-use serde_big_array::BigArray;
-
 pub mod iter;
 pub mod maybe;
 
@@ -99,26 +96,29 @@ impl<A: Aggregator> RotationData<A> {
     }
 }
 
+fn capacity_to_slots(cap: usize) -> usize {
+    if cap.is_power_of_two() {
+        cap
+    } else {
+        cap.next_power_of_two()
+    }
+}
+
 /// Fixed-size wheel where each slot contains a possible partial aggregate
 ///
 /// The wheel maintains partial aggregates per slot, but also updates a `total` aggregate for each tick in the wheel.
 /// The total aggregate is returned once a full rotation occurs. This way the same wheel structure can be used between different hierarchical levels (e.g., seconds, minutes, hours, days)
-///
-///
-/// Const Parameters:
-/// * `CAP` defines the circular buffer capacity (power of two).
 #[repr(C)]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Debug)]
-pub struct AggregationWheel<const CAP: usize, A: Aggregator> {
+pub struct AggregationWheel<A: Aggregator> {
+    /// The capacity of the wheel (must be power of two)
+    capacity: usize,
     /// Number of slots (60 seconds => 60 slots)
-    ///
-    /// Note that CAP is aligned up to power of two due to circular buffer
     num_slots: usize,
     /// Slots for Partial Aggregates
-    #[cfg_attr(feature = "serde", serde(with = "BigArray"))]
-    pub(crate) slots: [Option<A::PartialAggregate>; CAP],
+    pub(crate) slots: Box<[Option<A::PartialAggregate>]>,
     /// Slots used for drill-down operations
     ///
     /// The slots hold entries from a different granularity.
@@ -142,24 +142,35 @@ pub struct AggregationWheel<const CAP: usize, A: Aggregator> {
     pub(crate) total_ticks: usize,
 }
 
-impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
-    const INIT_VALUE: Option<A::PartialAggregate> = None;
-
+impl<A: Aggregator> AggregationWheel<A> {
     /// Creates a new AggregationWheel with drill-down enabled
     pub fn with_capacity_and_drill_down(num_slots: usize) -> Self {
         let mut agg_wheel = Self::with_capacity(num_slots);
         agg_wheel.drill_down = true;
         agg_wheel
     }
+    fn init_slots(slots: usize) -> Box<[Option<A::PartialAggregate>]> {
+        (0..slots)
+            .map(|_| None)
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
+    fn init_drill_down_slots(slots: usize) -> Box<[Option<Vec<A::PartialAggregate>>]> {
+        (0..slots)
+            .map(|_| None)
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
 
     /// Creates a new AggregationWheel using `num_slots`
     pub fn with_capacity(num_slots: usize) -> Self {
-        crate::assert_capacity!(CAP);
-        let slots: [Option<A::PartialAggregate>; CAP] = [Self::INIT_VALUE; CAP];
+        let capacity = capacity_to_slots(num_slots);
+        crate::assert_capacity!(capacity);
 
         Self {
+            capacity,
             num_slots,
-            slots,
+            slots: Self::init_slots(capacity),
             drill_down_slots: None,
             drill_down: false,
             total: None,
@@ -461,7 +472,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     pub fn total(&self) -> Option<A::PartialAggregate> {
         self.total
     }
-    pub fn slots(&self) -> &[Option<A::PartialAggregate>; CAP] {
+    pub fn slots(&self) -> &[Option<A::PartialAggregate>] {
         &self.slots
     }
 
@@ -469,11 +480,7 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     fn insert_drill_down_slots(&mut self, encoded_slots_opt: Option<Vec<A::PartialAggregate>>) {
         // if drill down slots have not been allocated
         if self.drill_down_slots.is_none() {
-            let slots = (0..CAP)
-                .map(|_| None)
-                .collect::<Vec<_>>()
-                .into_boxed_slice();
-            self.drill_down_slots = Some(slots);
+            self.drill_down_slots = Some(Self::init_drill_down_slots(self.capacity));
         }
         // insert drill down slots into the current head
         if let Some(ref mut drill_down_slots) = &mut self.drill_down_slots {
@@ -508,9 +515,9 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         }
 
         // Merge regular wheel slots
-        for (self_slot, other_slot) in self.slots.iter_mut().zip(other.slots) {
+        for (self_slot, other_slot) in self.slots.iter_mut().zip(other.slots.iter()) {
             if let Some(other_agg) = other_slot {
-                combine_or_insert::<A>(self_slot, other_agg);
+                combine_or_insert::<A>(self_slot, *other_agg);
             }
         }
         match (&mut self.drill_down_slots, &other.drill_down_slots) {
@@ -562,18 +569,15 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
         let skips = self.num_slots - 1;
 
         // reset internal state
-        let slots: [Option<A::PartialAggregate>; CAP] = [Self::INIT_VALUE; CAP];
-        self.slots = slots;
+        for slot in self.slots.iter_mut() {
+            *slot = None;
+        }
         self.total = None;
         self.head = 0;
         self.tail = 0;
 
         if let Some(drill_down_slots) = &mut self.drill_down_slots {
-            let slots = (0..CAP)
-                .map(|_| None)
-                .collect::<Vec<_>>()
-                .into_boxed_slice();
-            *drill_down_slots = slots;
+            *drill_down_slots = Self::init_drill_down_slots(self.capacity);
         }
 
         // prepare fast tick
@@ -676,9 +680,9 @@ impl<const CAP: usize, A: Aggregator> AggregationWheel<CAP, A> {
     }
 }
 
-impl<const CAP: usize, A: Aggregator> WheelExt for AggregationWheel<CAP, A> {
+impl<A: Aggregator> WheelExt for AggregationWheel<A> {
     fn capacity(&self) -> usize {
-        CAP
+        self.capacity
     }
     fn head(&self) -> usize {
         self.head
@@ -689,8 +693,8 @@ impl<const CAP: usize, A: Aggregator> WheelExt for AggregationWheel<CAP, A> {
 }
 #[cfg(feature = "sync")]
 #[allow(unsafe_code)]
-unsafe impl<const CAP: usize, A: Aggregator> Send for AggregationWheel<CAP, A> {}
+unsafe impl<A: Aggregator> Send for AggregationWheel<A> {}
 
 #[cfg(feature = "sync")]
 #[allow(unsafe_code)]
-unsafe impl<const CAP: usize, A: Aggregator> Sync for AggregationWheel<CAP, A> {}
+unsafe impl<A: Aggregator> Sync for AggregationWheel<A> {}
