@@ -89,6 +89,11 @@ impl<A: Aggregator> RwWheel<A> {
         self.read.advance_to(watermark, &mut self.write);
         debug_assert_eq!(self.write.watermark(), self.read.watermark());
     }
+    pub fn size_bytes(&self) -> usize {
+        let read = self.read.size_bytes();
+        let write = self.write.size_bytes().unwrap();
+        read + write
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -1,8 +1,9 @@
 use awheel_stats::Sketch;
-use core::fmt;
+use core::{cell::Cell, fmt};
 
 #[derive(Default)]
 pub struct Stats {
+    pub size_bytes: Cell<usize>,
     pub window_computation_ns: Sketch,
     pub cleanup_ns: Sketch,
     pub advance_ns: Sketch,
@@ -12,6 +13,7 @@ pub struct Stats {
 impl std::fmt::Debug for Stats {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Stats")
+            .field("size_bytes", &self.size_bytes.get())
             .field(
                 "window_computation_ns",
                 &self.window_computation_ns.percentiles(),

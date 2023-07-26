@@ -4,6 +4,11 @@ pub trait WheelExt {
     fn tail(&self) -> usize;
     fn capacity(&self) -> usize;
 
+    /// Returns the size of the wheel in bytes or `None` if it cannot be computed
+    fn size_bytes(&self) -> Option<usize> {
+        None
+    }
+
     fn is_empty(&self) -> bool {
         self.tail() == self.head()
     }

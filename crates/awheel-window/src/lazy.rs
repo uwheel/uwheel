@@ -14,7 +14,7 @@ use awheel_core::{
 };
 
 use awheel_core::rw_wheel::read::aggregation::iter::Iter;
-use core::iter::Iterator;
+use core::{iter::Iterator, mem};
 
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, vec::Vec};
@@ -92,6 +92,10 @@ impl<A: Aggregator> WheelExt for PairsWheel<A> {
     }
     fn tail(&self) -> usize {
         self.tail
+    }
+    fn size_bytes(&self) -> Option<usize> {
+        let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.capacity;
+        Some(mem::size_of::<Self>() + inner_slots)
     }
 }
 
@@ -230,6 +234,9 @@ impl<A: Aggregator> WindowExt<A> for LazyWindowWheel<A> {
     }
     #[cfg(feature = "stats")]
     fn print_stats(&self) {
+        let rw_wheel = self.wheel.size_bytes();
+        let pairs = self.pairs_wheel.size_bytes().unwrap();
+        self.stats.size_bytes.set(rw_wheel + pairs);
         println!("{:#?}", self.stats);
     }
 }

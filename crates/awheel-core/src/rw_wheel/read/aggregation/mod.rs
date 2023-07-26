@@ -183,12 +183,6 @@ impl<A: Aggregator> AggregationWheel<A> {
         }
     }
 
-    pub fn size_bytes(&self) -> usize {
-        // TODO: does not include drill down slots
-        let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.capacity;
-        mem::size_of::<Self>() + inner_slots
-    }
-
     /// Returns `true` if the wheel is empty or `false` if it contains slots
     #[inline]
     pub fn is_empty(&self) -> bool {
@@ -696,6 +690,15 @@ impl<A: Aggregator> WheelExt for AggregationWheel<A> {
     }
     fn tail(&self) -> usize {
         self.tail
+    }
+
+    fn size_bytes(&self) -> Option<usize> {
+        // TODO: calculate drill down slots
+
+        // roll-up slots are stored on the heap, calculate how much bytes we are using for them..
+        let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.capacity;
+
+        Some(mem::size_of::<Self>() + inner_slots)
     }
 }
 #[cfg(feature = "sync")]

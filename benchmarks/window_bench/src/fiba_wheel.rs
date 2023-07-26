@@ -226,8 +226,8 @@ impl WindowExt<U64SumAggregator> for BFingerEightWheel {
         unimplemented!();
     }
     fn print_stats(&self) {
+        self.stats.size_bytes.set(self.fiba.size());
         println!("{:#?}", self.stats);
-        println!("FiBA Size {}", self.fiba.size());
     }
 }
 

@@ -1,4 +1,4 @@
-use core::time::Duration as CoreDuration;
+use core::{mem, time::Duration as CoreDuration};
 
 use crate::{aggregator::Aggregator, time::Duration, Entry, Error};
 //use smallvec::SmallVec;
@@ -140,5 +140,9 @@ impl<A: Aggregator> WheelExt for WriteAheadWheel<A> {
     }
     fn tail(&self) -> usize {
         self.tail
+    }
+    fn size_bytes(&self) -> Option<usize> {
+        let inner_slots = mem::size_of::<Option<A::MutablePartialAggregate>>() * self.capacity;
+        Some(mem::size_of::<Self>() + inner_slots)
     }
 }

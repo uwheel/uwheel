@@ -1,3 +1,5 @@
+use core::mem;
+
 use crate::{state::State, WindowExt};
 
 use super::util::{pairs_capacity, PairType};
@@ -91,6 +93,10 @@ impl<A: Aggregator> WheelExt for InverseWheel<A> {
     }
     fn tail(&self) -> usize {
         self.tail
+    }
+    fn size_bytes(&self) -> Option<usize> {
+        let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.capacity;
+        Some(mem::size_of::<Self>() + inner_slots)
     }
 }
 
@@ -305,6 +311,9 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
     }
     #[cfg(feature = "stats")]
     fn print_stats(&self) {
+        let rw_wheel = self.wheel.size_bytes();
+        let pairs = self.inverse_wheel.size_bytes().unwrap();
+        self.stats.size_bytes.set(rw_wheel + pairs);
         println!("{:#?}", self.stats);
     }
 }
