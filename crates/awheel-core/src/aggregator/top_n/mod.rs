@@ -15,11 +15,22 @@ pub use state::TopNState;
 /// A Top-N Aggregator
 ///
 /// Orders data in ascending order by default
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct TopNAggregator<Key: KeyBounds, const N: usize, A: Aggregator, OrderBy = Ascending>(
     PhantomData<(Key, OrderBy, A)>,
 );
-
+impl<Key, const N: usize, A, OrderBy> Default for TopNAggregator<Key, N, A, OrderBy>
+where
+    Key: KeyBounds,
+    OrderBy: Order,
+    A: Aggregator + Clone + Copy,
+    A::PartialAggregate: Ord + Copy,
+{
+    // have to implement manually as Key does not implement Default
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
 impl<Key, const N: usize, A, OrderBy> Aggregator for TopNAggregator<Key, N, A, OrderBy>
 where
     Key: KeyBounds,

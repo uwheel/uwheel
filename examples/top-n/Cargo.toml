@@ -1,7 +1,8 @@
 [package]
 name = "top-n"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 awheel = { workspace = true, features = ["top_n"] }
+tinystr = { version = "0.7.1", features = ["serde"] }

@@ -10,7 +10,7 @@ use std::collections::BinaryHeap;
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct TopNMap<Key, A>
 where
     Key: KeyBounds,
@@ -18,6 +18,19 @@ where
     A::PartialAggregate: Ord,
 {
     table: HashMap<Key, A::PartialAggregate>,
+}
+
+impl<Key, A> Default for TopNMap<Key, A>
+where
+    Key: KeyBounds,
+    A: Aggregator,
+    A::PartialAggregate: Ord,
+{
+    fn default() -> Self {
+        Self {
+            table: Default::default(),
+        }
+    }
 }
 
 impl<Key, A> TopNMap<Key, A>
@@ -51,14 +64,20 @@ where
             }
         }
 
-        let mut sorted_vec: Vec<_> = heap.into_sorted_vec().into_iter().map(Some).collect();
+        // sorts in ascending order
+        let mut top_n_vec: Vec<_> = heap.into_sorted_vec().into_iter().map(Some).collect();
 
-        // fill remainder if needed...
-        let rem = N - sorted_vec.len();
-        for _i in 0..rem {
-            sorted_vec.push(None);
+        // if specified order is descending then reverse it
+        if let Ordering::Greater = order {
+            top_n_vec.reverse();
         }
 
-        TopNState::from(sorted_vec)
+        // fill remainder if needed...
+        let rem = N - top_n_vec.len();
+        for _i in 0..rem {
+            top_n_vec.push(None);
+        }
+
+        TopNState::from(top_n_vec)
     }
 }

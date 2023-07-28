@@ -948,10 +948,11 @@ impl eframe::App for TemplateApp {
                 .trim_matches('\"');
 
             ui.label(RichText::new(format!("Aggregator: {}", aggregator_name)).strong());
+            let size_bytes = plot_wheel.borrow().size_bytes();
             ui.label(
                 RichText::new(format!(
                     "Memory Size Bytes: {}",
-                    std::mem::size_of::<RwWheel<DemoAggregator>>()
+                    size_bytes,
                 ))
                 .strong(),
             );
