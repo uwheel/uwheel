@@ -43,6 +43,7 @@ impl std::fmt::Debug for Percentiles {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone)]
 pub struct Sketch {
     inner: Rc<RefCell<DDSketch>>,

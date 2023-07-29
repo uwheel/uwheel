@@ -26,11 +26,12 @@ use rkyv::{Archive, Deserialize, Serialize};
 use awheel_stats::Measure;
 
 #[repr(C)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[derive(Debug, Clone)]
 pub struct PairsWheel<A: Aggregator> {
     capacity: usize,
-    aggregator: A,
     slots: Box<[Option<A::PartialAggregate>]>,
     tail: usize,
     head: usize,
@@ -41,7 +42,6 @@ impl<A: Aggregator> PairsWheel<A> {
         Self::assert_capacity(capacity);
         Self {
             capacity,
-            aggregator: Default::default(),
             slots: (0..capacity)
                 .map(|_| None)
                 .collect::<Vec<_>>()
@@ -131,7 +131,8 @@ impl Builder {
 /// A window wheel that uses the Pairs technique to store partial aggregates
 /// for a RANGE r and SLIDE s. It utilises a regular HAW for insertions and populating
 /// window slices.
-#[allow(dead_code)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 pub struct LazyWindowWheel<A: Aggregator> {
     range: usize,
     slide: usize,

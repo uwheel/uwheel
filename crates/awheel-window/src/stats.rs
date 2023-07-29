@@ -1,6 +1,7 @@
 use awheel_stats::Sketch;
 use core::{cell::Cell, fmt};
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Default)]
 pub struct Stats {
     pub size_bytes: Cell<usize>,

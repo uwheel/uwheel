@@ -96,7 +96,7 @@ impl<A: Aggregator> RwWheel<A> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Options {
     drill_down: bool,
     write_ahead_capacity: usize,

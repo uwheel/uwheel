@@ -57,7 +57,7 @@ crate::cfg_rkyv! {
     >;
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct Options {
     drill_down: bool,
 }

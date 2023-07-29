@@ -22,4 +22,5 @@ cargo test --workspace --doc
 (cd crates/awheel && cargo check --features "sync")
 (cd crates/awheel && cargo check --features "serde")
 (cd crates/awheel && cargo check --features "sync, serde")
+(cd crates/awheel && cargo check --features "window, serde")
 (cd crates/awheel/fuzz && cargo check)

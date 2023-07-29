@@ -8,6 +8,7 @@ use super::WindowExt;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, Copy)]
 pub enum PairType {
     /// Slice size when range % slide = 0

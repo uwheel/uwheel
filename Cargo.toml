@@ -22,7 +22,7 @@ awheel-stats = { path = "crates/awheel-stats", version = "0.1.0" }
 
 parking_lot = "0.12"
 hashbrown = "0.13"
-sketches-ddsketch = "0.1"
+sketches-ddsketch = "0.2"
 minstant = "0.1"
 fastrand = "1.8.0"
 rand = "0.8.5"
@@ -30,3 +30,5 @@ hdrhistogram = "7"
 clap = { version = "3.2", features = ["derive"] }
 criterion = "0.4"
 duckdb = { version = "0.8.1", features = ["bundled"] }
+serde = { version = "1.0", default-features = false }
+serde-big-array = { version = "0.5.1", default-features = false }

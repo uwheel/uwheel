@@ -33,11 +33,11 @@ rkyv = { version = "0.7.39", features = [
     "copy_unsafe",
     "smallvec",
 ], optional = true }
-serde = { version = "1.0", default-features = false, optional = true, features = [
+serde = { workspace = true, optional = true, features = [
     "derive",
     "rc",
 ] }
-serde-big-array = { version = "0.5.1", default-features = false, optional = true }
+serde-big-array = { workspace = true, optional = true }
 
 [dev-dependencies]
 fastrand.workspace = true

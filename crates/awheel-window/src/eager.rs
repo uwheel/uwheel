@@ -26,6 +26,7 @@ use awheel_stats::Measure;
 /// A fixed-sized wheel used to maintain partial aggregates for slides that can later
 /// be used to inverse windows.
 #[repr(C)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[derive(Debug, Clone)]
 pub struct InverseWheel<A: Aggregator> {
@@ -132,7 +133,7 @@ impl Builder {
 /// Wrapper on top of HAW to implement Sliding Window Aggregation
 ///
 /// Requires an aggregation function that supports invertibility
-#[allow(dead_code)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
     range: usize,
     slide: usize,

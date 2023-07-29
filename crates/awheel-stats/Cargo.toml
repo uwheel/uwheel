@@ -7,6 +7,14 @@ categories.workspace = true
 license.workspace = true
 readme.workspace = true
 
+[features]
+serde = ["dep:serde", "sketches-ddsketch/use_serde"]
+
 [dependencies]
 sketches-ddsketch.workspace = true
 minstant.workspace = true
+
+serde = { workspace = true, optional = true, features = [
+    "derive",
+    "rc",
+] }

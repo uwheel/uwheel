@@ -15,10 +15,16 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = ["std"]
 std = []
 stats = ["awheel-stats"]
+serde = ["dep:serde", "awheel-stats?/serde", "awheel-core/serde"]
 
 [dependencies]
 awheel-core.workspace = true
 awheel-stats = { workspace = true, optional = true }
+
+serde = { workspace = true, optional = true, features = [
+    "derive",
+    "rc",
+] }
 
 [dev-dependencies]
 awheel-core = { workspace = true, features = ["sum"] }
