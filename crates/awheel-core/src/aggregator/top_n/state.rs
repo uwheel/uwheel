@@ -2,16 +2,12 @@ use super::{entry::TopNEntry, map::TopNMap, KeyBounds};
 use crate::aggregator::{Aggregator, PartialAggregateType};
 use core::{cmp::Ordering, fmt::Debug};
 
-#[cfg(feature = "rkyv")]
-use rkyv::{Archive, Deserialize, Serialize};
-
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
 #[cfg(feature = "serde")]
 use serde_big_array::BigArray;
 
-#[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Debug, Copy, Clone)]

@@ -13,12 +13,6 @@ use core::{
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, vec::Vec};
 
-#[cfg(feature = "rkyv")]
-use rkyv::{ser::Serializer, AlignedVec, Archive, Deserialize, Serialize};
-
-#[cfg(feature = "rkyv")]
-use crate::wheels::rw::read::hierarchical::{DefaultSerializer, PartialAggregate};
-
 pub mod iter;
 pub mod maybe;
 
@@ -110,7 +104,6 @@ fn capacity_to_slots(cap: usize) -> usize {
 /// The wheel maintains partial aggregates per slot, but also updates a `total` aggregate for each tick in the wheel.
 /// The total aggregate is returned once a full rotation occurs. This way the same wheel structure can be used between different hierarchical levels (e.g., seconds, minutes, hours, days)
 #[repr(C)]
-#[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Debug)]
 pub struct AggregationWheel<A: Aggregator> {
@@ -631,17 +624,6 @@ impl<A: Aggregator> AggregationWheel<A> {
         } else {
             None
         }
-    }
-
-    #[cfg(feature = "rkyv")]
-    /// Converts the wheel to bytes
-    pub fn as_bytes(&self) -> AlignedVec
-    where
-        PartialAggregate<A>: Serialize<DefaultSerializer>,
-    {
-        let mut serializer = DefaultSerializer::default();
-        serializer.serialize_value(self).unwrap();
-        serializer.into_serializer().into_inner()
     }
 
     /// Check whether this wheel is utilising all its slots

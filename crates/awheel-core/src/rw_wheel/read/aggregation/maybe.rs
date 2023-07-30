@@ -1,16 +1,10 @@
-use crate::aggregator::Aggregator;
-
 pub use self::inner_impl::AggWheelRef;
 use self::inner_impl::{AggWheelRefMut, Inner};
 use super::AggregationWheel;
-use crate::rw_wheel::WheelExt;
-
-#[cfg(feature = "rkyv")]
-use rkyv::{Archive, Deserialize, Serialize};
+use crate::{aggregator::Aggregator, rw_wheel::WheelExt};
 
 // An internal wrapper Struct that containing a possible AggregationWheel
 #[repr(C)]
-#[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Debug, Clone)]

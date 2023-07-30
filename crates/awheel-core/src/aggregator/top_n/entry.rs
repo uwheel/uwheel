@@ -1,10 +1,6 @@
 use super::KeyBounds;
 use core::{cmp::Ordering, fmt::Debug};
 
-#[cfg(feature = "rkyv")]
-use rkyv::{Archive, Deserialize, Serialize};
-
-#[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(
     feature = "serde",

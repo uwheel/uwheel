@@ -1,6 +1,3 @@
-#[cfg(feature = "rkyv")]
-use rkyv::{Archive, Deserialize, Serialize};
-
 use crate::{aggregator::PartialAggregateType, Aggregator};
 
 use core::{
@@ -14,7 +11,6 @@ use core::{
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy)]
-#[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct AggState {
     min: f64,

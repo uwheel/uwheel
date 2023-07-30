@@ -506,42 +506,4 @@ mod tests {
         assert_eq!(decoded[58], 2);
         assert_eq!(decoded[59], 0);
     }
-
-    #[cfg(all(feature = "rkyv", feature = "std"))]
-    #[test]
-    fn serde_test() {
-        /*
-        let time = 1000;
-        let wheel: RwWheel<U32SumAggregator> = RwWheel::new(time);
-
-        let mut raw_wheel = wheel.read().raw().as_bytes();
-
-        for _ in 0..3 {
-            let mut wheel = Wheel::<U32SumAggregator>::from_bytes(&raw_wheel).unwrap();
-            wheel.insert(Entry::new(1u32, time + 100)).unwrap();
-            raw_wheel = wheel.as_bytes();
-        }
-
-        assert!(Wheel::<U32SumAggregator>::from_bytes(&raw_wheel).is_ok());
-        */
-
-        // TODO: fix WaW serialization
-        /*
-        time += 1000;
-        wheel.advance_to(time);
-
-        assert_eq!(
-            wheel.seconds_unchecked().combine_and_lower_range(..),
-            Some(3u32)
-        );
-
-        let raw_wheel = wheel.as_bytes();
-
-        // deserialize seconds wheel only and confirm same query works
-        let seconds_wheel =
-            Wheel::<U32SumAggregator>::seconds_wheel_from_bytes(&raw_wheel).unwrap();
-
-        assert_eq!(seconds_wheel.combine_and_lower_range(..), Some(3u32));
-        */
-    }
 }

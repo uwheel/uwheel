@@ -8,26 +8,6 @@ use core::{
     },
 };
 
-#[cfg(feature = "rkyv")]
-use rkyv::{
-    de::deserializers::{SharedDeserializeMap, SharedDeserializeMapError},
-    ser::serializers::{
-        AlignedSerializer,
-        AllocScratch,
-        CompositeSerializer,
-        FallbackScratch,
-        HeapScratch,
-        SharedSerializeMap,
-    },
-    ser::Serializer,
-    AlignedVec,
-};
-#[cfg(feature = "rkyv")]
-use rkyv::{Archive, Deserialize, Infallible, Serialize};
-
-#[cfg(all(feature = "rkyv", not(feature = "std")))]
-use alloc::boxed::Box;
-
 use super::{
     super::write::WriteAheadWheel,
     aggregation::{AggWheelRef, MaybeWheel},
@@ -41,21 +21,6 @@ pub const HOURS: usize = 24;
 pub const DAYS: usize = 7;
 pub const WEEKS: usize = 52;
 pub const YEARS: usize = 10;
-
-crate::cfg_rkyv! {
-    // Alias for an aggregators [`MutablePartialAggregate`] type
-    pub type MutablePartialAggregate<A> = <A as Aggregator>::MutablePartialAggregate;
-    // Alias for an aggregators [`PartialAggregate`] type
-    pub type PartialAggregate<A> = <A as Aggregator>::PartialAggregate;
-    // Alias for an aggregators [`PartialAggregate`] archived type
-    type Archived<A> = <<A as Aggregator>::PartialAggregate as Archive>::Archived;
-    // Alias for the default serializer used by the crate
-    pub type DefaultSerializer = CompositeSerializer<
-        AlignedSerializer<AlignedVec>,
-        FallbackScratch<HeapScratch<4096>, AllocScratch>,
-        SharedSerializeMap,
-    >;
-}
 
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Options {
@@ -86,7 +51,6 @@ impl Options {
 /// The above scheme results in a total of 213 wheel slots. This is the minimum number of slots
 /// required to support rolling up aggregates across 10 years with second granularity.
 #[repr(C)]
-#[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone, Debug)]
@@ -95,17 +59,12 @@ where
     A: Aggregator,
 {
     watermark: Watermark,
-    #[cfg_attr(feature = "rkyv", omit_bounds)]
     seconds_wheel: MaybeWheel<A>,
-    #[cfg_attr(feature = "rkyv", omit_bounds)]
     minutes_wheel: MaybeWheel<A>,
     hours_wheel: MaybeWheel<A>,
     days_wheel: MaybeWheel<A>,
     weeks_wheel: MaybeWheel<A>,
     years_wheel: MaybeWheel<A>,
-    // for some reason rkyv fails to compile without this.
-    #[cfg(feature = "rkyv")]
-    _marker: A::PartialAggregate,
 }
 
 impl<A> Haw<A>
@@ -157,8 +116,6 @@ where
             days_wheel: MaybeWheel::with_capacity(DAYS),
             weeks_wheel: MaybeWheel::with_capacity(WEEKS),
             years_wheel: MaybeWheel::with_capacity(YEARS),
-            #[cfg(feature = "rkyv")]
-            _marker: Default::default(),
         }
     }
     fn base_drill_down(time: u64) -> Self {
@@ -170,8 +127,6 @@ where
             days_wheel: MaybeWheel::with_capacity_and_drill_down(DAYS),
             weeks_wheel: MaybeWheel::with_capacity_and_drill_down(WEEKS),
             years_wheel: MaybeWheel::with_capacity_and_drill_down(YEARS),
-            #[cfg(feature = "rkyv")]
-            _marker: Default::default(),
         }
     }
 
@@ -602,125 +557,6 @@ where
         self.days_wheel.merge(&other.days_wheel);
         self.weeks_wheel.merge(&other.weeks_wheel);
         self.years_wheel.merge(&other.years_wheel);
-    }
-
-    #[cfg(feature = "rkyv")]
-    /// Converts the wheel to bytes using the default serializer
-    pub fn as_bytes(&self) -> AlignedVec
-    where
-        PartialAggregate<A>: Serialize<DefaultSerializer>,
-    {
-        let mut serializer = DefaultSerializer::default();
-        serializer.serialize_value(self).unwrap();
-        serializer.into_serializer().into_inner()
-    }
-
-    #[cfg(feature = "rkyv")]
-    /// Deserialise given bytes into a Wheel
-    ///
-    /// This function will deserialize the whole wheel.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, SharedDeserializeMapError>
-    where
-        PartialAggregate<A>: Archive,
-        Archived<A>: Deserialize<PartialAggregate<A>, SharedDeserializeMap>,
-    {
-        unsafe { rkyv::from_bytes_unchecked(bytes) }
-    }
-
-    #[cfg(feature = "rkyv")]
-    /// Deserialise given bytes into a seconds wheel
-    ///
-    /// For read-only operations that only target the seconds wheel,
-    /// this function is more efficient as it will only deserialize a single wheel.
-    pub fn seconds_wheel_from_bytes(bytes: &[u8]) -> Option<Box<SecondsWheel<A>>>
-    where
-        PartialAggregate<A>: Archive,
-        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
-    {
-        let archived = unsafe { rkyv::archived_root::<Self>(bytes) };
-        let mut maybe: MaybeWheel<SECONDS_CAP, A> =
-            archived.seconds_wheel.deserialize(&mut Infallible).unwrap();
-        maybe.wheel.take()
-    }
-
-    #[cfg(feature = "rkyv")]
-    /// Deserialise given bytes into a minutes wheel
-    ///
-    /// For read-only operations that only target the minutes wheel,
-    /// this function is more efficient as it will only deserialize a single wheel.
-    pub fn minutes_wheel_from_bytes(bytes: &[u8]) -> Option<Box<MinutesWheel<A>>>
-    where
-        PartialAggregate<A>: Archive,
-        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
-    {
-        let archived = unsafe { rkyv::archived_root::<Self>(bytes) };
-        let mut maybe: MaybeWheel<MINUTES_CAP, A> =
-            archived.minutes_wheel.deserialize(&mut Infallible).unwrap();
-        maybe.wheel.take()
-    }
-
-    #[cfg(feature = "rkyv")]
-    /// Deserialise given bytes into a hours wheel
-    ///
-    /// For read-only operations that only target the hours wheel,
-    /// this function is more efficient as it will only deserialize a single wheel.
-    pub fn hours_wheel_from_bytes(bytes: &[u8]) -> Option<Box<HoursWheel<A>>>
-    where
-        PartialAggregate<A>: Archive,
-        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
-    {
-        let archived = unsafe { rkyv::archived_root::<Self>(bytes) };
-        let mut maybe: MaybeWheel<HOURS_CAP, A> =
-            archived.hours_wheel.deserialize(&mut Infallible).unwrap();
-        maybe.wheel.take()
-    }
-
-    #[cfg(feature = "rkyv")]
-    /// Deserialise given bytes into a days wheel
-    ///
-    /// For read-only operations that only target the days wheel,
-    /// this function is more efficient as it will only deserialize a single wheel.
-    pub fn days_wheel_from_bytes(bytes: &[u8]) -> Option<Box<DaysWheel<A>>>
-    where
-        PartialAggregate<A>: Archive,
-        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
-    {
-        let archived = unsafe { rkyv::archived_root::<Self>(bytes) };
-        let mut maybe: MaybeWheel<DAYS_CAP, A> =
-            archived.days_wheel.deserialize(&mut Infallible).unwrap();
-        maybe.wheel.take()
-    }
-
-    #[cfg(feature = "rkyv")]
-    /// Deserialise given bytes into a weeks wheel
-    ///
-    /// For read-only operations that only target the weeks wheel,
-    /// this function is more efficient as it will only deserialize a single wheel.
-    pub fn weeks_wheel_from_bytes(bytes: &[u8]) -> Option<Box<WeeksWheel<A>>>
-    where
-        PartialAggregate<A>: Archive,
-        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
-    {
-        let archived = unsafe { rkyv::archived_root::<Self>(bytes) };
-        let mut maybe: MaybeWheel<WEEKS_CAP, A> =
-            archived.weeks_wheel.deserialize(&mut Infallible).unwrap();
-        maybe.wheel.take()
-    }
-
-    #[cfg(feature = "rkyv")]
-    /// Deserialise given bytes into a years wheel
-    ///
-    /// For read-only operations that only target the years wheel,
-    /// this function is more efficient as it will only deserialize a single wheel.
-    pub fn years_wheel_from_bytes(bytes: &[u8]) -> Option<Box<YearsWheel<A>>>
-    where
-        PartialAggregate<A>: Archive,
-        Archived<A>: Deserialize<PartialAggregate<A>, Infallible>,
-    {
-        let archived = unsafe { rkyv::archived_root::<Self>(bytes) };
-        let mut maybe: MaybeWheel<YEARS_CAP, A> =
-            archived.years_wheel.deserialize(&mut Infallible).unwrap();
-        maybe.wheel.take()
     }
 }
 #[cfg(feature = "sync")]

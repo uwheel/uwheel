@@ -14,25 +14,19 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["std", "all", "avg", "sum", "min", "max"]
-std = ["rkyv?/std", "serde?/std"]
+std = ["serde?/std"]
 all = []
 avg = []
 sum = []
 min = []
 max = []
 top_n = ["dep:hashbrown"]
-rkyv = ["dep:rkyv"]
 serde = ["dep:serde", "dep:serde-big-array", "parking_lot?/serde", "hashbrown?/serde"]
 sync = ["dep:parking_lot", "std"]
 
 [dependencies]
 parking_lot = { workspace = true, optional = true }
 hashbrown = { workspace = true, optional = true }
-rkyv = { version = "0.7.39", features = [
-    "copy",
-    "copy_unsafe",
-    "smallvec",
-], optional = true }
 serde = { workspace = true, optional = true, features = [
     "derive",
     "rc",
@@ -63,8 +57,3 @@ harness = false
 [[bench]]
 name = "merge"
 harness = false
-
-[[bench]]
-name = "serde"
-harness = false
-required-features = ["rkyv"]

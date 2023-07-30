@@ -92,17 +92,6 @@ impl<T: Debug> fmt::Display for Entry<T> {
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! cfg_rkyv {
-    ($($item:item)*) => {
-        $(
-            #[cfg(feature = "rkyv")]
-            $item
-        )*
-    }
-}
-
-#[doc(hidden)]
-#[macro_export]
 macro_rules! assert_capacity {
     ($capacity:tt) => {
         assert!($capacity != 0, "Capacity is not allowed to be zero");
