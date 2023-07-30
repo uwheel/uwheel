@@ -17,6 +17,7 @@ use alloc::{boxed::Box, vec::Vec};
 #[derive(Debug, Clone)]
 pub struct WriteAheadWheel<A: Aggregator> {
     watermark: u64,
+    num_slots: usize,
     capacity: usize,
     slots: Box<[Option<A::MutablePartialAggregate>]>,
     tail: usize,
@@ -33,8 +34,9 @@ impl<A: Aggregator> WriteAheadWheel<A> {
         Self::with_capacity_and_watermark(DEFAULT_WRITE_AHEAD_SLOTS, watermark)
     }
     pub fn with_capacity_and_watermark(capacity: usize, watermark: u64) -> Self {
-        crate::assert_capacity!(capacity);
+        let num_slots = crate::capacity_to_slots!(capacity);
         Self {
+            num_slots,
             capacity,
             watermark,
             slots: (0..capacity)
@@ -65,12 +67,6 @@ impl<A: Aggregator> WriteAheadWheel<A> {
     }
     pub(super) fn watermark_mut(&mut self) -> &mut u64 {
         &mut self.watermark
-    }
-
-    /// Returns `true` if the wheel is empty or `false` if it contains slots
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.tail == self.head
     }
 
     /// Check whether this wheel can write ahead by ´addend` slots
@@ -132,6 +128,9 @@ impl<A: Aggregator> WriteAheadWheel<A> {
 }
 
 impl<A: Aggregator> WheelExt for WriteAheadWheel<A> {
+    fn num_slots(&self) -> usize {
+        self.num_slots
+    }
     fn capacity(&self) -> usize {
         self.capacity
     }
@@ -142,7 +141,7 @@ impl<A: Aggregator> WheelExt for WriteAheadWheel<A> {
         self.tail
     }
     fn size_bytes(&self) -> Option<usize> {
-        let inner_slots = mem::size_of::<Option<A::MutablePartialAggregate>>() * self.capacity;
+        let inner_slots = mem::size_of::<Option<A::MutablePartialAggregate>>() * self.num_slots;
         Some(mem::size_of::<Self>() + inner_slots)
     }
 }

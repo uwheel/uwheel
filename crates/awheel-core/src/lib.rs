@@ -92,12 +92,12 @@ impl<T: Debug> fmt::Display for Entry<T> {
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! assert_capacity {
-    ($capacity:tt) => {
-        assert!($capacity != 0, "Capacity is not allowed to be zero");
-        assert!(
-            $capacity.is_power_of_two(),
-            "Capacity must be a power of two"
-        );
+macro_rules! capacity_to_slots {
+    ($cap:tt) => {
+        if $cap.is_power_of_two() {
+            $cap
+        } else {
+            $cap.next_power_of_two()
+        }
     };
 }

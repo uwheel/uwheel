@@ -91,14 +91,6 @@ impl<A: Aggregator> RotationData<A> {
     }
 }
 
-fn capacity_to_slots(cap: usize) -> usize {
-    if cap.is_power_of_two() {
-        cap
-    } else {
-        cap.next_power_of_two()
-    }
-}
-
 /// Fixed-size wheel where each slot contains a possible partial aggregate
 ///
 /// The wheel maintains partial aggregates per slot, but also updates a `total` aggregate for each tick in the wheel.
@@ -107,9 +99,9 @@ fn capacity_to_slots(cap: usize) -> usize {
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Debug)]
 pub struct AggregationWheel<A: Aggregator> {
-    /// The capacity of the wheel (must be power of two)
-    capacity: usize,
     /// Number of slots (60 seconds => 60 slots)
+    capacity: usize,
+    /// Total number of wheel slots (must be power of two)
     num_slots: usize,
     /// Slots for Partial Aggregates
     pub(crate) slots: Box<[Option<A::PartialAggregate>]>,
@@ -138,33 +130,20 @@ pub struct AggregationWheel<A: Aggregator> {
 
 impl<A: Aggregator> AggregationWheel<A> {
     /// Creates a new AggregationWheel with drill-down enabled
-    pub fn with_capacity_and_drill_down(num_slots: usize) -> Self {
-        let mut agg_wheel = Self::with_capacity(num_slots);
+    pub fn with_capacity_and_drill_down(capacity: usize) -> Self {
+        let mut agg_wheel = Self::with_capacity(capacity);
         agg_wheel.drill_down = true;
         agg_wheel
     }
-    fn init_slots(slots: usize) -> Box<[Option<A::PartialAggregate>]> {
-        (0..slots)
-            .map(|_| None)
-            .collect::<Vec<_>>()
-            .into_boxed_slice()
-    }
-    fn init_drill_down_slots(slots: usize) -> Box<[Option<Vec<A::PartialAggregate>>]> {
-        (0..slots)
-            .map(|_| None)
-            .collect::<Vec<_>>()
-            .into_boxed_slice()
-    }
 
-    /// Creates a new AggregationWheel using `num_slots`
-    pub fn with_capacity(num_slots: usize) -> Self {
-        let capacity = capacity_to_slots(num_slots);
-        crate::assert_capacity!(capacity);
+    /// Creates a new AggregationWheel using `capacity`
+    pub fn with_capacity(capacity: usize) -> Self {
+        let num_slots = crate::capacity_to_slots!(capacity);
 
         Self {
             capacity,
             num_slots,
-            slots: Self::init_slots(capacity),
+            slots: Self::init_slots(num_slots),
             drill_down_slots: None,
             drill_down: false,
             total: None,
@@ -174,12 +153,6 @@ impl<A: Aggregator> AggregationWheel<A> {
             #[cfg(test)]
             total_ticks: 0,
         }
-    }
-
-    /// Returns `true` if the wheel is empty or `false` if it contains slots
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.tail == self.head
     }
 
     /// Combines partial aggregates of the last `subtrahend` slots
@@ -449,15 +422,15 @@ impl<A: Aggregator> AggregationWheel<A> {
     /// Ticks left until the wheel fully rotates
     #[inline]
     pub fn ticks_remaining(&self) -> usize {
-        self.num_slots - self.rotation_count
+        self.capacity - self.rotation_count
     }
 
     /// Clears the wheel
     pub fn clear(&mut self) {
         let mut new = if self.drill_down {
-            Self::with_capacity_and_drill_down(self.num_slots)
+            Self::with_capacity_and_drill_down(self.capacity)
         } else {
-            Self::with_capacity(self.num_slots)
+            Self::with_capacity(self.capacity)
         };
         core::mem::swap(self, &mut new);
     }
@@ -470,15 +443,15 @@ impl<A: Aggregator> AggregationWheel<A> {
         &self.slots
     }
 
-    /// Insert encoded drill down slots at the current head
-    fn insert_drill_down_slots(&mut self, encoded_slots_opt: Option<Vec<A::PartialAggregate>>) {
+    /// Insert drill down slots at the current head
+    fn insert_drill_down_slots(&mut self, slots: Option<Vec<A::PartialAggregate>>) {
         // if drill down slots have not been allocated
         if self.drill_down_slots.is_none() {
-            self.drill_down_slots = Some(Self::init_drill_down_slots(self.capacity));
+            self.drill_down_slots = Some(Self::init_drill_down_slots(self.num_slots));
         }
         // insert drill down slots into the current head
         if let Some(ref mut drill_down_slots) = &mut self.drill_down_slots {
-            drill_down_slots[self.head] = encoded_slots_opt;
+            drill_down_slots[self.head] = slots;
         }
     }
 
@@ -549,18 +522,11 @@ impl<A: Aggregator> AggregationWheel<A> {
         &mut self.slots[idx]
     }
 
-    pub fn head(&self) -> usize {
-        self.head
-    }
-    pub fn tail(&self) -> usize {
-        self.tail
-    }
-
-    /// Fast skip `num_slots - 1` and prepare wheel for a full rotation
+    /// Fast skip `capacity - 1` and prepare wheel for a full rotation
     ///
     /// Note that This function clears all existing wheel slots
     pub fn fast_skip_tick(&mut self) {
-        let skips = self.num_slots - 1;
+        let skips = self.capacity - 1;
 
         // reset internal state
         for slot in self.slots.iter_mut() {
@@ -571,7 +537,7 @@ impl<A: Aggregator> AggregationWheel<A> {
         self.tail = 0;
 
         if let Some(drill_down_slots) = &mut self.drill_down_slots {
-            *drill_down_slots = Self::init_drill_down_slots(self.capacity);
+            *drill_down_slots = Self::init_drill_down_slots(self.num_slots);
         }
 
         // prepare fast tick
@@ -603,7 +569,7 @@ impl<A: Aggregator> AggregationWheel<A> {
         }
 
         // Return RotationData if wheel has doen a full rotation
-        if self.rotation_count == self.num_slots {
+        if self.rotation_count == self.capacity {
             // our total partial aggregate to be rolled up
             let total = self.total.take();
 
@@ -630,7 +596,7 @@ impl<A: Aggregator> AggregationWheel<A> {
     pub fn is_full(&self) -> bool {
         let len = self.len();
         // + 1 as we want to maintain num_slots of history at all times
-        (self.num_slots + 1) - len == 1
+        (self.capacity + 1) - len == 1
     }
 
     /// Returns a back-to-front iterator of regular wheel slots
@@ -661,9 +627,26 @@ impl<A: Aggregator> AggregationWheel<A> {
         let head = self.wrap_add(self.tail, end);
         (tail, head)
     }
+
+    // helper functions
+    fn init_slots(slots: usize) -> Box<[Option<A::PartialAggregate>]> {
+        (0..slots)
+            .map(|_| None)
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
+    fn init_drill_down_slots(slots: usize) -> Box<[Option<Vec<A::PartialAggregate>>]> {
+        (0..slots)
+            .map(|_| None)
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
 }
 
 impl<A: Aggregator> WheelExt for AggregationWheel<A> {
+    fn num_slots(&self) -> usize {
+        self.num_slots
+    }
     fn capacity(&self) -> usize {
         self.capacity
     }
@@ -678,7 +661,7 @@ impl<A: Aggregator> WheelExt for AggregationWheel<A> {
         // TODO: calculate drill down slots
 
         // roll-up slots are stored on the heap, calculate how much bytes we are using for them..
-        let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.capacity;
+        let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.num_slots;
 
         Some(mem::size_of::<Self>() + inner_slots)
     }

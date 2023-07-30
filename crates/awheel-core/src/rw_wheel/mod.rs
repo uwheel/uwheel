@@ -1,3 +1,5 @@
+/// Extension trait for implementing a custom wheel
+pub mod ext;
 /// Reader Wheel
 ///
 /// Single reader or multi-reader with the ``sync`` feature enabled.
@@ -6,8 +8,6 @@ pub mod read;
 ///
 /// Optimised for a single writer
 pub mod write;
-
-pub mod ext;
 
 use crate::{aggregator::Aggregator, time};
 use core::fmt::Debug;

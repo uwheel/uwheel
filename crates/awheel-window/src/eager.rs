@@ -30,6 +30,7 @@ use awheel_stats::Measure;
 #[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[derive(Debug, Clone)]
 pub struct InverseWheel<A: Aggregator> {
+    num_slots: usize,
     capacity: usize,
     slots: Box<[Option<A::PartialAggregate>]>,
     tail: usize,
@@ -38,8 +39,9 @@ pub struct InverseWheel<A: Aggregator> {
 
 impl<A: Aggregator> InverseWheel<A> {
     pub fn with_capacity(capacity: usize) -> Self {
-        Self::assert_capacity(capacity);
+        let num_slots = awheel_core::capacity_to_slots!(capacity);
         Self {
+            num_slots,
             capacity,
             slots: (0..capacity)
                 .map(|_| None)
@@ -86,6 +88,9 @@ impl<A: Aggregator> InverseWheel<A> {
 }
 
 impl<A: Aggregator> WheelExt for InverseWheel<A> {
+    fn num_slots(&self) -> usize {
+        self.num_slots
+    }
     fn capacity(&self) -> usize {
         self.capacity
     }

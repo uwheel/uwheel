@@ -1,7 +1,12 @@
 /// Extension trait for becoming a wheel
 pub trait WheelExt {
+    /// Returns the current head of the wheel
     fn head(&self) -> usize;
+    /// Returns the current tail of the wheel
     fn tail(&self) -> usize;
+    /// Returns the total number of slots which may be bigger than `Self::capacity`
+    fn num_slots(&self) -> usize;
+    /// Returns the number of wheel slots
     fn capacity(&self) -> usize;
 
     /// Returns the size of the wheel in bytes or `None` if it cannot be computed
@@ -9,13 +14,14 @@ pub trait WheelExt {
         None
     }
 
+    /// Returns `true` if the wheel is empty or `false` if it contains slots
     fn is_empty(&self) -> bool {
         self.tail() == self.head()
     }
 
     /// Returns the current number of used slots
     fn len(&self) -> usize {
-        count(self.tail(), self.head(), self.capacity())
+        count(self.tail(), self.head(), self.num_slots())
     }
 
     /// Locate slot id `addend` forward
@@ -34,22 +40,14 @@ pub trait WheelExt {
     /// index + addend.
     #[inline]
     fn wrap_add(&self, idx: usize, addend: usize) -> usize {
-        wrap_index(idx.wrapping_add(addend), self.capacity())
+        wrap_index(idx.wrapping_add(addend), self.num_slots())
     }
 
     /// Returns the index in the underlying buffer for a given logical element
     /// index - subtrahend.
     #[inline]
     fn wrap_sub(&self, idx: usize, subtrahend: usize) -> usize {
-        wrap_index(idx.wrapping_sub(subtrahend), self.capacity())
-    }
-    #[inline]
-    fn assert_capacity(capacity: usize) {
-        assert!(capacity != 0, "Capacity is not allowed to be zero");
-        assert!(
-            capacity.is_power_of_two(),
-            "Capacity must be a power of two"
-        );
+        wrap_index(idx.wrapping_sub(subtrahend), self.num_slots())
     }
 }
 
