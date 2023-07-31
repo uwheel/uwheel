@@ -51,6 +51,7 @@ fn to_offset_datetime(time_ms: u64) -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(unix_ts as i64).unwrap()
 }
 
+pub const WRITE_AHEAD_COLOR: Color32 = Color32::from_rgb(67, 110, 3);
 pub const WATERMARK_COLOR: Color32 = Color32::from_rgb(0, 255, 255);
 pub const SECOND_COLOR: Color32 = Color32::from_rgb(247, 71, 55);
 pub const MINUTE_COLOR: Color32 = Color32::from_rgb(38, 118, 199);
@@ -274,9 +275,6 @@ impl Default for TemplateApp {
 impl TemplateApp {
     /// Called once before the first frame.
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        // This is also where you can customize the look and feel of egui using
-        // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
-        //cc.egui_ctx.set_visuals(egui::Visuals::dark()); // Switch to dark mode
         Default::default()
     }
     // TODO: optimise
@@ -284,26 +282,37 @@ impl TemplateApp {
         #[cfg(not(target_arch = "wasm32"))]
         puffin::profile_function!();
 
-        let wheel = wheel.borrow();
         let fmt_str = |i: usize, gran: Granularity| -> String { format!("{} {:?} ago", i, gran) };
 
-        // Watermark
+        // Write-ahead chart
+        let mut pos: f64 = -1.0;
+        let mut bars = Vec::new();
 
-        let watermark_agg = wheel
-            .read()
-            .seconds()
-            .as_ref()
-            .map(|w| w.lower_at(0).unwrap_or(0))
-            .unwrap_or(0) as f64;
-        let bar = Bar::new(0.5, watermark_agg)
-            .name(to_offset_datetime(wheel.read().watermark()).to_string());
+        for (y_pos, i) in (0..63).enumerate() {
+            let val = *wheel.borrow_mut().write().at(i + 1).unwrap_or(&0) as f64;
+            let bar = Bar::new(pos, val).name(format!("{} seconds ahead", y_pos + 1));
+            pos -= 1.0;
+            bars.push(bar);
+        }
+        let write_ahead_chart = BarChart::new(bars)
+            .highlight(true)
+            .color(WRITE_AHEAD_COLOR)
+            .width(0.7)
+            .name("Write-ahead");
+
+        // Watermark
+        pos = 1.0;
+        let watermark = wheel.borrow().watermark();
+        let watermark_agg = *wheel.borrow_mut().write().at(0).unwrap_or(&0) as f64;
+        let bar = Bar::new(0.0, watermark_agg).name(to_offset_datetime(watermark).to_string());
         let watermark_chart = BarChart::new(vec![bar])
             .highlight(true)
             .color(WATERMARK_COLOR)
             .width(0.7)
             .name("Watermark");
 
-        let mut pos = 1.5;
+        let wheel = wheel.borrow();
+
         let mut bars = Vec::new();
         if let Some(seconds_wheel) = wheel.read().seconds().as_ref() {
             for i in 1..=awheel::SECONDS {
@@ -425,6 +434,7 @@ impl TemplateApp {
             .auto_bounds_x()
             .label_formatter(label_fmt)
             .show(ui, |plot_ui| {
+                plot_ui.bar_chart(write_ahead_chart);
                 plot_ui.bar_chart(watermark_chart);
                 plot_ui.bar_chart(seconds_chart);
                 plot_ui.bar_chart(minutes_chart);

@@ -17,7 +17,7 @@ fn main() -> eframe::Result<()> {
     let icon_bytes = include_bytes!("../../../assets/logo.png");
     native_options.icon_data = Some(IconData::try_from_png_bytes(icon_bytes).unwrap());
     eframe::run_native(
-        "awheel demo",
+        "awheel",
         native_options,
         Box::new(|cc| Box::new(app::TemplateApp::new(cc))),
     )
