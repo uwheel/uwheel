@@ -14,9 +14,7 @@ fn main() -> eframe::Result<()> {
     tracing_subscriber::fmt::init();
 
     let mut native_options = eframe::NativeOptions::default();
-    //native_options.icon_data =
     let icon_bytes = include_bytes!("../../../assets/logo.png");
-    //if let Err(err) =
     native_options.icon_data = Some(IconData::try_from_png_bytes(icon_bytes).unwrap());
     eframe::run_native(
         "awheel demo",

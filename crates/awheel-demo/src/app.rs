@@ -8,7 +8,7 @@ use awheel::{
     Entry,
     RwWheel,
 };
-use eframe::egui;
+use eframe::egui::{self};
 use egui::{
     plot::{Bar, BarChart, Legend, Plot, PlotPoint},
     Color32,
@@ -18,6 +18,7 @@ use egui::{
     Ui,
 };
 use hdrhistogram::Histogram;
+use postcard::to_allocvec;
 use time::OffsetDateTime;
 
 thread_local! {
@@ -205,6 +206,7 @@ impl HawLabels {
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
+    #[serde(skip)]
     labels: HawLabels,
     log: VecDeque<LogEntry>,
     tick_granularity: Granularity,
@@ -219,6 +221,8 @@ pub struct TemplateApp {
     timestamp: String,
     aggregate: String,
     ticks: u64,
+    encoded_bytes_len: usize,
+    compressed_bytes_len: usize,
 }
 
 impl Default for TemplateApp {
@@ -261,6 +265,8 @@ impl Default for TemplateApp {
             timestamp: "1000".to_owned(),
             aggregate: "1".to_owned(),
             ticks: 1,
+            encoded_bytes_len: 0,
+            compressed_bytes_len: 0,
         }
     }
 }
@@ -612,6 +618,8 @@ impl eframe::App for TemplateApp {
             timestamp,
             aggregate,
             ticks,
+            encoded_bytes_len,
+            compressed_bytes_len,
         } = self;
 
         let update_haw_labels =
@@ -706,122 +714,6 @@ impl eframe::App for TemplateApp {
                 ui.label(RichText::new(format!("p99.99: {: >4}us", p99_99)).strong());
                 ui.label(RichText::new(format!("count: {}", count)).strong());
             });
-        });
-
-        egui::SidePanel::right("query_panel").show(ctx, |ui| {
-            #[cfg(not(target_arch = "wasm32"))]
-            puffin::profile_scope!("query_panel");
-
-            ui.heading("🗠 Plot");
-            ui.horizontal(|ui| {
-                ui.label("Key: ");
-                egui::ComboBox::from_label("")
-                    .selected_text(format!("{:?}", plot_key))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(plot_key, Student::Max, "Max");
-                        ui.selectable_value(plot_key, Student::Adam, "Adam");
-                        ui.selectable_value(plot_key, Student::Harald, "Harald");
-                        ui.selectable_value(plot_key, Student::Sonia, "Sonia");
-                        ui.selectable_value(plot_key, Student::Klas, "Klas");
-                        ui.selectable_value(plot_key, Student::Jonas, "Jonas");
-                        ui.selectable_value(plot_key, Student::Star, "*");
-                    });
-            });
-            ui.separator();
-            ui.heading("Intervals");
-            // TODO: add measure on each call
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Last 5 seconds: ").strong());
-                ui.label(
-                    RichText::new(
-                        plot_wheel
-                            .borrow()
-                            .read()
-                            .interval(5.seconds())
-                            .unwrap_or(0)
-                            .to_string(),
-                    )
-                    .strong(),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Last 15 seconds: ").strong());
-                ui.label(
-                    RichText::new(
-                        plot_wheel
-                            .borrow()
-                            .read()
-                            .interval(15.seconds())
-                            .unwrap_or(0)
-                            .to_string(),
-                    )
-                    .strong(),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Last 30 seconds: ").strong());
-                ui.label(
-                    RichText::new(
-                        plot_wheel
-                            .borrow()
-                            .read()
-                            .interval(30.seconds())
-                            .unwrap_or(0)
-                            .to_string(),
-                    )
-                    .strong(),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Last minute: ").strong());
-                ui.label(
-                    RichText::new(
-                        plot_wheel
-                            .borrow()
-                            .read()
-                            .interval(1.minutes())
-                            .unwrap_or(0)
-                            .to_string(),
-                    )
-                    .strong(),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Last hour: ").strong());
-                ui.label(
-                    RichText::new(
-                        plot_wheel
-                            .borrow()
-                            .read()
-                            .interval(1.hours())
-                            .unwrap_or(0)
-                            .to_string(),
-                    )
-                    .strong(),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Last day: ").strong());
-                ui.label(
-                    RichText::new(
-                        plot_wheel
-                            .borrow()
-                            .read()
-                            .interval(1.days())
-                            .unwrap_or(0)
-                            .to_string(),
-                    )
-                    .strong(),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Landmark Window: ").strong());
-                let landmark = measure(|| plot_wheel.borrow().read().landmark().unwrap_or(0));
-                ui.label(RichText::new(landmark.to_string()).strong());
-            });
-            ui.separator();
-            ui.heading("Query");
-            // TODO: add custom interval query option
         });
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
@@ -1061,6 +953,151 @@ impl eframe::App for TemplateApp {
             });
             ui.separator();
 
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    ui.label("powered by ");
+                    ui.hyperlink_to("egui", "https://github.com/emilk/egui");
+                    ui.label(" and ");
+                    ui.hyperlink_to(
+                        "eframe",
+                        "https://github.com/emilk/egui/tree/master/crates/eframe",
+                    );
+                    ui.label(".");
+                });
+            });
+        });
+
+        egui::SidePanel::right("query_panel").show(ctx, |ui| {
+            #[cfg(not(target_arch = "wasm32"))]
+            puffin::profile_scope!("query_panel");
+
+            ui.heading("🗠 Plot");
+            ui.horizontal(|ui| {
+                ui.label("Key: ");
+                egui::ComboBox::from_label("")
+                    .selected_text(format!("{:?}", plot_key))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(plot_key, Student::Max, "Max");
+                        ui.selectable_value(plot_key, Student::Adam, "Adam");
+                        ui.selectable_value(plot_key, Student::Harald, "Harald");
+                        ui.selectable_value(plot_key, Student::Sonia, "Sonia");
+                        ui.selectable_value(plot_key, Student::Klas, "Klas");
+                        ui.selectable_value(plot_key, Student::Jonas, "Jonas");
+                        ui.selectable_value(plot_key, Student::Star, "*");
+                    });
+            });
+            ui.separator();
+            ui.heading("Intervals");
+            // TODO: add measure on each call
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Last 5 seconds: ").strong());
+                ui.label(
+                    RichText::new(
+                        plot_wheel
+                            .borrow()
+                            .read()
+                            .interval(5.seconds())
+                            .unwrap_or(0)
+                            .to_string(),
+                    )
+                    .strong(),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Last 15 seconds: ").strong());
+                ui.label(
+                    RichText::new(
+                        plot_wheel
+                            .borrow()
+                            .read()
+                            .interval(15.seconds())
+                            .unwrap_or(0)
+                            .to_string(),
+                    )
+                    .strong(),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Last 30 seconds: ").strong());
+                ui.label(
+                    RichText::new(
+                        plot_wheel
+                            .borrow()
+                            .read()
+                            .interval(30.seconds())
+                            .unwrap_or(0)
+                            .to_string(),
+                    )
+                    .strong(),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Last minute: ").strong());
+                ui.label(
+                    RichText::new(
+                        plot_wheel
+                            .borrow()
+                            .read()
+                            .interval(1.minutes())
+                            .unwrap_or(0)
+                            .to_string(),
+                    )
+                    .strong(),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Last hour: ").strong());
+                ui.label(
+                    RichText::new(
+                        plot_wheel
+                            .borrow()
+                            .read()
+                            .interval(1.hours())
+                            .unwrap_or(0)
+                            .to_string(),
+                    )
+                    .strong(),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Last day: ").strong());
+                ui.label(
+                    RichText::new(
+                        plot_wheel
+                            .borrow()
+                            .read()
+                            .interval(1.days())
+                            .unwrap_or(0)
+                            .to_string(),
+                    )
+                    .strong(),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Landmark Window: ").strong());
+                let landmark = measure(|| plot_wheel.borrow().read().landmark().unwrap_or(0));
+                ui.label(RichText::new(landmark.to_string()).strong());
+            });
+            ui.separator();
+
+            ui.heading("Serialize");
+            ui.label(
+                RichText::new(format!("Encoded bytes (postcard): {}", encoded_bytes_len)).strong(),
+            );
+            ui.label(
+                RichText::new(format!("Compressed bytes (lz4): {}", compressed_bytes_len)).strong(),
+            );
+            if ui.button("Run").clicked() {
+                let wheel = plot_wheel.borrow();
+                let bytes = to_allocvec(&*wheel).unwrap();
+                let lz4_compressed = lz4_flex::compress_prepend_size(&bytes);
+                *encoded_bytes_len = bytes.len();
+                *compressed_bytes_len = lz4_compressed.len();
+            }
+
+            ui.separator();
+
             ui.heading("Log");
             let text_style = egui::TextStyle::Body;
             let row_height = ui.text_style_height(&text_style);
@@ -1081,22 +1118,7 @@ impl eframe::App for TemplateApp {
                     }
                 },
             );
-
-            ui.separator();
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 0.0;
-                    ui.label("powered by ");
-                    ui.hyperlink_to("egui", "https://github.com/emilk/egui");
-                    ui.label(" and ");
-                    ui.hyperlink_to(
-                        "eframe",
-                        "https://github.com/emilk/egui/tree/master/crates/eframe",
-                    );
-                    ui.label(".");
-                });
-            });
+            // TODO: add custom interval query option
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
