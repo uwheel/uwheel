@@ -2,7 +2,7 @@
 name = "awheel"
 version = "0.1.0"
 categories = ["index", "temporal warehousing", "streaming", "no-std"]
-authors = ["Max Meldrum <max@meldrum.se>"]
+authors.workspace = true
 edition.workspace = true
 license.workspace = true
 readme.workspace = true
@@ -32,3 +32,25 @@ awheel-core = { workspace = true, default-features = false }
 awheel-window = { workspace = true, optional = true }
 awheel-tree = { workspace = true, optional = true }
 awheel-stats = { workspace = true, optional = true }
+
+[dev-dependencies]
+fastrand.workspace = true
+rand.workspace = true
+criterion.workspace = true
+fiba_rs.workspace = true
+
+[[bench]]
+name = "insert"
+harness = false
+
+[[bench]]
+name = "advance"
+harness = false
+
+[[bench]]
+name = "queries"
+harness = false
+
+[[bench]]
+name = "merge"
+harness = false
