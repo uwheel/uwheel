@@ -666,10 +666,3 @@ impl<A: Aggregator> WheelExt for AggregationWheel<A> {
         Some(mem::size_of::<Self>() + inner_slots)
     }
 }
-#[cfg(feature = "sync")]
-#[allow(unsafe_code)]
-unsafe impl<A: Aggregator> Send for AggregationWheel<A> {}
-
-#[cfg(feature = "sync")]
-#[allow(unsafe_code)]
-unsafe impl<A: Aggregator> Sync for AggregationWheel<A> {}

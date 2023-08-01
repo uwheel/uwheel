@@ -559,13 +559,6 @@ where
         self.years_wheel.merge(&other.years_wheel);
     }
 }
-#[cfg(feature = "sync")]
-#[allow(unsafe_code)]
-unsafe impl<A: Aggregator> Send for Haw<A> {}
-
-#[cfg(feature = "sync")]
-#[allow(unsafe_code)]
-unsafe impl<A: Aggregator> Sync for Haw<A> {}
 
 #[cfg(feature = "sync")]
 mod watermark_impl {
@@ -592,10 +585,6 @@ mod watermark_impl {
             let _ = self.0.fetch_add(step, Ordering::Relaxed);
         }
     }
-    #[allow(unsafe_code)]
-    unsafe impl Send for Watermark {}
-    #[allow(unsafe_code)]
-    unsafe impl Sync for Watermark {}
 }
 
 #[cfg(not(feature = "sync"))]

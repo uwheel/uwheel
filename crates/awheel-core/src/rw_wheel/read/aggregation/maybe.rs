@@ -142,10 +142,6 @@ mod inner_impl {
             parking_lot::RwLockWriteGuard::map(self.0.write(), |v| v)
         }
     }
-    #[allow(unsafe_code)]
-    unsafe impl<T: Aggregator + Clone> Send for Inner<T> {}
-    #[allow(unsafe_code)]
-    unsafe impl<T: Aggregator + Clone> Sync for Inner<T> {}
 }
 
 #[cfg(not(feature = "sync"))]
