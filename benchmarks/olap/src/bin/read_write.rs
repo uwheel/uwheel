@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use awheel::{aggregator::AllAggregator, time, Entry, RwWheel};
+use awheel::{aggregator::all::AllAggregator, time, Entry, RwWheel};
 use clap::{ArgEnum, Parser};
 use duckdb::Result;
 use minstant::Instant;

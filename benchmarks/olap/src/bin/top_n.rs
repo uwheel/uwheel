@@ -1,7 +1,7 @@
 use minstant::Instant;
 
 use awheel::{
-    aggregator::{top_n::TopNAggregator, U64SumAggregator},
+    aggregator::{sum::U64SumAggregator, top_n::TopNAggregator},
     time,
     Entry,
     ReadWheel,

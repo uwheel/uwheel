@@ -2,7 +2,7 @@ use core::{mem, time::Duration as CoreDuration};
 
 use crate::{aggregator::Aggregator, time::Duration, Entry, Error};
 
-use super::ext::{count, wrap_index, WheelExt};
+use super::wheel_ext::{count, wrap_index, WheelExt};
 
 /// Number of write ahead slots
 pub const DEFAULT_WRITE_AHEAD_SLOTS: usize = 64;
@@ -29,9 +29,11 @@ impl<A: Aggregator> Default for WriteAheadWheel<A> {
 }
 
 impl<A: Aggregator> WriteAheadWheel<A> {
+    /// Creates a Write wheel starting from the given watermark and a capacity of [DEFAULT_WRITE_AHEAD_SLOTS]
     pub fn with_watermark(watermark: u64) -> Self {
         Self::with_capacity_and_watermark(DEFAULT_WRITE_AHEAD_SLOTS, watermark)
     }
+    /// Creates a Write wheel starting from the given watermark and capacity
     pub fn with_capacity_and_watermark(capacity: usize, watermark: u64) -> Self {
         let num_slots = crate::capacity_to_slots!(capacity);
         Self {
@@ -46,6 +48,7 @@ impl<A: Aggregator> WriteAheadWheel<A> {
             tail: 0,
         }
     }
+    /// Returns the current watermark
     pub fn watermark(&self) -> u64 {
         self.watermark
     }
@@ -109,8 +112,16 @@ impl<A: Aggregator> WriteAheadWheel<A> {
         }
     }
     /// Inserts entry into the wheel
+    ///
+    /// # Success
+    /// - If given a timestamp above the watermark and that fits within the write-ahead slots
+    ///
+    /// # Failure
+    /// - If given a timestamp below the current watermark, a Late error will be returned
+    /// - If given a timestamp too far above the watermark, an Overflow error will be returned
     #[inline]
-    pub fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
+    pub fn insert(&mut self, e: impl Into<Entry<A::Input>>) -> Result<(), Error<A::Input>> {
+        let entry = e.into();
         let watermark = self.watermark;
 
         // If timestamp is below the watermark, then reject it.

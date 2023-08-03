@@ -1,4 +1,4 @@
-use awheel_core::{aggregator::U64SumAggregator, *};
+use awheel_core::{aggregator::sum::U64SumAggregator, *};
 use criterion::{
     criterion_group,
     criterion_main,

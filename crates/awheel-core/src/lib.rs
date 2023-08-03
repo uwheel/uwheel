@@ -37,10 +37,9 @@ pub use rw_wheel::{
 /// A type containing error variants that may arise when using a wheel
 #[derive(Debug)]
 pub enum Error<T: Debug> {
-    Late {
-        entry: Entry<T>,
-        watermark: u64,
-    },
+    /// The timestamp of the entry is below the watermark and is rejected
+    Late { entry: Entry<T>, watermark: u64 },
+    /// The timestamp of the entry is too far ahead of the watermark
     Overflow {
         entry: Entry<T>,
         max_write_ahead_ts: u64,
@@ -63,9 +62,11 @@ impl<T: Debug> Display for Error<T> {
 }
 
 impl<T: Debug> Error<T> {
+    /// Returns `true` if the error represents [Error::Late]
     pub fn is_late(&self) -> bool {
         matches!(self, Error::Late { .. })
     }
+    /// Returns `true` if the error represents [Error::Overflow]
     pub fn is_overflow(&self) -> bool {
         matches!(self, Error::Overflow { .. })
     }
@@ -88,6 +89,11 @@ impl<T: Debug> Entry<T> {
 impl<T: Debug> fmt::Display for Entry<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(data: {:?}, timestamp: {})", self.data, self.timestamp)
+    }
+}
+impl<T: Debug> From<(T, u64)> for Entry<T> {
+    fn from(val: (T, u64)) -> Self {
+        Entry::new(val.0, val.1)
     }
 }
 

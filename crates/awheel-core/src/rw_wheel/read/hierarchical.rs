@@ -15,11 +15,17 @@ use super::{
 use crate::{aggregator::Aggregator, time};
 pub use watermark_impl::Watermark;
 
+/// Default capacity of second slots
 pub const SECONDS: usize = 60;
+/// Default capacity of minute slots
 pub const MINUTES: usize = 60;
+/// Default capacity of hour slots
 pub const HOURS: usize = 24;
+/// Default capacity of day slots
 pub const DAYS: usize = 7;
+/// Default capacity of week slots
 pub const WEEKS: usize = 52;
+/// Default capacity of year slots
 pub const YEARS: usize = 10;
 
 #[derive(Debug, Copy, Clone, Default)]

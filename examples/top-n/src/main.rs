@@ -1,7 +1,7 @@
 use awheel::{
     aggregator::{
+        sum::U64SumAggregator,
         top_n::{Descending, TopNAggregator, TopNState},
-        U64SumAggregator,
     },
     time::NumericalDuration,
     Entry,

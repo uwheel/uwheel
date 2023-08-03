@@ -1,5 +1,5 @@
 use awheel::{
-    aggregator::U64SumAggregator,
+    aggregator::sum::U64SumAggregator,
     time::Duration,
     window::{eager, eager_window_query_cost, lazy, lazy_window_query_cost, WindowExt},
     Entry,

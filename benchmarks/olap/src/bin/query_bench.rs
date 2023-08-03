@@ -1,7 +1,7 @@
 use minstant::Instant;
 
 use awheel::{
-    aggregator::{Aggregator, AllAggregator, F64SumAggregator},
+    aggregator::{all::AllAggregator, sum::F64SumAggregator, Aggregator},
     time,
     tree::RwTreeWheel,
     Entry,

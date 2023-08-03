@@ -44,7 +44,7 @@ pub trait WindowExt<A: Aggregator> {
 mod tests {
     use crate::lazy::LazyWindowWheel;
     use awheel_core::{
-        aggregator::U64SumAggregator,
+        aggregator::sum::U64SumAggregator,
         time::{Duration, NumericalDuration},
     };
     use eager::{Builder, EagerWindowWheel};

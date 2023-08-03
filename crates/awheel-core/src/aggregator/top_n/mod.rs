@@ -71,7 +71,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
-        aggregator::{top_n::TopNAggregator, AllAggregator, U64SumAggregator},
+        aggregator::{all::AllAggregator, sum::U64SumAggregator, top_n::TopNAggregator},
         time::NumericalDuration,
         Entry,
         RwWheel,

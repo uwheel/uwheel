@@ -1,9 +1,9 @@
-/// Extension trait for implementing a custom wheel
-pub mod ext;
 /// Reader Wheel
 ///
 /// Single reader or multi-reader with the ``sync`` feature enabled.
 pub mod read;
+/// Extension trait for implementing a custom wheel
+pub mod wheel_ext;
 /// Writer Wheel
 ///
 /// Optimised for a single writer
@@ -14,8 +14,8 @@ use core::fmt::Debug;
 use read::ReadWheel;
 use write::{WriteAheadWheel, DEFAULT_WRITE_AHEAD_SLOTS};
 
-pub use ext::WheelExt;
 pub use read::{aggregation::DrillCut, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
+pub use wheel_ext::WheelExt;
 
 /// A Reader-Writer aggregation wheel with decoupled read and write paths.
 ///
@@ -50,6 +50,7 @@ impl<A: Aggregator> RwWheel<A> {
             read: ReadWheel::with_drill_down(time),
         }
     }
+    /// Creates a new wheel starting from the given time and the specified [Options]
     pub fn with_options(time: u64, opts: Options) -> Self {
         let write: WriteAheadWheel<A> =
             WriteAheadWheel::with_capacity_and_watermark(opts.write_ahead_capacity, time);
@@ -96,9 +97,12 @@ impl<A: Aggregator> RwWheel<A> {
     }
 }
 
+/// Options to customise a [RwWheel]
 #[derive(Debug, Copy, Clone)]
 pub struct Options {
+    /// Enables drill-down capabilities
     drill_down: bool,
+    /// Defines the capacity of write-ahead slots
     write_ahead_capacity: usize,
 }
 impl Default for Options {
@@ -110,10 +114,14 @@ impl Default for Options {
     }
 }
 impl Options {
+    /// Enable drill-down capabilities at the cost of more storage
     pub fn with_drill_down(mut self) -> Self {
         self.drill_down = true;
         self
     }
+    /// Configure the number of write-ahead slots
+    ///
+    /// The default value is [DEFAULT_WRITE_AHEAD_SLOTS]
     pub fn with_write_ahead(mut self, capacity: usize) -> Self {
         self.write_ahead_capacity = capacity;
         self
@@ -123,7 +131,7 @@ impl Options {
 #[cfg(test)]
 mod tests {
     use super::{WheelExt, *};
-    use crate::{aggregator::U32SumAggregator, time::*, *};
+    use crate::{aggregator::sum::U32SumAggregator, time::*, *};
 
     #[cfg(feature = "sync")]
     #[test]
@@ -299,7 +307,7 @@ mod tests {
 
     #[test]
     fn drill_down_test() {
-        use crate::aggregator::U64SumAggregator;
+        use crate::aggregator::sum::U64SumAggregator;
 
         let mut time = 0;
         let mut wheel = RwWheel::<U64SumAggregator>::with_drill_down(time);

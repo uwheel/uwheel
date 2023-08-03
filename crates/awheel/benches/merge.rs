@@ -1,4 +1,4 @@
-use awheel_core::{aggregator::U32SumAggregator, *};
+use awheel_core::{aggregator::sum::U32SumAggregator, *};
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 
 pub fn criterion_benchmark(c: &mut Criterion) {

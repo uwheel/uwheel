@@ -1,4 +1,4 @@
-use awheel_core::{aggregator::AllAggregator, Options, RwWheel, *};
+use awheel_core::{aggregator::all::AllAggregator, Options, RwWheel, *};
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 
 pub fn criterion_benchmark(c: &mut Criterion) {

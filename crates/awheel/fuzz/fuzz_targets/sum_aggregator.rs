@@ -1,7 +1,7 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
-use awheel::{aggregator::U32SumAggregator, RwWheel, *};
+use awheel::{aggregator::sum::U32SumAggregator, RwWheel, *};
 use libfuzzer_sys::fuzz_target;
 
 #[derive(Debug, Arbitrary)]

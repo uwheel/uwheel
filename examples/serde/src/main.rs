@@ -1,5 +1,5 @@
 use awheel::{
-    aggregator::U32SumAggregator,
+    aggregator::sum::U32SumAggregator,
     rw_wheel::RwWheel,
     time::{Duration, NumericalDuration},
     Entry,

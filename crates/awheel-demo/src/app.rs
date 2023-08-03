@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use ahash::AHashMap;
 use awheel::{
-    aggregator::U64SumAggregator,
+    aggregator::sum::U64SumAggregator,
     rw_wheel::read::Haw,
     time::NumericalDuration,
     Entry,

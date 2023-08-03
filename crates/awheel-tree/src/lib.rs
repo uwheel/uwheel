@@ -102,7 +102,7 @@ impl<K: Key, A: Aggregator + Clone + 'static> RwTreeWheel<K, A> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use awheel_core::{aggregator::U32SumAggregator, time::*};
+    use awheel_core::{aggregator::sum::U32SumAggregator, time::*};
 
     #[test]
     fn rw_tree_test() {

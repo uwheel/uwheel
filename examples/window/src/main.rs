@@ -1,5 +1,5 @@
 use awheel::{
-    aggregator::U64SumAggregator,
+    aggregator::sum::U64SumAggregator,
     time::NumericalDuration,
     window::{
         eager::{Builder, EagerWindowWheel},

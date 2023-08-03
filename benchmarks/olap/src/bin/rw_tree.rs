@@ -1,6 +1,6 @@
 use minstant::Instant;
 
-use awheel::{aggregator::AllAggregator, time, tree::RwTreeWheel, Entry};
+use awheel::{aggregator::all::AllAggregator, time, tree::RwTreeWheel, Entry};
 use clap::{ArgEnum, Parser};
 use duckdb::Result;
 use olap::*;

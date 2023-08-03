@@ -36,6 +36,7 @@ impl<A: Aggregator> ReadWheel<A> {
     /// Creates a new Wheel starting from the given time and with drill down enabled
     ///
     /// Time is represented as milliseconds
+    #[doc(hidden)]
     pub fn with_drill_down(time: u64) -> Self {
         let opts = Options::default().with_drill_down();
         Self {
@@ -46,6 +47,7 @@ impl<A: Aggregator> ReadWheel<A> {
     /// Creates a new Wheel starting from the given time
     ///
     /// Time is represented as milliseconds
+    #[doc(hidden)]
     pub fn new(time: u64) -> Self {
         Self {
             inner: Haw::new(time),

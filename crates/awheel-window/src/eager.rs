@@ -326,7 +326,7 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
 
 #[cfg(test)]
 mod tests {
-    use awheel_core::aggregator::U64SumAggregator;
+    use awheel_core::aggregator::sum::U64SumAggregator;
 
     use super::*;
 

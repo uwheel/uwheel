@@ -1,7 +1,7 @@
 use fiba_rs::*;
 
 use awheel::{
-    aggregator::U64SumAggregator,
+    aggregator::sum::U64SumAggregator,
     stats::Measure,
     time::Duration,
     window::{
