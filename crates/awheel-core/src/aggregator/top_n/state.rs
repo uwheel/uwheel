@@ -1,6 +1,6 @@
 use super::{entry::TopNEntry, map::TopNMap, KeyBounds};
 use crate::aggregator::{Aggregator, PartialAggregateType};
-use core::{cmp::Ordering, fmt::Debug};
+use core::{cmp::Ordering, fmt::Debug, ops::Deref};
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -8,6 +8,7 @@ use alloc::vec::Vec;
 #[cfg(feature = "serde")]
 use serde_big_array::BigArray;
 
+/// An immutable partial aggregate for the TopNAggregator
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Debug, Copy, Clone)]
@@ -37,14 +38,11 @@ where
     A: Aggregator,
     A::PartialAggregate: Ord + Copy,
 {
-    pub fn from(heap: Vec<Option<TopNEntry<Key, A::PartialAggregate>>>) -> Self {
+    pub(super) fn from(heap: Vec<Option<TopNEntry<Key, A::PartialAggregate>>>) -> Self {
         let top_n: [Option<TopNEntry<Key, A::PartialAggregate>>; N] = heap.try_into().unwrap();
         Self { top_n }
     }
-    pub fn iter(&self) -> &[Option<TopNEntry<Key, A::PartialAggregate>>; N] {
-        &self.top_n
-    }
-    pub fn merge(&mut self, other: Self, order: Ordering) {
+    pub(super) fn merge(&mut self, other: Self, order: Ordering) {
         let mut map = TopNMap::<Key, A>::default();
         for entry in self.top_n.iter().flatten() {
             map.insert(entry.key, entry.data);
@@ -53,7 +51,7 @@ where
         for entry in other.top_n.iter().flatten() {
             map.insert(entry.key, entry.data);
         }
-        *self = map.to_state(order);
+        *self = map.build(order);
     }
 }
 impl<Key, const N: usize, A> PartialAggregateType for TopNState<Key, N, A>
@@ -62,4 +60,17 @@ where
     A: Aggregator + Copy,
     <A as Aggregator>::PartialAggregate: Ord + Copy,
 {
+}
+
+impl<Key, const N: usize, A> Deref for TopNState<Key, N, A>
+where
+    Key: KeyBounds,
+    A: Aggregator + Copy,
+    <A as Aggregator>::PartialAggregate: Ord + Copy,
+{
+    type Target = [Option<TopNEntry<Key, A::PartialAggregate>>; N];
+
+    fn deref(&self) -> &[Option<TopNEntry<Key, A::PartialAggregate>>; N] {
+        &self.top_n
+    }
 }

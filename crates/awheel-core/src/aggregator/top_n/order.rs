@@ -1,11 +1,14 @@
 use core::cmp::Ordering;
 
+/// Defines an ascending order of TopN aggregates
 #[derive(Clone, Debug, Copy, Default)]
 pub struct Ascending;
 
+/// Defines a descending order of TopN aggregates
 #[derive(Clone, Debug, Copy, Default)]
 pub struct Descending;
 
+/// A TopN Order type supporting either [Ascending] or [Descending] variants
 pub trait Order: private::Sealed {
     #[doc(hidden)]
     fn ordering() -> Ordering;

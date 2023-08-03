@@ -3,6 +3,7 @@ use super::super::Aggregator;
 macro_rules! max_impl {
     ($struct:tt, $type:ty, $pa:tt) => {
         #[derive(Default, Debug, Clone, Copy)]
+        #[allow(missing_docs)]
         pub struct $struct;
 
         impl Aggregator for $struct {

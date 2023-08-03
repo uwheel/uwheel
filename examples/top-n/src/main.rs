@@ -51,7 +51,7 @@ fn main() {
     // print the result from the last second
     let state: TopNState<TinyStr, N, U64SumAggregator> =
         wheel.read().interval(1.seconds()).unwrap();
-    let arr = state.iter();
+    let arr = state.as_ref();
     println!("{:#?}", arr);
 
     // insert same keys with different values at different timestamp
@@ -88,6 +88,6 @@ fn main() {
     // interval of last 2 seconds should be two states combined
     let state: TopNState<TinyStr, N, U64SumAggregator> =
         wheel.read().interval(2.seconds()).unwrap();
-    let arr = state.iter();
+    let arr = state.as_ref();
     println!("{:#?}", arr);
 }

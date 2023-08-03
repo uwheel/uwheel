@@ -4,6 +4,7 @@ use crate::aggregator::InverseExt;
 macro_rules! avg_impl {
     ($struct:tt, $type:ty, $pa:tt) => {
         #[derive(Default, Debug, Clone, Copy)]
+        #[allow(missing_docs)]
         pub struct $struct;
 
         impl Aggregator for $struct {

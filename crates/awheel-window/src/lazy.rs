@@ -25,6 +25,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 #[cfg(feature = "stats")]
 use awheel_stats::Measure;
 
+#[doc(hidden)]
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
@@ -104,6 +105,7 @@ impl<A: Aggregator> WheelExt for PairsWheel<A> {
     }
 }
 
+/// A Builder type for [LazyWindowWheel]
 #[derive(Default, Copy, Clone)]
 pub struct Builder {
     range: usize,
@@ -112,18 +114,22 @@ pub struct Builder {
 }
 
 impl Builder {
+    /// Configures the builder to create a wheel with the given watermark
     pub fn with_watermark(mut self, watermark: u64) -> Self {
         self.time = watermark;
         self
     }
+    /// Configures the builder to create a window with the given range
     pub fn with_range(mut self, range: Duration) -> Self {
         self.range = range.whole_milliseconds() as usize;
         self
     }
+    /// Configures the builder to create a window with the given slide
     pub fn with_slide(mut self, slide: Duration) -> Self {
         self.slide = slide.whole_milliseconds() as usize;
         self
     }
+    /// Consumes the builder and returns a [LazyWindowWheel]
     pub fn build<A: Aggregator + InverseExt>(self) -> LazyWindowWheel<A> {
         assert!(
             self.range >= self.slide,
@@ -149,7 +155,7 @@ pub struct LazyWindowWheel<A: Aggregator> {
 }
 
 impl<A: Aggregator> LazyWindowWheel<A> {
-    pub fn new(time: u64, range: usize, slide: usize) -> Self {
+    fn new(time: u64, range: usize, slide: usize) -> Self {
         let state = State::new(time, range, slide);
         Self {
             range,

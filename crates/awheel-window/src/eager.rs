@@ -38,7 +38,7 @@ pub struct InverseWheel<A: Aggregator> {
 }
 
 impl<A: Aggregator> InverseWheel<A> {
-    pub fn with_capacity(capacity: usize) -> Self {
+    fn with_capacity(capacity: usize) -> Self {
         let num_slots = awheel_core::capacity_to_slots!(capacity);
         Self {
             num_slots,
@@ -52,7 +52,7 @@ impl<A: Aggregator> InverseWheel<A> {
         }
     }
     #[inline]
-    pub fn tick(&mut self) -> Option<A::PartialAggregate> {
+    fn tick(&mut self) -> Option<A::PartialAggregate> {
         let tail = self.tail;
         self.tail = self.wrap_add(self.tail, 1);
         // Tick next partial agg to be inversed
@@ -64,19 +64,13 @@ impl<A: Aggregator> InverseWheel<A> {
 
         partial_agg
     }
-    pub fn tail(&self) -> (usize, Option<A::PartialAggregate>) {
-        (self.tail, self.slots[self.tail].as_ref().copied())
-    }
 
-    pub fn clear_tail_and_tick(&mut self) {
+    fn clear_tail_and_tick(&mut self) {
         *self.slot(self.tail) = None;
         let _ = self.tick();
     }
-    pub fn reset_tail(&mut self) {
-        *self.slot(self.tail) = None;
-    }
     #[inline]
-    pub fn push(&mut self, data: A::PartialAggregate) {
+    fn push(&mut self, data: A::PartialAggregate) {
         combine_or_insert::<A>(self.slot(self.head), data);
         self.head = self.wrap_add(self.head, 1);
     }
@@ -106,6 +100,7 @@ impl<A: Aggregator> WheelExt for InverseWheel<A> {
     }
 }
 
+/// A Builder type for [EagerWindowWheel]
 #[derive(Default, Copy, Clone)]
 pub struct Builder {
     range: usize,
@@ -114,18 +109,22 @@ pub struct Builder {
 }
 
 impl Builder {
+    /// Configures the builder to create a wheel with the given watermark
     pub fn with_watermark(mut self, watermark: u64) -> Self {
         self.time = watermark;
         self
     }
+    /// Configures the builder to create a window with the given range
     pub fn with_range(mut self, range: Duration) -> Self {
         self.range = range.whole_milliseconds() as usize;
         self
     }
+    /// Configures the builder to create a window with the given slide
     pub fn with_slide(mut self, slide: Duration) -> Self {
         self.slide = slide.whole_milliseconds() as usize;
         self
     }
+    /// Consumes the builder and returns a [EagerWindowWheel]
     pub fn build<A: Aggregator + InverseExt>(self) -> EagerWindowWheel<A> {
         assert!(
             self.range >= self.slide,
@@ -157,7 +156,7 @@ pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
 }
 
 impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
-    pub fn new(time: u64, range: usize, slide: usize) -> Self {
+    fn new(time: u64, range: usize, slide: usize) -> Self {
         let state = State::new(time, range, slide);
         let pair_slots = pairs_capacity(range, slide);
         Self {

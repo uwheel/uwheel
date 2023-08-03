@@ -1,5 +1,7 @@
+//! awheel (aggregation wheel) is a lightweight index for unified stream and temporal warehousing.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
 #[cfg(not(feature = "std"))]

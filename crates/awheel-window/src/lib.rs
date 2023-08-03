@@ -1,4 +1,7 @@
+//! ahweel-window is a sub-crate that contains wheels specialised for periodic window aggregation
 #![cfg_attr(not(feature = "std"), no_std)]
+#![deny(missing_docs)]
+#![forbid(unsafe_code)]
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
@@ -15,8 +18,10 @@ pub mod eager;
 /// A Lazy Window Wheel which uses a Pairs Wheel + RwWheel to compute periodic window aggregation
 pub mod lazy;
 mod state;
+/// Contains functions to help create window wheels
 pub mod util;
 
+/// Various window stats
 #[cfg(feature = "stats")]
 pub mod stats;
 
@@ -36,6 +41,7 @@ pub trait WindowExt<A: Aggregator> {
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)>;
     /// Returns a reference to the underlying HAW
     fn wheel(&self) -> &ReadWheel<A>;
+    /// Print the current stats of the wheel
     #[cfg(feature = "stats")]
     fn print_stats(&self);
 }

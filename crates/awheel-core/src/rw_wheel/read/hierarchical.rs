@@ -10,7 +10,7 @@ use core::{
 
 use super::{
     super::write::WriteAheadWheel,
-    aggregation::{AggWheelRef, MaybeWheel},
+    aggregation::{maybe::MaybeWheel, AggWheelRef},
 };
 use crate::{aggregator::Aggregator, time};
 pub use watermark_impl::Watermark;
@@ -27,17 +27,6 @@ pub const DAYS: usize = 7;
 pub const WEEKS: usize = 52;
 /// Default capacity of year slots
 pub const YEARS: usize = 10;
-
-#[derive(Debug, Copy, Clone, Default)]
-pub struct Options {
-    drill_down: bool,
-}
-impl Options {
-    pub fn with_drill_down(mut self) -> Self {
-        self.drill_down = true;
-        self
-    }
-}
 
 /// Hierarchical Aggregation Wheel
 ///
@@ -86,16 +75,17 @@ where
     const CYCLE_LENGTH_SECS: u64 = Self::CYCLE_LENGTH.whole_seconds() as u64;
 
     const TOTAL_SECS_IN_WHEEL: u64 = Self::YEAR_AS_SECS * YEARS as u64;
+    /// Duration of a full wheel cycle
     pub const CYCLE_LENGTH: time::Duration =
         time::Duration::seconds((Self::YEAR_AS_SECS * (YEARS as u64 + 1)) as i64); // need 1 extra to force full cycle rotation
+    /// Total number of wheel slots across all granularities
     pub const TOTAL_WHEEL_SLOTS: usize = SECONDS + MINUTES + HOURS + DAYS + WEEKS + YEARS;
 
     /// Creates a new Wheel starting from the given time with drill-down capabilities
     ///
     /// Time is represented as milliseconds
     pub fn with_drill_down(time: u64) -> Self {
-        let opts = Options::default().with_drill_down();
-        Self::with_options(time, opts)
+        Self::base_drill_down(time)
     }
 
     /// Creates a new Wheel starting from the given time
@@ -103,14 +93,6 @@ where
     /// Time is represented as milliseconds
     pub fn new(time: u64) -> Self {
         Self::base(time)
-    }
-
-    pub fn with_options(time: u64, options: Options) -> Self {
-        if options.drill_down {
-            Self::base_drill_down(time)
-        } else {
-            Self::base(time)
-        }
     }
 
     fn base(time: u64) -> Self {
@@ -289,6 +271,7 @@ where
     }
 
     #[inline]
+    #[doc(hidden)]
     pub fn combine_time(
         &self,
         second: Option<usize>,
@@ -579,15 +562,15 @@ mod watermark_impl {
     pub struct Watermark(Arc<AtomicU64>);
     impl Watermark {
         #[inline(always)]
-        pub fn new(watermark: u64) -> Self {
+        pub(super) fn new(watermark: u64) -> Self {
             Self(Arc::new(AtomicU64::new(watermark)))
         }
         #[inline(always)]
-        pub fn get(&self) -> u64 {
+        pub(super) fn get(&self) -> u64 {
             self.0.load(Ordering::Relaxed)
         }
         #[inline(always)]
-        pub fn inc(&self, step: u64) {
+        pub(super) fn inc(&self, step: u64) {
             let _ = self.0.fetch_add(step, Ordering::Relaxed);
         }
     }
@@ -606,15 +589,15 @@ mod watermark_impl {
 
     impl Watermark {
         #[inline(always)]
-        pub fn new(watermark: u64) -> Self {
+        pub(super) fn new(watermark: u64) -> Self {
             Self(Cell::new(watermark))
         }
         #[inline(always)]
-        pub fn get(&self) -> u64 {
+        pub(super) fn get(&self) -> u64 {
             self.0.get()
         }
         #[inline(always)]
-        pub fn inc(&self, step: u64) {
+        pub(super) fn inc(&self, step: u64) {
             let curr = self.get();
             self.0.set(curr + step);
         }

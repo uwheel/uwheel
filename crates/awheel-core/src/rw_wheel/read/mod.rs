@@ -7,7 +7,7 @@ pub mod hierarchical;
 
 use core::ops::Deref;
 
-pub use hierarchical::{Haw, Options, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
+pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 
 use crate::aggregator::Aggregator;
 
@@ -38,9 +38,8 @@ impl<A: Aggregator> ReadWheel<A> {
     /// Time is represented as milliseconds
     #[doc(hidden)]
     pub fn with_drill_down(time: u64) -> Self {
-        let opts = Options::default().with_drill_down();
         Self {
-            inner: Haw::with_options(time, opts),
+            inner: Haw::with_drill_down(time),
         }
     }
 

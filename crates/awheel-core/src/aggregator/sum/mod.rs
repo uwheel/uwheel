@@ -4,6 +4,7 @@ use crate::aggregator::InverseExt;
 macro_rules! integer_sum_impl {
     ($struct:tt, $type:ty, $pa:tt) => {
         #[derive(Default, Debug, Clone, Copy)]
+        #[allow(missing_docs)]
         pub struct $struct;
 
         impl Aggregator for $struct {
@@ -50,6 +51,7 @@ macro_rules! integer_sum_impl {
 macro_rules! float_sum_impl {
     ($struct:tt, $type:ty, $pa:tt) => {
         #[derive(Default, Debug, Clone, Copy)]
+        #[allow(missing_docs)]
         pub struct $struct;
 
         impl Aggregator for $struct {

@@ -283,12 +283,8 @@ impl Duration {
             "overflow constructing `time::Duration`"
         ))
     }
-    pub const fn months(months: i64) -> Self {
-        Self::seconds(expect_opt!(
-            months.checked_mul(604_800 * 4),
-            "overflow constructing `time::Duration`"
-        ))
-    }
+
+    #[doc(hidden)]
     pub const fn years(years: i64) -> Self {
         Self::seconds(expect_opt!(
             years.checked_mul(604_800 * 4 * 12),
@@ -810,6 +806,7 @@ mod sealed {
     impl Sealed for f64 {}
 }
 
+#[doc(hidden)]
 pub trait NumericalDuration: sealed::Sealed {
     /// Create a [`Duration`] from the number of nanoseconds.
     fn nanoseconds(self) -> Duration;
@@ -827,8 +824,6 @@ pub trait NumericalDuration: sealed::Sealed {
     fn days(self) -> Duration;
     /// Create a [`Duration`] from the number of weeks.
     fn weeks(self) -> Duration;
-    /// Create a [`Duration`] from the number of months.
-    fn months(self) -> Duration;
     /// Create a [`Duration`] from the number of years.
     fn years(self) -> Duration;
 }
@@ -864,9 +859,6 @@ impl NumericalDuration for i64 {
 
     fn weeks(self) -> Duration {
         Duration::weeks(self)
-    }
-    fn months(self) -> Duration {
-        Duration::months(self)
     }
     fn years(self) -> Duration {
         Duration::years(self)

@@ -8,7 +8,7 @@ use crate::{aggregator::Aggregator, rw_wheel::WheelExt};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Debug, Clone)]
-pub struct MaybeWheel<A: Aggregator> {
+pub(crate) struct MaybeWheel<A: Aggregator> {
     slots: usize,
     drill_down: bool,
     inner: Inner<A>,
@@ -85,10 +85,6 @@ impl<A: Aggregator> MaybeWheel<A> {
     #[inline]
     pub fn len(&self) -> usize {
         self.inner.read().as_ref().map(|w| w.len()).unwrap_or(0)
-    }
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
     #[inline]
     pub fn get_or_insert(&self) -> AggWheelRefMut<'_, A> {

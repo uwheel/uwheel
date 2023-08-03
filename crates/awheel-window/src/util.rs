@@ -8,6 +8,7 @@ use super::WindowExt;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 
+/// A enum for representing the Pair type used for window slicing
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, Copy)]
 pub enum PairType {
@@ -17,11 +18,12 @@ pub enum PairType {
     Uneven(usize, usize),
 }
 impl PairType {
+    /// Returns `true` if the [PairType] is Uneven
     pub fn is_uneven(&self) -> bool {
         matches!(self, PairType::Uneven { .. })
     }
 }
-
+/// Creates a new [PairType] from a given range and slide
 pub fn create_pair_type(range: usize, slide: usize) -> PairType {
     let p2 = range % slide;
     if p2 == 0 {
@@ -37,7 +39,7 @@ const fn ceil_div(a: usize, b: usize) -> usize {
     (a + (b - 1)) / b
 }
 
-// Based on a Range and Slide, generate number of slots required using the Pairs technique
+/// Based on a Range and Slide, generate number of slots required using the Pairs technique
 pub const fn pairs_space(range: usize, slide: usize) -> usize {
     assert!(range >= slide, "Range needs to be larger than slide");
     let p2 = range % slide;
@@ -48,7 +50,7 @@ pub const fn pairs_space(range: usize, slide: usize) -> usize {
     }
 }
 
-// Verifies that returned capacity is a power of two
+/// Verifies that returned capacity is a power of two
 pub const fn pairs_capacity(range: usize, slide: usize) -> usize {
     let space = pairs_space(range, slide);
     if space.is_power_of_two() {
@@ -178,8 +180,8 @@ fn count_intervals(range: Duration) -> i64 {
     }
 }
 
-// Calculates query cost for each version and returns the window
-// wheel that requires the least amount of aggregate operations.
+/// Calculates query cost for each version and returns the window
+/// wheel that requires the least amount of aggregate operations.
 pub fn window_wheel<A: Aggregator + InverseExt>(
     range: Duration,
     slide: Duration,

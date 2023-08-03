@@ -1,6 +1,7 @@
+//! awheel-core is a sub-crate of ahweel that contains core functionality
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![deny(nonstandard_style, missing_copy_implementations)]
+#![deny(nonstandard_style, missing_copy_implementations, missing_docs)]
 #![forbid(unsafe_code)]
 
 #[cfg(not(feature = "std"))]
@@ -38,10 +39,17 @@ pub use rw_wheel::{
 #[derive(Debug)]
 pub enum Error<T: Debug> {
     /// The timestamp of the entry is below the watermark and is rejected
-    Late { entry: Entry<T>, watermark: u64 },
+    Late {
+        /// Owned entry to be returned to the caller
+        entry: Entry<T>,
+        /// The current watermark
+        watermark: u64,
+    },
     /// The timestamp of the entry is too far ahead of the watermark
     Overflow {
+        /// Owned entry to be returned to the caller
         entry: Entry<T>,
+        /// Timestamp signaling the maximum write ahead
         max_write_ahead_ts: u64,
     },
 }
@@ -82,6 +90,7 @@ pub struct Entry<T: Debug> {
     pub timestamp: u64,
 }
 impl<T: Debug> Entry<T> {
+    /// Creates a new entry with given data and timestamp
     pub fn new(data: T, timestamp: u64) -> Self {
         Self { data, timestamp }
     }

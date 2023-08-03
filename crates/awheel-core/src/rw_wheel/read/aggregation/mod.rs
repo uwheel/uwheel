@@ -13,10 +13,12 @@ use core::{
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, vec::Vec};
 
+/// Iterator implementations for [AggregationWheel]
 pub mod iter;
+/// A maybe initialized [AggregationWheel]
 pub mod maybe;
 
-pub use maybe::{AggWheelRef, MaybeWheel};
+pub use maybe::AggWheelRef;
 
 use iter::{DrillIter, Iter};
 
@@ -80,7 +82,7 @@ pub struct RotationData<A: Aggregator> {
     pub drill_down_slots: Option<Vec<A::PartialAggregate>>,
 }
 impl<A: Aggregator> RotationData<A> {
-    pub fn new(
+    fn new(
         total: Option<A::PartialAggregate>,
         drill_down_slots: Option<Vec<A::PartialAggregate>>,
     ) -> Self {
@@ -439,6 +441,7 @@ impl<A: Aggregator> AggregationWheel<A> {
     pub fn total(&self) -> Option<A::PartialAggregate> {
         self.total
     }
+    /// Returns a reference to the underyling roll-up slots
     pub fn slots(&self) -> &[Option<A::PartialAggregate>] {
         &self.slots
     }

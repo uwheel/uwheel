@@ -2,7 +2,7 @@ use core::{mem, time::Duration as CoreDuration};
 
 use crate::{aggregator::Aggregator, time::Duration, Entry, Error};
 
-use super::wheel_ext::{count, wrap_index, WheelExt};
+use super::wheel_ext::WheelExt;
 
 /// Number of write ahead slots
 pub const DEFAULT_WRITE_AHEAD_SLOTS: usize = 64;
@@ -80,10 +80,6 @@ impl<A: Aggregator> WriteAheadWheel<A> {
     #[inline]
     pub fn write_ahead_len(&self) -> usize {
         self.capacity - self.len()
-    }
-    /// Returns a back-to-front iterator of wheel slots
-    pub fn iter(&self) -> Iter<'_, A> {
-        Iter::new(&self.slots, self.tail, self.head)
     }
     // used for awheel-demo
     #[doc(hidden)]
@@ -163,41 +159,5 @@ impl<A: Aggregator> WheelExt for WriteAheadWheel<A> {
     fn size_bytes(&self) -> Option<usize> {
         let inner_slots = mem::size_of::<Option<A::MutablePartialAggregate>>() * self.num_slots;
         Some(mem::size_of::<Self>() + inner_slots)
-    }
-}
-
-use core::iter::Iterator;
-
-pub struct Iter<'a, A: Aggregator> {
-    ring: &'a [Option<A::MutablePartialAggregate>],
-    tail: usize,
-    head: usize,
-}
-
-impl<'a, A: Aggregator> Iter<'a, A> {
-    pub fn new(ring: &'a [Option<A::MutablePartialAggregate>], tail: usize, head: usize) -> Self {
-        Iter { ring, tail, head }
-    }
-}
-impl<'a, A: Aggregator> Iterator for Iter<'a, A> {
-    type Item = &'a Option<A::MutablePartialAggregate>;
-
-    #[inline]
-    fn next(&mut self) -> Option<&'a Option<A::MutablePartialAggregate>> {
-        if self.tail == self.head {
-            return None;
-        }
-        let tail = self.tail;
-        self.tail = wrap_index(self.tail.wrapping_add(1), self.ring.len());
-        // Safety:
-        // - `self.tail` in a ring buffer is always a valid index.
-        // - `self.head` and `self.tail` equality is checked above.
-        Some(&self.ring[tail])
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = count(self.tail, self.head, self.ring.len());
-        (len, Some(len))
     }
 }

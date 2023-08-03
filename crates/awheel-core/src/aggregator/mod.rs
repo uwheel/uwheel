@@ -24,13 +24,6 @@ pub mod sum;
 /// Top-N Aggregation using a nested Aggregator which has a PartialAggregate that implements `Ord`
 pub mod top_n;
 
-/*
-#[cfg(feature = "all")]
-pub use all::{AggState, AllAggregator};
-#[cfg(feature = "sum")]
-pub use sum::*;
-*/
-
 /// Aggregation interface that library users must implement to use awheel
 pub trait Aggregator: Default + Debug + Clone + 'static {
     /// Input type that can be inserted into [Self::MutablePartialAggregate]
@@ -73,6 +66,7 @@ pub trait InverseExt: Aggregator {
 /// A mutable aggregate type
 #[cfg(not(feature = "serde"))]
 pub trait MutablePartialAggregateType: Clone {}
+/// A mutable aggregate type
 #[cfg(feature = "serde")]
 pub trait MutablePartialAggregateType:
     Clone + serde::Serialize + for<'a> serde::Deserialize<'a>
@@ -91,6 +85,7 @@ impl<T> MutablePartialAggregateType for T where
 /// An immutable aggregate type
 #[cfg(not(feature = "serde"))]
 pub trait PartialAggregateType: Default + Debug + Clone + Copy + Send {}
+/// An immutable aggregate type
 #[cfg(feature = "serde")]
 pub trait PartialAggregateType:
     Default + Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>

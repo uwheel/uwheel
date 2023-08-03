@@ -9,18 +9,23 @@ use core::{
     option::{Option, Option::Some},
 };
 
+/// Aggregate State for the [AllAggregator]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct AggState {
+    /// Minimum value seen
     min: f64,
+    /// Maxiumum value seen
     max: f64,
+    /// Current count of records that have been added
     count: u64,
+    /// Total sum of values added
     sum: f64,
 }
 impl AggState {
     #[inline]
-    pub fn new(value: f64) -> Self {
+    fn new(value: f64) -> Self {
         Self {
             min: value,
             max: value,
@@ -29,24 +34,29 @@ impl AggState {
         }
     }
     #[inline]
-    pub fn merge(&mut self, other: Self) {
+    fn merge(&mut self, other: Self) {
         self.min = f64::min(self.min, other.min);
         self.max = f64::max(self.max, other.max);
         self.count += other.count;
         self.sum += other.sum;
     }
+    /// Returns the minimum value
     pub fn min_value(&self) -> f64 {
         self.min
     }
+    /// Returns the maximum value
     pub fn max_value(&self) -> f64 {
         self.max
     }
+    /// Returns the total sum
     pub fn sum(&self) -> f64 {
         self.sum
     }
+    /// Returns the count of records
     pub fn count(&self) -> u64 {
         self.count
     }
+    /// Returns the average mean using sum and count
     pub fn avg(&self) -> f64 {
         self.sum / self.count as f64
     }
@@ -72,6 +82,7 @@ impl PartialEq for AggState {
     }
 }
 
+/// An All Aggregator the pre-computes MIN, MAX, SUM, COUNT, and AVG.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct AllAggregator;
 

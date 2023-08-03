@@ -55,7 +55,7 @@ where
         map.insert(input.0, A::freeze(inner_mutable));
     }
     fn freeze(mutable: Self::MutablePartialAggregate) -> Self::PartialAggregate {
-        mutable.to_state(OrderBy::ordering())
+        mutable.build(OrderBy::ordering())
     }
 
     #[inline]
@@ -99,7 +99,7 @@ mod tests {
         wheel.advance_to(2000);
 
         let state: TopNState<u32, 10, AllAggregator> = wheel.read().interval(1.seconds()).unwrap();
-        let arr = state.iter();
+        let arr = state.as_ref();
         assert_eq!(arr[0].unwrap().data.sum(), 10.0);
         assert_eq!(arr[1].unwrap().data.sum(), 30.0);
         assert_eq!(arr[2].unwrap().data.sum(), 50.0);
@@ -141,7 +141,7 @@ mod tests {
 
         // interval of last 2 seconds should be two TopKState's combined
         let state: TopNState<u32, 10, AllAggregator> = wheel.read().interval(2.seconds()).unwrap();
-        let arr = state.iter();
+        let arr = state.as_ref();
         assert_eq!(arr[0].unwrap().data.sum(), 1.0);
         assert_eq!(arr[1].unwrap().data.sum(), 15.0);
         assert_eq!(arr[2].unwrap().data.sum(), 50.0);
@@ -165,7 +165,7 @@ mod tests {
 
         let state: TopNState<u32, 10, U64SumAggregator> =
             wheel.read().interval(1.seconds()).unwrap();
-        let arr = state.iter();
+        let arr = state.as_ref();
         assert_eq!(arr[0].unwrap().data, 10);
         assert_eq!(arr[1].unwrap().data, 30);
         assert_eq!(arr[2].unwrap().data, 50);
@@ -196,7 +196,7 @@ mod tests {
         // interval of last 2 seconds should be two TopKState's combined
         let state: TopNState<u32, 10, U64SumAggregator> =
             wheel.read().interval(2.seconds()).unwrap();
-        let arr = state.iter();
+        let arr = state.as_ref();
         assert_eq!(arr[0].unwrap().data, 1);
         assert_eq!(arr[1].unwrap().data, 15);
         assert_eq!(arr[2].unwrap().data, 50);

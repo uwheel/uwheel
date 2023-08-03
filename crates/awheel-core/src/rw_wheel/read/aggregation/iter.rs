@@ -5,6 +5,7 @@ use crate::rw_wheel::wheel_ext::{count, wrap_index};
 use super::*;
 use core::iter::Iterator;
 
+/// An Iterator over a slice of partial aggregates
 pub struct Iter<'a, A: Aggregator> {
     ring: &'a [Option<A::PartialAggregate>],
     tail: usize,
@@ -12,9 +13,11 @@ pub struct Iter<'a, A: Aggregator> {
 }
 
 impl<'a, A: Aggregator> Iter<'a, A> {
+    #[doc(hidden)]
     pub fn new(ring: &'a [Option<A::PartialAggregate>], tail: usize, head: usize) -> Self {
         Iter { ring, tail, head }
     }
+    /// Combines each partial aggregate in the Iterator and returns the final result
     #[inline]
     pub fn combine(self) -> Option<A::PartialAggregate> {
         let mut res: Option<A::PartialAggregate> = None;
@@ -47,6 +50,7 @@ impl<'a, A: Aggregator> Iterator for Iter<'a, A> {
     }
 }
 
+/// An Iterator over a slice of drill-down partial aggregates
 pub struct DrillIter<'a, A: Aggregator> {
     ring: &'a [Option<Vec<A::PartialAggregate>>],
     tail: usize,

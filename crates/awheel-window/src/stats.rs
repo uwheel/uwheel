@@ -1,13 +1,19 @@
 use awheel_stats::Sketch;
 use core::{cell::Cell, fmt};
 
+/// Window Stats
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Default)]
 pub struct Stats {
+    /// An integer representing the size of the data structure in bytes
     pub size_bytes: Cell<usize>,
+    /// A sketch for recording latencies of window computations
     pub window_computation_ns: Sketch,
+    /// A sketch for recording latencies of cleaning up window state after a computation
     pub cleanup_ns: Sketch,
+    /// A sketch for recording latencies of advancing time
     pub advance_ns: Sketch,
+    /// A sketch for recording latencies of inserting records
     pub insert_ns: Sketch,
 }
 
