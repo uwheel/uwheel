@@ -18,14 +18,14 @@ pub fn sketch_percentiles(sketch: &DDSketch) -> Percentiles {
 
 #[derive(Default, Clone, Copy)]
 pub struct Percentiles {
-    count: usize,
-    min: f64,
-    p50: f64,
-    p99: f64,
-    p99_9: f64,
-    p99_99: f64,
-    p99_999: f64,
-    max: f64,
+    pub count: usize,
+    pub min: f64,
+    pub p50: f64,
+    pub p99: f64,
+    pub p99_9: f64,
+    pub p99_99: f64,
+    pub p99_999: f64,
+    pub max: f64,
 }
 
 impl std::fmt::Debug for Percentiles {

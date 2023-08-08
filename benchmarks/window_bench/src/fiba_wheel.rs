@@ -71,14 +71,16 @@ impl WindowExt<U64SumAggregator> for BFingerTwoWheel {
         entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
     ) -> Result<(), awheel::Error<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>>
     {
+        let _measure = Measure::new(&self.stats.insert_ns);
         self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
         Ok(())
     }
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
-    fn print_stats(&self) {
-        println!("{:#?}", self.stats);
+    fn stats(&self) -> &Stats {
+        self.stats.size_bytes.set(self.fiba.size());
+        &self.stats
     }
 }
 
@@ -149,8 +151,9 @@ impl WindowExt<U64SumAggregator> for BFingerFourWheel {
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
-    fn print_stats(&self) {
-        println!("{:#?}", self.stats);
+    fn stats(&self) -> &Stats {
+        self.stats.size_bytes.set(self.fiba.size());
+        &self.stats
     }
 }
 
@@ -225,9 +228,9 @@ impl WindowExt<U64SumAggregator> for BFingerEightWheel {
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
-    fn print_stats(&self) {
+    fn stats(&self) -> &Stats {
         self.stats.size_bytes.set(self.fiba.size());
-        println!("{:#?}", self.stats);
+        &self.stats
     }
 }
 
@@ -370,7 +373,7 @@ impl WindowExt<U64SumAggregator> for PairsFiBA {
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
-    fn print_stats(&self) {
-        println!("{:#?}", self.stats);
+    fn stats(&self) -> &Stats {
+        &self.stats
     }
 }

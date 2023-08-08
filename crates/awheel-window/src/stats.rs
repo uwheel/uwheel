@@ -3,7 +3,7 @@ use core::{cell::Cell, fmt};
 
 /// Window Stats
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Stats {
     /// An integer representing the size of the data structure in bytes
     pub size_bytes: Cell<usize>,

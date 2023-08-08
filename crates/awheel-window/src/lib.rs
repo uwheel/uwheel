@@ -41,9 +41,9 @@ pub trait WindowExt<A: Aggregator> {
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)>;
     /// Returns a reference to the underlying HAW
     fn wheel(&self) -> &ReadWheel<A>;
-    /// Print the current stats of the wheel
+    /// Returns the current recorded window stats
     #[cfg(feature = "stats")]
-    fn print_stats(&self);
+    fn stats(&self) -> &stats::Stats;
 }
 
 #[cfg(test)]

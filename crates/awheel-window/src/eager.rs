@@ -315,11 +315,11 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
         self.wheel.read()
     }
     #[cfg(feature = "stats")]
-    fn print_stats(&self) {
+    fn stats(&self) -> &crate::stats::Stats {
         let rw_wheel = self.wheel.size_bytes();
         let pairs = self.inverse_wheel.size_bytes().unwrap();
         self.stats.size_bytes.set(rw_wheel + pairs);
-        println!("{:#?}", self.stats);
+        &self.stats
     }
 }
 

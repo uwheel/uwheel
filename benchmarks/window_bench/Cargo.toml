@@ -3,8 +3,14 @@ name = "window_bench"
 version = "0.1.0"
 edition.workspace = true
 
+[features]
+default = ["plot"]
+debug = []
+plot = ["dep:plotpy"]
+
 [dependencies]
 awheel = { workspace = true, features = ["window", "stats", "sync"] }
+plotpy = { workspace = true, optional = true }
 fiba_rs.workspace = true
 clap.workspace = true
 fastrand.workspace = true
