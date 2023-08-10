@@ -15,7 +15,6 @@ readme = "README.md"
 opt-level = 2 # fast and small wasm
 
 [workspace.dependencies]
-fiba_rs = { path = "crates/fiba_rs", version = "0.1.0" }
 awheel = { path = "crates/awheel", version = "0.1.0" }
 awheel-core = { path = "crates/awheel-core", version = "0.1.0", default-features = false }
 awheel-window = { path = "crates/awheel-window", version = "0.1.0" }

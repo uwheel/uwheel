@@ -37,7 +37,6 @@ awheel-stats = { workspace = true, optional = true }
 fastrand.workspace = true
 rand.workspace = true
 criterion.workspace = true
-fiba_rs.workspace = true
 
 [[bench]]
 name = "insert"

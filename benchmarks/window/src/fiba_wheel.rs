@@ -1,4 +1,4 @@
-use fiba_rs::*;
+use crate::*;
 
 use awheel::{
     aggregator::sum::U64SumAggregator,
@@ -15,7 +15,7 @@ pub struct BFingerTwoWheel {
     slide: Duration,
     watermark: u64,
     next_window_end: u64,
-    fiba: UniquePtr<fiba_rs::bfinger_two::FiBA_SUM>,
+    fiba: UniquePtr<crate::bfinger_two::FiBA_SUM>,
     stats: Stats,
 }
 impl BFingerTwoWheel {
@@ -24,7 +24,7 @@ impl BFingerTwoWheel {
             slide,
             watermark,
             next_window_end: watermark + range.whole_milliseconds() as u64,
-            fiba: fiba_rs::bfinger_two::create_fiba_with_sum(),
+            fiba: crate::bfinger_two::create_fiba_with_sum(),
             stats: Default::default(),
         }
     }
@@ -88,7 +88,7 @@ pub struct BFingerFourWheel {
     slide: Duration,
     watermark: u64,
     next_window_end: u64,
-    fiba: UniquePtr<fiba_rs::bfinger_four::FiBA_SUM_4>,
+    fiba: UniquePtr<crate::bfinger_four::FiBA_SUM_4>,
     stats: Stats,
 }
 impl BFingerFourWheel {
@@ -97,7 +97,7 @@ impl BFingerFourWheel {
             slide,
             watermark,
             next_window_end: watermark + range.whole_milliseconds() as u64,
-            fiba: fiba_rs::bfinger_four::create_fiba_4_with_sum(),
+            fiba: crate::bfinger_four::create_fiba_4_with_sum(),
             stats: Default::default(),
         }
     }
@@ -161,7 +161,7 @@ pub struct BFingerEightWheel {
     slide: Duration,
     watermark: u64,
     next_window_end: u64,
-    fiba: UniquePtr<fiba_rs::bfinger_eight::FiBA_SUM_8>,
+    fiba: UniquePtr<crate::bfinger_eight::FiBA_SUM_8>,
     stats: Stats,
 }
 impl BFingerEightWheel {
@@ -170,7 +170,7 @@ impl BFingerEightWheel {
             slide,
             watermark,
             next_window_end: watermark + range.whole_milliseconds() as u64,
-            fiba: fiba_rs::bfinger_eight::create_fiba_8_with_sum(),
+            fiba: crate::bfinger_eight::create_fiba_8_with_sum(),
             stats: Default::default(),
         }
     }
@@ -246,7 +246,7 @@ pub struct PairsFiBA {
     next_pair_end: u64,
     in_p1: bool,
     pairs_wheel: PairsWheel<U64SumAggregator>,
-    fiba: UniquePtr<fiba_rs::bfinger_eight::FiBA_SUM_8>,
+    fiba: UniquePtr<crate::bfinger_eight::FiBA_SUM_8>,
     stats: Stats,
 }
 impl PairsFiBA {
@@ -270,7 +270,7 @@ impl PairsFiBA {
             pair_type,
             next_pair_end,
             in_p1: false,
-            fiba: fiba_rs::bfinger_eight::create_fiba_8_with_sum(),
+            fiba: crate::bfinger_eight::create_fiba_8_with_sum(),
             stats: Default::default(),
         }
     }

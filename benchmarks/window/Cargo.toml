@@ -9,9 +9,9 @@ debug = []
 plot = ["dep:plotpy"]
 
 [dependencies]
+cxx = "1.0"
 awheel = { workspace = true, features = ["window", "stats", "sync"] }
 plotpy = { workspace = true, optional = true }
-fiba_rs.workspace = true
 clap.workspace = true
 fastrand.workspace = true
 hdrhistogram.workspace = true
@@ -22,6 +22,10 @@ sketches-ddsketch.workspace = true
 rand.workspace = true
 criterion.workspace = true
 fastrand.workspace = true
+
+[build-dependencies]
+cxx-build = "1.0"
+
 
 [[bench]]
 name = "insert"

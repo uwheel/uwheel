@@ -1,4 +1,4 @@
-#include "fiba_rs/include/FiBA.h"
+#include "window/include/FiBA.h"
 #include <iostream>
 
 std::unique_ptr<FiBA_SUM> create_fiba_with_sum() {
