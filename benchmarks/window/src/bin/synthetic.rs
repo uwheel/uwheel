@@ -13,7 +13,7 @@ use awheel::{
 };
 use clap::{ArgEnum, Parser};
 use minstant::Instant;
-use window_bench::{fiba_wheel, TimestampGenerator};
+use window::{fiba_wheel, TimestampGenerator};
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
 pub enum Workload {
@@ -30,6 +30,8 @@ const EXECUTIONS: [Execution; 6] = [
     Execution::new(86400, 10),
     Execution::new(604800, 10),
 ];
+
+const INSERT_RATE_EVENT_PER_SECS: [usize; 5] = [10, 100, 1000, 10000, 100000];
 
 #[derive(Debug)]
 struct Execution {
@@ -68,9 +70,9 @@ struct Run {
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(short, long, value_parser, default_value_t = 1000)]
+    #[clap(short, long, value_parser, default_value_t = 5000)]
     windows: u64,
-    #[clap(short, long, value_parser, default_value_t = 10000)]
+    #[clap(short, long, value_parser, default_value_t = 100)]
     events_per_sec: u64,
     #[clap(short, long, value_parser, default_value_t = 5)]
     max_distance: u64,
@@ -153,40 +155,6 @@ fn main() {
     */
 }
 
-fn run(
-    seconds: u64,
-    mut window: impl WindowExt<U64SumAggregator>,
-    args: &Args,
-) -> (std::time::Duration, Stats) {
-    let Args {
-        events_per_sec,
-        windows: _,
-        max_distance,
-        range: _,
-        slide: _,
-        ooo_degree,
-        workload: _,
-    } = *args;
-    let mut ts_generator =
-        TimestampGenerator::new(0, Duration::seconds(max_distance as i64), ooo_degree as f32);
-    let full = Instant::now();
-    for _i in 0..seconds {
-        for _i in 0..events_per_sec {
-            window
-                .insert(Entry::new(1, ts_generator.timestamp()))
-                .unwrap();
-        }
-        ts_generator.update_watermark(ts_generator.watermark() + 1000);
-
-        // advance window wheel
-        for (_timestamp, _result) in window.advance_to(ts_generator.watermark()) {
-            log!("Window at {} with data {:?}", _timestamp, _result);
-        }
-    }
-    let runtime = full.elapsed();
-    (runtime, window.stats().clone())
-}
-
 #[cfg(feature = "debug")]
 #[macro_export]
 macro_rules! log {
@@ -219,7 +187,7 @@ fn window_computation_bench(args: &Args) {
             .with_slide(slide)
             .build();
 
-        let (runtime, stats) = run(seconds, lazy_wheel, &args);
+        let (runtime, stats) = run(seconds, lazy_wheel, args);
 
         runs.push(Run {
             id: "Lazy Wheel".to_string(),
@@ -232,7 +200,7 @@ fn window_computation_bench(args: &Args) {
             .with_slide(slide)
             .build();
 
-        let (runtime, stats) = run(seconds, eager_wheel, &args);
+        let (runtime, stats) = run(seconds, eager_wheel, args);
         runs.push(Run {
             id: "Eager Wheel".to_string(),
             runtime,
@@ -240,7 +208,7 @@ fn window_computation_bench(args: &Args) {
         });
 
         let cg_bfinger_two_wheel = fiba_wheel::BFingerTwoWheel::new(0, range, slide);
-        let (runtime, stats) = run(seconds, cg_bfinger_two_wheel, &args);
+        let (runtime, stats) = run(seconds, cg_bfinger_two_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger2".to_string(),
             runtime,
@@ -248,7 +216,7 @@ fn window_computation_bench(args: &Args) {
         });
 
         let cg_bfinger_four_wheel = fiba_wheel::BFingerFourWheel::new(0, range, slide);
-        let (runtime, stats) = run(seconds, cg_bfinger_four_wheel, &args);
+        let (runtime, stats) = run(seconds, cg_bfinger_four_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger4".to_string(),
             runtime,
@@ -256,7 +224,7 @@ fn window_computation_bench(args: &Args) {
         });
 
         let cg_bfinger_eight_wheel = fiba_wheel::BFingerEightWheel::new(0, range, slide);
-        let (runtime, stats) = run(seconds, cg_bfinger_eight_wheel, &args);
+        let (runtime, stats) = run(seconds, cg_bfinger_eight_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger8".to_string(),
             runtime,
@@ -265,10 +233,8 @@ fn window_computation_bench(args: &Args) {
 
         let result = Result::new(exec, runs);
 
-        results.push(result);
-    }
-    for result in &results {
         result.print();
+        results.push(result);
     }
     #[cfg(feature = "plot")]
     plot_window_computation_bench(results);
@@ -285,7 +251,7 @@ fn insert_rate_bench(args: &mut Args) {
     );
 
     let mut results = Vec::new();
-    for events in [10, 100, 1000, 10000, 100000, 1000000].iter() {
+    for events in INSERT_RATE_EVENT_PER_SECS.iter() {
         args.events_per_sec = *events as u64;
         let mut runs = Vec::new();
 
@@ -294,7 +260,7 @@ fn insert_rate_bench(args: &mut Args) {
             .with_slide(slide)
             .build();
 
-        let (runtime, stats) = run(seconds, lazy_wheel, &args);
+        let (runtime, stats) = run(seconds, lazy_wheel, args);
 
         runs.push(Run {
             id: "Lazy Wheel".to_string(),
@@ -307,14 +273,14 @@ fn insert_rate_bench(args: &mut Args) {
             .with_slide(slide)
             .build();
 
-        let (runtime, stats) = run(seconds, eager_wheel, &args);
+        let (runtime, stats) = run(seconds, eager_wheel, args);
         runs.push(Run {
             id: "Eager Wheel".to_string(),
             runtime,
             stats,
         });
         let cg_bfinger_two_wheel = fiba_wheel::BFingerTwoWheel::new(0, range, slide);
-        let (runtime, stats) = run(seconds, cg_bfinger_two_wheel, &args);
+        let (runtime, stats) = run(seconds, cg_bfinger_two_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger2".to_string(),
             runtime,
@@ -322,7 +288,7 @@ fn insert_rate_bench(args: &mut Args) {
         });
 
         let cg_bfinger_four_wheel = fiba_wheel::BFingerFourWheel::new(0, range, slide);
-        let (runtime, stats) = run(seconds, cg_bfinger_four_wheel, &args);
+        let (runtime, stats) = run(seconds, cg_bfinger_four_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger4".to_string(),
             runtime,
@@ -330,7 +296,7 @@ fn insert_rate_bench(args: &mut Args) {
         });
 
         let cg_bfinger_eight_wheel = fiba_wheel::BFingerEightWheel::new(0, range, slide);
-        let (runtime, stats) = run(seconds, cg_bfinger_eight_wheel, &args);
+        let (runtime, stats) = run(seconds, cg_bfinger_eight_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger8".to_string(),
             runtime,
@@ -356,7 +322,10 @@ fn plot_insert_bench(results: Vec<Vec<Run>>) {
     use std::path::Path;
     std::fs::create_dir_all("../results").unwrap();
 
-    let x = vec![10.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0];
+    let x: Vec<f64> = INSERT_RATE_EVENT_PER_SECS
+        .iter()
+        .map(|m| *m as f64)
+        .collect();
     let mut lazy_y = Vec::new();
     let mut eager_y = Vec::new();
     let mut bfinger_two_y = Vec::new();
@@ -374,10 +343,12 @@ fn plot_insert_bench(results: Vec<Vec<Run>>) {
     let mut lazy_curve = Curve::new();
     lazy_curve.set_label("Lazy Wheel");
     lazy_curve.set_line_color("g");
+    lazy_curve.set_marker_style("o");
     lazy_curve.draw(&x, &lazy_y);
 
     let mut eager_curve = Curve::new();
     eager_curve.set_label("Eager Wheel");
+    eager_curve.set_marker_style("^");
     eager_curve.set_line_color("r");
     eager_curve.draw(&x, &eager_y);
 
@@ -459,11 +430,13 @@ fn plot_window_computation_bench(results: Vec<Result>) {
     let mut lazy_curve = Curve::new();
     lazy_curve.set_label("Lazy Wheel");
     lazy_curve.set_line_color("g");
+    lazy_curve.set_marker_style("^");
     lazy_curve.draw(&x, &lazy_y);
 
     let mut eager_curve = Curve::new();
     eager_curve.set_label("Eager Wheel");
     eager_curve.set_line_color("r");
+    eager_curve.set_marker_style("o");
     eager_curve.draw(&x, &eager_y);
 
     let mut bfinger_two_curve = Curve::new();
@@ -507,4 +480,38 @@ fn plot_window_computation_bench(results: Vec<Result>) {
     // save figure
     let path = Path::new("../results/synthetic_window_comp.png");
     plot.save(&path).unwrap();
+}
+
+fn run(
+    seconds: u64,
+    mut window: impl WindowExt<U64SumAggregator>,
+    args: &Args,
+) -> (std::time::Duration, Stats) {
+    let Args {
+        events_per_sec,
+        windows: _,
+        max_distance,
+        range: _,
+        slide: _,
+        ooo_degree,
+        workload: _,
+    } = *args;
+    let mut ts_generator =
+        TimestampGenerator::new(0, Duration::seconds(max_distance as i64), ooo_degree as f32);
+    let full = Instant::now();
+    for _i in 0..seconds {
+        for _i in 0..events_per_sec {
+            window
+                .insert(Entry::new(1, ts_generator.timestamp()))
+                .unwrap();
+        }
+        ts_generator.update_watermark(ts_generator.watermark() + 1000);
+
+        // advance window wheel
+        for (_timestamp, _result) in window.advance_to(ts_generator.watermark()) {
+            log!("Window at {} with data {:?}", _timestamp, _result);
+        }
+    }
+    let runtime = full.elapsed();
+    (runtime, window.stats().clone())
 }

@@ -47,7 +47,7 @@ impl BenchResult {
                 total_queries as f64 / runtime,
                 runtime,
             );
-            print_hist(id, &hist);
+            print_hist(id, hist);
         };
 
         print_fn(
@@ -77,7 +77,7 @@ impl BenchResult {
     }
 }
 
-const EVENTS_PER_MINS: [usize; 2] = [100, 1000];
+const EVENTS_PER_MINS: [usize; 4] = [10, 100, 1000, 10000];
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -109,7 +109,10 @@ fn main() -> Result<()> {
     }
 
     #[cfg(feature = "plot")]
-    plot_top_n(results);
+    plot_top_n_throughput(&results);
+
+    #[cfg(feature = "plot")]
+    plot_top_n_latency(results);
 
     Ok(())
 }
@@ -135,7 +138,6 @@ fn run(args: &Args) -> BenchResult {
         duckdb_append_batch(batch, &mut duckdb).unwrap();
     }
     println!("Finished preparing {}", id,);
-    dbg!(watermark);
 
     let duckdb_low = duckdb_run(
         "DuckDB TopN Low Intervals",
@@ -315,7 +317,7 @@ fn print_hist(id: &str, hist: &Histogram<u64>) {
 }
 
 #[cfg(feature = "plot")]
-fn plot_top_n(results: Vec<BenchResult>) {
+fn plot_top_n_throughput(results: &Vec<BenchResult>) {
     use plotpy::{Curve, Legend, Plot};
     use std::path::Path;
     std::fs::create_dir_all("../results").unwrap();
@@ -340,24 +342,29 @@ fn plot_top_n(results: Vec<BenchResult>) {
     let mut duckdb_low_curve = Curve::new();
     duckdb_low_curve.set_label("DuckDB Low Intervals");
     duckdb_low_curve.set_line_color("r");
+    duckdb_low_curve.set_marker_style("^");
     duckdb_low_curve.draw(&x, &duckdb_low_y);
 
     let mut duckdb_high_curve = Curve::new();
     duckdb_high_curve.set_label("DuckDB High Intervals");
     duckdb_high_curve.set_line_color("b");
+    duckdb_high_curve.set_marker_style("o");
     duckdb_high_curve.draw(&x, &duckdb_high_y);
 
     let mut wheel_low_curve = Curve::new();
     wheel_low_curve.set_label("Wheel Low Intervals");
     wheel_low_curve.set_line_color("g");
+    wheel_low_curve.set_marker_style("x");
     wheel_low_curve.draw(&x, &wheel_low_y);
 
     let mut wheel_high_curve = Curve::new();
     wheel_high_curve.set_label("Wheel High Intervals");
     wheel_high_curve.set_line_color("m");
+    wheel_high_curve.set_marker_style("*");
     wheel_high_curve.draw(&x, &wheel_high_y);
 
     let mut legend = Legend::new();
+    //legend.set_outside(true);
     legend.draw();
 
     // configure plot
@@ -377,6 +384,76 @@ fn plot_top_n(results: Vec<BenchResult>) {
         .add(&wheel_high_curve)
         .add(&legend);
 
-    let path = Path::new("../results/top_n.png");
+    let path = Path::new("../results/top_n_throughput.png");
+    plot.save(&path).unwrap();
+}
+
+#[cfg(feature = "plot")]
+fn plot_top_n_latency(results: Vec<BenchResult>) {
+    use plotpy::{Curve, Legend, Plot};
+    use std::path::Path;
+    std::fs::create_dir_all("../results").unwrap();
+
+    let x: Vec<f64> = results.iter().map(|e| e.total_entries as f64).collect();
+    let mut duckdb_low_y = Vec::new();
+    let mut duckdb_high_y = Vec::new();
+    let mut wheel_low_y = Vec::new();
+    let mut wheel_high_y = Vec::new();
+
+    let p99 = |hist: &Histogram<u64>| hist.value_at_quantile(0.99) as f64;
+
+    for result in results {
+        duckdb_low_y.push(p99(&result.duckdb_low.1));
+        duckdb_high_y.push(p99(&result.duckdb_high.1));
+        wheel_low_y.push(p99(&result.wheel_low.1));
+        wheel_high_y.push(p99(&result.wheel_high.1));
+    }
+
+    let mut duckdb_low_curve = Curve::new();
+    duckdb_low_curve.set_label("DuckDB Low Intervals");
+    duckdb_low_curve.set_line_color("r");
+    duckdb_low_curve.set_marker_style("^");
+    duckdb_low_curve.draw(&x, &duckdb_low_y);
+
+    let mut duckdb_high_curve = Curve::new();
+    duckdb_high_curve.set_label("DuckDB High Intervals");
+    duckdb_high_curve.set_line_color("b");
+    duckdb_high_curve.set_marker_style("o");
+    duckdb_high_curve.draw(&x, &duckdb_high_y);
+
+    let mut wheel_low_curve = Curve::new();
+    wheel_low_curve.set_label("Wheel Low Intervals");
+    wheel_low_curve.set_line_color("g");
+    wheel_low_curve.set_marker_style("x");
+    wheel_low_curve.draw(&x, &wheel_low_y);
+
+    let mut wheel_high_curve = Curve::new();
+    wheel_high_curve.set_label("Wheel High Intervals");
+    wheel_high_curve.set_line_color("m");
+    wheel_high_curve.set_marker_style("*");
+    wheel_high_curve.draw(&x, &wheel_high_y);
+
+    let mut legend = Legend::new();
+    //legend.set_outside(true);
+    legend.draw();
+
+    // configure plot
+    let mut plot = Plot::new();
+    plot.set_horizontal_gap(0.5)
+        .set_vertical_gap(0.5)
+        .set_gaps(0.3, 0.2);
+
+    plot.set_label_y("p99 latency (nanoseconds)");
+    plot.set_log_y(true);
+    plot.set_log_x(true);
+    plot.set_label_x("Total insert records");
+
+    plot.add(&duckdb_low_curve)
+        .add(&duckdb_high_curve)
+        .add(&wheel_low_curve)
+        .add(&wheel_high_curve)
+        .add(&legend);
+
+    let path = Path::new("../results/top_n_latency.png");
     plot.save(&path).unwrap();
 }
