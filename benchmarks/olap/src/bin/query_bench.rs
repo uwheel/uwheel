@@ -20,7 +20,8 @@ pub enum Workload {
     Sum,
 }
 
-const EVENTS_PER_MINS: [usize; 4] = [10, 100, 1000, 10000];
+//const EVENTS_PER_MINS: [usize; 4] = [10, 100, 1000, 10000];
+const EVENTS_PER_MINS: [usize; 3] = [10, 100, 1000];
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -417,6 +418,10 @@ fn awheel_run<A: Aggregator + Clone>(
                         .read()
                         .get(&pu_location_id)
                         .map(|rw| rw.interval(time::Duration::days(days as i64))),
+                    QueryInterval::Weeks(weeks) => wheel
+                        .read()
+                        .get(&pu_location_id)
+                        .map(|rw| rw.interval(time::Duration::weeks(weeks as i64))),
                     QueryInterval::Landmark => {
                         wheel.read().get(&pu_location_id).map(|rw| rw.landmark())
                     }
@@ -439,6 +444,9 @@ fn awheel_run<A: Aggregator + Clone>(
                     QueryInterval::Days(days) => wheel
                         .read()
                         .interval_range(time::Duration::days(days as i64), range),
+                    QueryInterval::Weeks(weeks) => wheel
+                        .read()
+                        .interval_range(time::Duration::weeks(weeks as i64), range),
                     QueryInterval::Landmark => wheel.read().landmark_range(range),
                 };
                 //assert!(res.is_some());
@@ -456,6 +464,9 @@ fn awheel_run<A: Aggregator + Clone>(
                         wheel.interval(time::Duration::hours(hours as i64))
                     }
                     QueryInterval::Days(days) => wheel.interval(time::Duration::days(days as i64)),
+                    QueryInterval::Weeks(weeks) => {
+                        wheel.interval(time::Duration::weeks(weeks as i64))
+                    }
                     QueryInterval::Landmark => wheel.landmark(),
                 };
                 //assert!(res.is_some());
@@ -528,6 +539,12 @@ fn duckdb_run(
                 QueryInterval::Days(days) => {
                     let start_ts = watermark.saturating_sub(
                         time::Duration::days(days.into()).whole_milliseconds() as u64,
+                    );
+                    format!("do_time >= {} AND do_time < {}", start_ts, watermark)
+                }
+                QueryInterval::Weeks(weeks) => {
+                    let start_ts = watermark.saturating_sub(
+                        time::Duration::weeks(weeks.into()).whole_milliseconds() as u64,
                     );
                     format!("do_time >= {} AND do_time < {}", start_ts, watermark)
                 }

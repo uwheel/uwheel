@@ -87,6 +87,9 @@ fn main() -> Result<()> {
                     QueryInterval::Days(days) => {
                         read_wheel.interval(time::Duration::days(days as i64))
                     }
+                    QueryInterval::Weeks(weeks) => {
+                        read_wheel.interval(time::Duration::weeks(weeks as i64))
+                    }
                     QueryInterval::Landmark => read_wheel.landmark(),
                 };
                 sketch.add(now.elapsed().as_nanos() as f64);

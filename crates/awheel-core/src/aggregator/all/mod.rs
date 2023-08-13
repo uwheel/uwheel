@@ -127,11 +127,11 @@ mod tests {
         let mut time = 0u64;
         let mut wheel = RwWheel::<AllAggregator>::new(time);
 
-        for _ in 0..SECONDS + 1 {
-            wheel.advance_to(time);
+        for _ in 0..SECONDS {
             let entry = crate::Entry::new(1.0, time);
             wheel.write().insert(entry).unwrap();
             time += 1000; // increase by 1 second
+            wheel.advance_to(time);
         }
 
         let all: AggState = wheel.read().interval(Duration::minutes(1i64)).unwrap();

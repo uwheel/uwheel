@@ -90,6 +90,9 @@ fn main() -> Result<()> {
                             QueryInterval::Days(days) => wheel
                                 .get(&pu_location_id)
                                 .map(|rw| rw.interval(time::Duration::days(days as i64))),
+                            QueryInterval::Weeks(weeks) => wheel
+                                .get(&pu_location_id)
+                                .map(|rw| rw.interval(time::Duration::weeks(weeks as i64))),
                             QueryInterval::Landmark => {
                                 wheel.get(&pu_location_id).map(|rw| rw.landmark())
                             }
@@ -109,6 +112,9 @@ fn main() -> Result<()> {
                                 QueryInterval::Days(days) => {
                                     wheel.interval_range(time::Duration::days(days as i64), range)
                                 }
+                                QueryInterval::Weeks(weeks) => {
+                                    wheel.interval_range(time::Duration::weeks(weeks as i64), range)
+                                }
                                 QueryInterval::Landmark => wheel.landmark_range(range),
                             };
                     }
@@ -125,6 +131,9 @@ fn main() -> Result<()> {
                             }
                             QueryInterval::Days(days) => {
                                 star_wheel.interval(time::Duration::days(days as i64))
+                            }
+                            QueryInterval::Weeks(weeks) => {
+                                star_wheel.interval(time::Duration::weeks(weeks as i64))
                             }
                             QueryInterval::Landmark => star_wheel.landmark(),
                         };

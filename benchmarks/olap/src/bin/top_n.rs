@@ -210,6 +210,7 @@ fn awheel_run(
                 }
                 QueryInterval::Hours(hours) => wheel.interval(time::Duration::hours(hours as i64)),
                 QueryInterval::Days(days) => wheel.interval(time::Duration::days(days as i64)),
+                QueryInterval::Weeks(weeks) => wheel.interval(time::Duration::weeks(weeks as i64)),
                 QueryInterval::Landmark => wheel.landmark(),
             };
             hist.record(now.elapsed().as_nanos() as u64).unwrap();
@@ -276,6 +277,12 @@ fn duckdb_run(
                 QueryInterval::Days(days) => {
                     let start_ts = watermark.saturating_sub(
                         time::Duration::days(days.into()).whole_milliseconds() as u64,
+                    );
+                    format!("do_time >= {} AND do_time < {}", start_ts, watermark)
+                }
+                QueryInterval::Weeks(weeks) => {
+                    let start_ts = watermark.saturating_sub(
+                        time::Duration::weeks(weeks.into()).whole_milliseconds() as u64,
                     );
                     format!("do_time >= {} AND do_time < {}", start_ts, watermark)
                 }
