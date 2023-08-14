@@ -34,7 +34,6 @@ impl TimestampGenerator {
         let ts = fastrand::u64(self.watermark..=(self.watermark + max_distance_ms));
         align_to_closest_thousand(ts)
     }
-    // How often watermark is updated..
     pub fn update_watermark(&mut self, watermark: u64) {
         self.watermark = watermark;
     }

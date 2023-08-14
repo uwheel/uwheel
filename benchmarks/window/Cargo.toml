@@ -10,7 +10,7 @@ plot = ["dep:plotpy"]
 
 [dependencies]
 cxx = "1.0"
-awheel = { workspace = true, features = ["window", "stats", "sync"] }
+awheel = { workspace = true, features = ["window", "stats"] }
 plotpy = { workspace = true, optional = true }
 clap.workspace = true
 fastrand.workspace = true

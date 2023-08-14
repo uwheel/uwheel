@@ -22,16 +22,18 @@ pub enum Workload {
     All,
 }
 
-const EXECUTIONS: [Execution; 6] = [
+const EXECUTIONS: [Execution; 5] = [
     Execution::new(30, 10),
     Execution::new(60, 10),
     Execution::new(1800, 10),
     Execution::new(3600, 10),
     Execution::new(86400, 10),
-    Execution::new(604800, 10),
+    //Execution::new(604800, 10),
 ];
 
-const INSERT_RATE_EVENT_PER_SECS: [usize; 5] = [10, 100, 1000, 10000, 100000];
+// max possible out of order distance
+// for example if 8, then may generate timestamp with lowest 1 second distance from the watermark and highest 8.
+const OUT_OF_ORDER_DISTANCE: [usize; 7] = [1, 2, 4, 8, 16, 32, 64];
 
 #[derive(Debug)]
 struct Execution {
@@ -63,6 +65,7 @@ impl Result {
 }
 struct Run {
     pub id: String,
+    pub total_insertions: u64,
     pub runtime: std::time::Duration,
     pub stats: Stats,
 }
@@ -70,9 +73,9 @@ struct Run {
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(short, long, value_parser, default_value_t = 5000)]
+    #[clap(short, long, value_parser, default_value_t = 10000)]
     windows: u64,
-    #[clap(short, long, value_parser, default_value_t = 100)]
+    #[clap(short, long, value_parser, default_value_t = 1000)]
     events_per_sec: u64,
     #[clap(short, long, value_parser, default_value_t = 5)]
     max_distance: u64,
@@ -179,6 +182,7 @@ fn window_computation_bench(args: &Args) {
             range.whole_seconds() as u64,
             slide.whole_seconds() as u64,
         );
+        let total_insertions = seconds * args.events_per_sec;
 
         let mut runs = Vec::new();
 
@@ -191,6 +195,7 @@ fn window_computation_bench(args: &Args) {
 
         runs.push(Run {
             id: "Lazy Wheel".to_string(),
+            total_insertions,
             runtime,
             stats,
         });
@@ -203,14 +208,7 @@ fn window_computation_bench(args: &Args) {
         let (runtime, stats) = run(seconds, eager_wheel, args);
         runs.push(Run {
             id: "Eager Wheel".to_string(),
-            runtime,
-            stats,
-        });
-
-        let cg_bfinger_two_wheel = fiba_wheel::BFingerTwoWheel::new(0, range, slide);
-        let (runtime, stats) = run(seconds, cg_bfinger_two_wheel, args);
-        runs.push(Run {
-            id: "FiBA CG BFinger2".to_string(),
+            total_insertions,
             runtime,
             stats,
         });
@@ -219,6 +217,7 @@ fn window_computation_bench(args: &Args) {
         let (runtime, stats) = run(seconds, cg_bfinger_four_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger4".to_string(),
+            total_insertions,
             runtime,
             stats,
         });
@@ -227,6 +226,7 @@ fn window_computation_bench(args: &Args) {
         let (runtime, stats) = run(seconds, cg_bfinger_eight_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger8".to_string(),
+            total_insertions,
             runtime,
             stats,
         });
@@ -251,8 +251,9 @@ fn insert_rate_bench(args: &mut Args) {
     );
 
     let mut results = Vec::new();
-    for events in INSERT_RATE_EVENT_PER_SECS.iter() {
-        args.events_per_sec = *events as u64;
+    for distance in OUT_OF_ORDER_DISTANCE.iter() {
+        args.max_distance = *distance as u64;
+        let total_insertions = seconds * args.events_per_sec;
         let mut runs = Vec::new();
 
         let lazy_wheel: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
@@ -264,6 +265,7 @@ fn insert_rate_bench(args: &mut Args) {
 
         runs.push(Run {
             id: "Lazy Wheel".to_string(),
+            total_insertions,
             runtime,
             stats,
         });
@@ -276,13 +278,7 @@ fn insert_rate_bench(args: &mut Args) {
         let (runtime, stats) = run(seconds, eager_wheel, args);
         runs.push(Run {
             id: "Eager Wheel".to_string(),
-            runtime,
-            stats,
-        });
-        let cg_bfinger_two_wheel = fiba_wheel::BFingerTwoWheel::new(0, range, slide);
-        let (runtime, stats) = run(seconds, cg_bfinger_two_wheel, args);
-        runs.push(Run {
-            id: "FiBA CG BFinger2".to_string(),
+            total_insertions,
             runtime,
             stats,
         });
@@ -291,6 +287,7 @@ fn insert_rate_bench(args: &mut Args) {
         let (runtime, stats) = run(seconds, cg_bfinger_four_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger4".to_string(),
+            total_insertions,
             runtime,
             stats,
         });
@@ -299,13 +296,14 @@ fn insert_rate_bench(args: &mut Args) {
         let (runtime, stats) = run(seconds, cg_bfinger_eight_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger8".to_string(),
+            total_insertions,
             runtime,
             stats,
         });
 
         results.push(runs);
         for runs in &results {
-            println!("Events per second: {}", events);
+            //println!("Events per second: {}", events);
             for run in runs.iter() {
                 println!("{} (took {:.2}s)", run.id, run.runtime.as_secs_f64(),);
                 println!("{:#?}", run.stats);
@@ -313,31 +311,30 @@ fn insert_rate_bench(args: &mut Args) {
         }
     }
     #[cfg(feature = "plot")]
-    plot_insert_bench(results);
+    plot_insert_bench(&results);
+    #[cfg(feature = "plot")]
+    plot_insert_bench_latency(results);
 }
 
 #[cfg(feature = "plot")]
-fn plot_insert_bench(results: Vec<Vec<Run>>) {
+fn plot_insert_bench(results: &Vec<Vec<Run>>) {
     use plotpy::{Curve, Legend, Plot};
     use std::path::Path;
     std::fs::create_dir_all("../results").unwrap();
 
-    let x: Vec<f64> = INSERT_RATE_EVENT_PER_SECS
-        .iter()
-        .map(|m| *m as f64)
-        .collect();
+    let x: Vec<f64> = OUT_OF_ORDER_DISTANCE.iter().map(|m| *m as f64).collect();
     let mut lazy_y = Vec::new();
     let mut eager_y = Vec::new();
-    let mut bfinger_two_y = Vec::new();
     let mut bfinger_four_y = Vec::new();
     let mut bfinger_eight_y = Vec::new();
 
+    let throughput =
+        |run: &Run| (run.total_insertions as f64 / run.runtime.as_secs_f64()) / 1_000_000.0;
     for runs in results {
-        lazy_y.push(runs[0].runtime.as_secs_f64());
-        eager_y.push(runs[1].runtime.as_secs_f64());
-        bfinger_two_y.push(runs[2].runtime.as_secs_f64());
-        bfinger_four_y.push(runs[3].runtime.as_secs_f64());
-        bfinger_eight_y.push(runs[4].runtime.as_secs_f64());
+        lazy_y.push(throughput(&runs[0]));
+        eager_y.push(throughput(&runs[1]));
+        bfinger_four_y.push(throughput(&runs[2]));
+        bfinger_eight_y.push(throughput(&runs[3]));
     }
 
     let mut lazy_curve = Curve::new();
@@ -351,12 +348,6 @@ fn plot_insert_bench(results: Vec<Vec<Run>>) {
     eager_curve.set_marker_style("^");
     eager_curve.set_line_color("r");
     eager_curve.draw(&x, &eager_y);
-
-    let mut bfinger_two_curve = Curve::new();
-    bfinger_two_curve.set_label("FiBA CG BFinger 2");
-    bfinger_two_curve.set_line_color("m");
-    bfinger_two_curve.set_marker_style("x");
-    bfinger_two_curve.draw(&x, &bfinger_two_y);
 
     let mut bfinger_four_curve = Curve::new();
     bfinger_four_curve.set_label("FiBA CG BFinger 4");
@@ -375,23 +366,93 @@ fn plot_insert_bench(results: Vec<Vec<Run>>) {
 
     // configure plot
     let mut plot = Plot::new();
-    plot.set_horizontal_gap(0.5)
+    plot.set_super_title("30s Range 10s slide (Sum Aggregation)")
+        .set_horizontal_gap(0.5)
         .set_vertical_gap(0.5)
         .set_gaps(0.3, 0.2);
 
-    plot.set_label_y("Runtime");
+    plot.set_label_y("throughput [million records/s]");
     plot.set_log_x(true);
-    plot.set_label_x("Events per second");
+    plot.set_label_x("ooo distance [seconds]");
 
     plot.add(&lazy_curve)
         .add(&eager_curve)
-        .add(&bfinger_two_curve)
+        .add(&bfinger_four_curve)
+        .add(&bfinger_eight_curve)
+        .add(&legend);
+
+    // modify manually in generated python code: plt.gca().set_xscale('log', base=2)
+    let path = Path::new("../results/synthetic_window.png");
+    plot.save(&path).unwrap();
+}
+
+#[cfg(feature = "plot")]
+fn plot_insert_bench_latency(results: Vec<Vec<Run>>) {
+    use awheel::stats::Percentiles;
+    use plotpy::{Curve, Legend, Plot};
+    use std::path::Path;
+    std::fs::create_dir_all("../results").unwrap();
+
+    let x: Vec<f64> = OUT_OF_ORDER_DISTANCE.iter().map(|m| *m as f64).collect();
+    let mut lazy_y = Vec::new();
+    let mut eager_y = Vec::new();
+    let mut bfinger_four_y = Vec::new();
+    let mut bfinger_eight_y = Vec::new();
+
+    let p99_latency = |p: Percentiles| p.p99;
+    for runs in results {
+        lazy_y.push(p99_latency(runs[0].stats.insert_ns.percentiles()));
+        eager_y.push(p99_latency(runs[1].stats.insert_ns.percentiles()));
+        bfinger_four_y.push(p99_latency(runs[2].stats.insert_ns.percentiles()));
+        bfinger_eight_y.push(p99_latency(runs[3].stats.insert_ns.percentiles()));
+    }
+
+    let mut lazy_curve = Curve::new();
+    lazy_curve.set_label("Lazy Wheel");
+    lazy_curve.set_line_color("g");
+    lazy_curve.set_marker_style("o");
+    lazy_curve.draw(&x, &lazy_y);
+
+    let mut eager_curve = Curve::new();
+    eager_curve.set_label("Eager Wheel");
+    eager_curve.set_marker_style("^");
+    eager_curve.set_line_color("r");
+    eager_curve.draw(&x, &eager_y);
+
+    let mut bfinger_four_curve = Curve::new();
+    bfinger_four_curve.set_label("FiBA CG BFinger 4");
+    bfinger_four_curve.set_line_color("m");
+    bfinger_four_curve.set_marker_style("*");
+    bfinger_four_curve.draw(&x, &bfinger_four_y);
+
+    let mut bfinger_eight_curve = Curve::new();
+    bfinger_eight_curve.set_label("FiBA CG BFinger 8");
+    bfinger_eight_curve.set_line_color("m");
+    bfinger_eight_curve.set_marker_style("^");
+    bfinger_eight_curve.draw(&x, &bfinger_eight_y);
+
+    let mut legend = Legend::new();
+    legend.draw();
+
+    // configure plot
+    let mut plot = Plot::new();
+    plot.set_super_title("30s Range 10s slide (Sum Aggregation)")
+        .set_horizontal_gap(0.5)
+        .set_vertical_gap(0.5)
+        .set_gaps(0.3, 0.2);
+
+    plot.set_label_y("p99 insert latency (nanoseconds)");
+    plot.set_log_x(true);
+    plot.set_label_x("ooo distance [seconds]");
+
+    plot.add(&lazy_curve)
+        .add(&eager_curve)
         .add(&bfinger_four_curve)
         .add(&bfinger_eight_curve)
         .add(&legend);
 
     // save figure
-    let path = Path::new("../results/synthetic_window.png");
+    let path = Path::new("../results/synthetic_window_latency.png");
     plot.save(&path).unwrap();
 }
 
@@ -404,7 +465,6 @@ fn plot_window_computation_bench(results: Vec<Result>) {
     let x = vec![30.0, 60.0, 1800.0, 3600.0, 86400.0, 604800.0];
     let mut lazy_y = Vec::new();
     let mut eager_y = Vec::new();
-    let mut bfinger_two_y = Vec::new();
     let mut bfinger_four_y = Vec::new();
     let mut bfinger_eight_y = Vec::new();
 
@@ -416,14 +476,11 @@ fn plot_window_computation_bench(results: Vec<Result>) {
         eager_y.push(to_micros(
             result.runs[1].stats.window_computation_ns.percentiles().p99,
         ));
-        bfinger_two_y.push(to_micros(
+        bfinger_four_y.push(to_micros(
             result.runs[2].stats.window_computation_ns.percentiles().p99,
         ));
-        bfinger_four_y.push(to_micros(
-            result.runs[3].stats.window_computation_ns.percentiles().p99,
-        ));
         bfinger_eight_y.push(to_micros(
-            result.runs[4].stats.window_computation_ns.percentiles().p99,
+            result.runs[3].stats.window_computation_ns.percentiles().p99,
         ));
     }
 
@@ -438,12 +495,6 @@ fn plot_window_computation_bench(results: Vec<Result>) {
     eager_curve.set_line_color("r");
     eager_curve.set_marker_style("o");
     eager_curve.draw(&x, &eager_y);
-
-    let mut bfinger_two_curve = Curve::new();
-    bfinger_two_curve.set_label("FiBA CG BFinger 2");
-    bfinger_two_curve.set_line_color("m");
-    bfinger_two_curve.set_marker_style("x");
-    bfinger_two_curve.draw(&x, &bfinger_two_y);
 
     let mut bfinger_four_curve = Curve::new();
     bfinger_four_curve.set_label("FiBA CG BFinger 4");
@@ -472,7 +523,6 @@ fn plot_window_computation_bench(results: Vec<Result>) {
 
     plot.add(&lazy_curve)
         .add(&eager_curve)
-        .add(&bfinger_two_curve)
         .add(&bfinger_four_curve)
         .add(&bfinger_eight_curve)
         .add(&legend);
