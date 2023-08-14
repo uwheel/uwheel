@@ -1,6 +1,7 @@
 [workspace]
 resolver = "1"                         # needed for awheel-demo to work on web
 members = ["crates/*", "benchmarks/*", "examples/*"]
+exclude = ["benchmarks/results"]
 
 [workspace.package]
 authors = ["Max Meldrum <max@meldrum.se>"]

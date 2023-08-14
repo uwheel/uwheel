@@ -9,6 +9,10 @@ pub mod wheel_ext;
 /// Optimised for a single writer
 pub mod write;
 
+/// Hierarchical Wheel Timer
+#[allow(dead_code)]
+mod timer;
+
 use crate::{aggregator::Aggregator, time};
 use core::fmt::Debug;
 use read::ReadWheel;
