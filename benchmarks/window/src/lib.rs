@@ -23,7 +23,6 @@ pub mod bfinger_two {
         fn youngest(&self) -> u64;
 
         fn size(&self) -> usize;
-        fn shape(&self);
     }
 }
 
@@ -45,7 +44,6 @@ pub mod bfinger_four {
         fn youngest(&self) -> u64;
 
         fn size(&self) -> usize;
-        fn shape(&self);
     }
 }
 
@@ -67,6 +65,5 @@ pub mod bfinger_eight {
         fn youngest(&self) -> u64;
 
         fn size(&self) -> usize;
-        fn shape(&self);
     }
 }
