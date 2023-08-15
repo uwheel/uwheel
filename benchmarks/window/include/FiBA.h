@@ -1749,7 +1749,7 @@ public:
   }
 
   BoundaryT boundary;
-  void bulkEvict(timeT const& time) {
+  void bulk_evict(timeT const& time) {
     if (!boundary.empty()) { throw 1; }
     searchBoundary(time, boundary);
     Node* skipUpTo = NULL;
@@ -1869,7 +1869,7 @@ public:
     }
   }
 
-  void bulkInsert(vector<pair<timeT, inT>> entries) {
+  void bulk_insert(vector<pair<timeT, inT>> entries) {
     bulkInsert(entries.begin(), entries.end());
   }
 
@@ -2063,8 +2063,6 @@ namespace fiba_nofl {
 typedef btree::Aggregate<uint64_t, 2, btree::Kind::finger, Sum<uint64_t>> FiBA_SUM;
 typedef btree::Aggregate<uint64_t, 4, btree::Kind::finger, Sum<uint64_t>> FiBA_SUM_4;
 typedef btree::Aggregate<uint64_t, 8, btree::Kind::finger, Sum<uint64_t>> FiBA_SUM_8;
-
-//make_aggregate(BinaryFunction f, T elem) {
 
 std::unique_ptr<FiBA_SUM> create_fiba_with_sum();
 std::unique_ptr<FiBA_SUM_4> create_fiba_4_with_sum();

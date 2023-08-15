@@ -125,15 +125,15 @@ impl WindowExt<U64SumAggregator> for BFingerFourWheel {
         self.watermark = watermark;
 
         if self.watermark == self.next_window_end {
-            let _measure = Measure::new(&self.stats.window_computation_ns);
             let from = self.fiba.oldest();
             let to = self.watermark;
-            let window = self.fiba.range(from, to);
-            let evicts = self.slide.whole_seconds();
-            for _i in 0..evicts {
-                self.fiba.pin_mut().evict();
+            {
+                let _measure = Measure::new(&self.stats.window_computation_ns);
+                let window = self.fiba.range(from, to);
+                res.push((watermark, Some(window)));
             }
-            res.push((watermark, Some(window)));
+            let _measure = Measure::new(&self.stats.cleanup_ns);
+            self.fiba.pin_mut().bulk_evict(&self.watermark);
             self.next_window_end = self.watermark + self.slide.whole_milliseconds() as u64;
         }
         res
@@ -206,11 +206,7 @@ impl WindowExt<U64SumAggregator> for BFingerEightWheel {
                 res.push((watermark, Some(window)));
             }
             let _measure = Measure::new(&self.stats.cleanup_ns);
-            let evicts = self.slide.whole_seconds();
-            for _i in 0..evicts {
-                // TODO: bulk evict?
-                self.fiba.pin_mut().evict();
-            }
+            self.fiba.pin_mut().bulk_evict(&self.watermark);
             self.next_window_end = self.watermark + self.slide.whole_milliseconds() as u64;
         }
         res

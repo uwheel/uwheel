@@ -15,6 +15,7 @@ pub mod bfinger_two {
         fn create_fiba_with_sum() -> UniquePtr<FiBA_SUM>;
 
         fn evict(self: Pin<&mut FiBA_SUM>);
+        fn bulk_evict(self: Pin<&mut FiBA_SUM>, time: &u64);
         fn insert(self: Pin<&mut FiBA_SUM>, time: &u64, value: &u64);
         fn query(&self) -> u64;
         fn range(&self, time_from: u64, time_to: u64) -> u64;
@@ -35,6 +36,7 @@ pub mod bfinger_four {
 
         fn create_fiba_4_with_sum() -> UniquePtr<FiBA_SUM_4>;
 
+        fn bulk_evict(self: Pin<&mut FiBA_SUM_4>, time: &u64);
         fn evict(self: Pin<&mut FiBA_SUM_4>);
         fn insert(self: Pin<&mut FiBA_SUM_4>, time: &u64, value: &u64);
         fn query(&self) -> u64;
@@ -57,6 +59,7 @@ pub mod bfinger_eight {
         fn create_fiba_8_with_sum() -> UniquePtr<FiBA_SUM_8>;
 
         fn evict(self: Pin<&mut FiBA_SUM_8>);
+        fn bulk_evict(self: Pin<&mut FiBA_SUM_8>, time: &u64);
         fn insert(self: Pin<&mut FiBA_SUM_8>, time: &u64, value: &u64);
         fn query(&self) -> u64;
         fn range(&self, time_from: u64, time_to: u64) -> u64;

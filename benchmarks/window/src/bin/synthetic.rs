@@ -75,7 +75,7 @@ struct Run {
 struct Args {
     #[clap(short, long, value_parser, default_value_t = 10000)]
     windows: u64,
-    #[clap(short, long, value_parser, default_value_t = 1000)]
+    #[clap(short, long, value_parser, default_value_t = 10000)]
     events_per_sec: u64,
     #[clap(short, long, value_parser, default_value_t = 5)]
     max_distance: u64,
