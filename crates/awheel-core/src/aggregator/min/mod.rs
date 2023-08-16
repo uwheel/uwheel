@@ -60,9 +60,9 @@ mod tests {
     #[test]
     fn min_test() {
         let mut wheel = RwWheel::<U64MinAggregator>::new(0);
-        wheel.write().insert(Entry::new(1, 1000)).unwrap();
-        wheel.write().insert(Entry::new(5, 2000)).unwrap();
-        wheel.write().insert(Entry::new(10, 3000)).unwrap();
+        wheel.insert(Entry::new(1, 1000));
+        wheel.insert(Entry::new(5, 2000));
+        wheel.insert(Entry::new(10, 3000));
         wheel.advance(3.seconds());
         assert_eq!(wheel.read().interval_and_lower(3.seconds()), Some(1));
         wheel.advance(1.seconds());

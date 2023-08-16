@@ -130,7 +130,7 @@ mod tests {
         for _ in 0..SECONDS + 1 {
             wheel.advance_to(time);
             let entry = crate::Entry::new(1.0, time);
-            wheel.write().insert(entry).unwrap();
+            wheel.insert(entry);
             time += 1000; // increase by 1 second
         }
 

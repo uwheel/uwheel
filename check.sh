@@ -3,6 +3,8 @@ set -eux
 
 # inspired by egui's check.sh file.
 
+cargo +stable install cargo-hack --locked
+
 # no_std check
 rustup target add thumbv7m-none-eabi
 # wasm check
@@ -10,10 +12,11 @@ rustup target add wasm32-unknown-unknown
 
 cargo check -p awheel --lib --target thumbv7m-none-eabi --no-default-features
 cargo check -p awheel-demo --target wasm32-unknown-unknown
-cargo check --workspace --all-targets
+cargo hack check --all
+#cargo check --workspace --all-targets
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --  -D warnings -W clippy::all
-cargo test --workspace
+cargo hack clippy --workspace --all-targets --  -D warnings -W clippy::all
+cargo hack test --workspace
 cargo test --workspace --doc
 
 (cd crates/awheel && cargo test --features "tree, sync")

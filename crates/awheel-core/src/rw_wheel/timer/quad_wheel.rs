@@ -14,11 +14,13 @@
 //! there should be no large issues even if this assumption is not correct.
 
 use super::{byte_wheel::*, *};
+use byte_wheel::Bounds;
 use core::{fmt::Debug, time::Duration};
 
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, vec::Vec};
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 struct OverflowEntry<EntryType> {
     entry: EntryType,
     remaining_delay: Duration,
@@ -35,6 +37,7 @@ impl<EntryType> OverflowEntry<EntryType> {
 /// Indicates whether an entry should be moved into the next wheel, or dropped
 ///
 /// Use this for implementing logic for cancellable timers.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(PartialEq, Eq, Debug)]
 pub enum PruneDecision {
     /// Move the entry into the next wheel
@@ -72,13 +75,21 @@ pub fn no_prune<E>(_e: &E) -> PruneDecision {
 /// that it actually fits.
 /// In this design the maximum schedule duration for the wheel itself is [`u32::MAX`](std::u32::MAX) units (typically ms),
 /// everything else goes into the overflow `Vec`.
-pub struct QuadWheelWithOverflow<EntryType> {
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound = "EntryType: serde::Serialize + for<'a> serde::Deserialize<'a>")
+)]
+pub struct QuadWheelWithOverflow<EntryType>
+where
+    EntryType: Bounds,
+{
     primary: Box<ByteWheel<EntryType, [u8; 0]>>,
     secondary: Box<ByteWheel<EntryType, [u8; 1]>>,
     tertiary: Box<ByteWheel<EntryType, [u8; 2]>>,
     quarternary: Box<ByteWheel<EntryType, [u8; 3]>>,
     overflow: Vec<OverflowEntry<EntryType>>,
-    pruner: fn(&EntryType) -> PruneDecision,
+    pruner: PruneDecision,
 }
 
 const MAX_SCHEDULE_DUR: Duration = Duration::from_millis(u32::MAX as u64);
@@ -87,15 +98,15 @@ const PRIMARY_LENGTH: u32 = 1 << 8; // 2^8
 const SECONDARY_LENGTH: u32 = 1 << 16; // 2^16
 const TERTIARY_LENGTH: u32 = 1 << 24; // 2^24
 
-impl<EntryType> Default for QuadWheelWithOverflow<EntryType> {
+impl<EntryType: Bounds> Default for QuadWheelWithOverflow<EntryType> {
     fn default() -> Self {
-        QuadWheelWithOverflow::new(no_prune::<EntryType>)
+        QuadWheelWithOverflow::new(PruneDecision::Keep)
     }
 }
 
 impl<EntryType> QuadWheelWithOverflow<EntryType>
 where
-    EntryType: TimerEntryWithDelay,
+    EntryType: TimerEntryWithDelay + Bounds,
 {
     /// Insert a new timeout into the wheel
     pub fn insert(&mut self, e: EntryType) -> Result<(), TimerError<EntryType>> {
@@ -104,9 +115,9 @@ where
     }
 }
 
-impl<EntryType> QuadWheelWithOverflow<EntryType> {
+impl<EntryType: Bounds> QuadWheelWithOverflow<EntryType> {
     /// Create a new wheel
-    pub fn new(pruner: fn(&EntryType) -> PruneDecision) -> Self {
+    pub fn new(pruner: PruneDecision) -> Self {
         QuadWheelWithOverflow {
             primary: Box::new(ByteWheel::new()),
             secondary: Box::new(ByteWheel::new()),
@@ -201,7 +212,8 @@ impl<EntryType> QuadWheelWithOverflow<EntryType> {
         if let Some(move0) = move0_opt {
             res.reserve(move0.len());
             for we in move0 {
-                if (self.pruner)(&we.entry).should_keep() {
+                //if (self.pruner)(&we.entry).should_keep() {
+                if self.pruner.should_keep() {
                     res.push(we.entry);
                 }
             }
@@ -212,7 +224,7 @@ impl<EntryType> QuadWheelWithOverflow<EntryType> {
             if let Some(move1) = move1_opt {
                 // Don't bother reserving, as most of the values will likely be redistributed over the primary wheel instead of being returned
                 for we in move1 {
-                    if (self.pruner)(&we.entry).should_keep() {
+                    if self.pruner.should_keep() {
                         if we.rest[0] == 0u8 {
                             res.push(we.entry);
                         } else {
@@ -227,7 +239,7 @@ impl<EntryType> QuadWheelWithOverflow<EntryType> {
                 if let Some(move2) = move2_opt {
                     // Don't bother reserving, as most of the values will likely be redistributed over the primary wheel instead of being returned
                     for we in move2 {
-                        if (self.pruner)(&we.entry).should_keep() {
+                        if self.pruner.should_keep() {
                             match we.rest {
                                 [0, 0] => {
                                     res.push(we.entry);
@@ -248,7 +260,7 @@ impl<EntryType> QuadWheelWithOverflow<EntryType> {
                     if let Some(move3) = move3_opt {
                         // Don't bother reserving, as most of the values will likely be redistributed over the primary wheel instead of being returned
                         for we in move3 {
-                            if (self.pruner)(&we.entry).should_keep() {
+                            if self.pruner.should_keep() {
                                 match we.rest {
                                     [0, 0, 0] => {
                                         res.push(we.entry);
@@ -272,7 +284,7 @@ impl<EntryType> QuadWheelWithOverflow<EntryType> {
                             let mut ol = Vec::with_capacity(self.overflow.len() / 2); // assume that about half are going to be scheduled now
                             core::mem::swap(&mut self.overflow, &mut ol);
                             for overflow_e in ol {
-                                if (self.pruner)(&overflow_e.entry).should_keep() {
+                                if self.pruner.should_keep() {
                                     match self.insert_with_delay(
                                         overflow_e.entry,
                                         overflow_e.remaining_delay,

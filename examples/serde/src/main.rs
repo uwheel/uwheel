@@ -27,7 +27,7 @@ fn main() {
     serialize_wheel(wheel.read());
 
     for _ in 0..seconds_ticks {
-        wheel.write().insert(Entry::new(1u32, time)).unwrap();
+        wheel.insert(Entry::new(1u32, time));
         time += 1000;
         wheel.advance(1.seconds());
     }
@@ -35,7 +35,7 @@ fn main() {
     serialize_wheel(wheel.read());
 
     for _ in 0..minutes_ticks {
-        wheel.write().insert(Entry::new(1u32, time)).unwrap();
+        wheel.insert(Entry::new(1u32, time));
         time += 1000;
         wheel.advance(1.seconds());
     }
@@ -43,7 +43,7 @@ fn main() {
     serialize_wheel(wheel.read());
 
     for _ in 0..hours_ticks {
-        wheel.write().insert(Entry::new(1u32, time)).unwrap();
+        wheel.insert(Entry::new(1u32, time));
         time += 1000;
         wheel.advance(1.seconds());
     }
@@ -51,7 +51,7 @@ fn main() {
     serialize_wheel(wheel.read());
 
     for _ in 0..days_ticks {
-        wheel.write().insert(Entry::new(1u32, time)).unwrap();
+        wheel.insert(Entry::new(1u32, time));
         time += 1000;
         wheel.advance(1.seconds());
     }
@@ -59,7 +59,7 @@ fn main() {
     serialize_wheel(wheel.read());
 
     for _ in 0..weeks_ticks {
-        wheel.write().insert(Entry::new(1u32, time)).unwrap();
+        wheel.insert(Entry::new(1u32, time));
         time += 1000;
         wheel.advance(1.seconds());
     }
@@ -67,7 +67,7 @@ fn main() {
     serialize_wheel(wheel.read());
 
     for _ in 0..years_ticks {
-        wheel.write().insert(Entry::new(1u32, time)).unwrap();
+        wheel.insert(Entry::new(1u32, time));
         time += 1000;
         wheel.advance(1.seconds());
     }

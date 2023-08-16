@@ -6,14 +6,11 @@
 mod byte_wheel;
 mod quad_wheel;
 
+use self::{byte_wheel::Bounds, quad_wheel::QuadWheelWithOverflow};
 use core::{fmt::Debug, hash::Hash, time::Duration};
 
-use crate::{Aggregator, Entry, ReadWheel};
-
-use self::quad_wheel::QuadWheelWithOverflow;
-
 #[cfg(not(feature = "std"))]
-use alloc::{boxed::Box, vec::Vec};
+use alloc::vec::Vec;
 
 /// Result of a [can_skip](quad_wheel::QuadWheelWithOverflow::can_skip) invocation
 #[derive(PartialEq, Debug)]
@@ -86,20 +83,37 @@ where
     }
 }
 
-pub type WheelFn<A> = Box<dyn Fn(&ReadWheel<A>)>;
-
-pub enum TimerAction<A: Aggregator> {
-    Insert(Entry<A::Input>),
-    Oneshot(WheelFn<A>),
-    Repeat((Duration, WheelFn<A>)),
+#[derive(Debug)]
+pub struct TimerExpiredError<T: Debug> {
+    /// Current event time
+    pub current_time: u64,
+    /// The scheduled time
+    pub scheduled_time: u64,
+    /// Timer Entry
+    pub entry: T,
+}
+use core::{fmt, fmt::Display};
+impl<T: Debug> Display for TimerExpiredError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Attempted to schedule timer entry {:?} at {} when time is {}",
+            self.entry, self.scheduled_time, self.current_time
+        )
+    }
 }
 
-pub struct TimerWheel<A: Aggregator> {
-    timer: QuadWheelWithOverflow<TimerAction<A>>,
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound = "A: serde::Serialize + for<'a> serde::Deserialize<'a>")
+)]
+pub struct RawTimerWheel<A: Bounds> {
+    timer: QuadWheelWithOverflow<A>,
     time: u64,
 }
 
-impl<A: Aggregator> TimerWheel<A> {
+impl<A: Bounds> RawTimerWheel<A> {
     pub fn new(time: u64) -> Self {
         Self {
             timer: QuadWheelWithOverflow::default(),
@@ -107,17 +121,12 @@ impl<A: Aggregator> TimerWheel<A> {
         }
     }
     #[inline(always)]
-    pub fn schedule_at(&mut self, time: u64, entry: TimerAction<A>) {
+    pub fn schedule_at(&mut self, time: u64, entry: A) -> Result<(), TimerError<A>> {
         let curr_time = self.time();
         let delay = time - curr_time;
 
-        if self
-            .timer
+        self.timer
             .insert_with_delay(entry, Duration::from_millis(delay))
-            .is_err()
-        {
-            panic!("Something happened while scheduling timer");
-        }
     }
 
     #[inline]
@@ -131,7 +140,7 @@ impl<A: Aggregator> TimerWheel<A> {
     }
 
     #[inline(always)]
-    pub fn tick_and_collect(&mut self, res: &mut Vec<TimerAction<A>>, mut time_left: u32) {
+    pub fn tick_and_collect(&mut self, res: &mut Vec<A>, mut time_left: u32) {
         while time_left > 0 {
             match self.timer.can_skip() {
                 Skip::Empty => {
@@ -165,8 +174,8 @@ impl<A: Aggregator> TimerWheel<A> {
     }
 
     #[inline]
-    pub fn advance_to(&mut self, ts: u64) -> Vec<TimerAction<A>> {
-        let curr_time = self.time;
+    pub fn advance_to(&mut self, ts: u64) -> Vec<A> {
+        let curr_time = self.time();
         if ts < curr_time {
             // advance_to called with lower timestamp than current time
             return Vec::new();
@@ -183,5 +192,138 @@ impl<A: Aggregator> TimerWheel<A> {
         self.tick_and_collect(&mut res, time_left as u32);
 
         res
+    }
+}
+
+#[cfg(not(feature = "serde"))]
+pub mod timer_wheel {
+    use crate::{rw_wheel::timer::TimerError, time, Aggregator, Entry, ReadWheel};
+    #[cfg(not(feature = "std"))]
+    use alloc::{boxed::Box, vec::Vec};
+    use inner_impl::Inner;
+
+    pub type WheelFn<A> = Box<dyn Fn(&ReadWheel<A>)>;
+
+    pub enum TimerAction<A: Aggregator> {
+        Insert(Entry<A::Input>),
+        Oneshot(WheelFn<A>),
+        Repeat((u64, time::Duration, WheelFn<A>)),
+    }
+
+    #[derive(Clone)]
+    pub struct TimerWheel<A: Aggregator> {
+        inner: Inner<A>,
+    }
+    impl<A: Aggregator> TimerWheel<A> {
+        pub fn new(time: u64) -> Self {
+            Self {
+                inner: Inner::new(time),
+            }
+        }
+        pub fn schdule_once(
+            &self,
+            time: u64,
+            f: impl Fn(&ReadWheel<A>) + 'static,
+        ) -> Result<(), TimerError<TimerAction<A>>> {
+            self.schedule_at(time, TimerAction::Oneshot(Box::new(f)))
+        }
+        pub fn schdule_repeat(
+            &self,
+            at: u64,
+            interval: time::Duration,
+            f: impl Fn(&ReadWheel<A>) + 'static,
+        ) -> Result<(), TimerError<TimerAction<A>>> {
+            self.schedule_at(at, TimerAction::Repeat((at, interval, Box::new(f))))
+        }
+        #[inline(always)]
+        pub(crate) fn schedule_at(
+            &self,
+            time: u64,
+            entry: TimerAction<A>,
+        ) -> Result<(), TimerError<TimerAction<A>>> {
+            self.inner.write().schedule_at(time, entry)
+        }
+        #[inline]
+        pub(crate) fn advance_to(&mut self, ts: u64) -> Vec<TimerAction<A>> {
+            self.inner.write().advance_to(ts)
+        }
+    }
+    #[cfg(feature = "sync")]
+    mod inner_impl {
+        use super::{Aggregator, TimerAction};
+        use crate::rw_wheel::timer::RawTimerWheel;
+        use parking_lot::{MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock};
+        use std::sync::Arc;
+
+        /// The lock you get from [`RwLock::read`].
+        pub type Ref<'a, T> = MappedRwLockReadGuard<'a, RawTimerWheel<TimerAction<T>>>;
+        /// The lock you get from [`RwLock::write`].
+        pub type RefMut<'a, T> = MappedRwLockWriteGuard<'a, RawTimerWheel<TimerAction<T>>>;
+
+        /// A TimerWheel backed by interior mutability
+        ///
+        /// ``RefCell`` for single threded exuections and ``Arc<RwLock<_>>`` with the sync feature enabled
+        //#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+        //#[cfg_attr(feature = "serde", serde(bound = "T: Default"))]
+        #[derive(Clone)]
+        pub struct Inner<T: Aggregator + Clone>(Arc<RwLock<RawTimerWheel<TimerAction<T>>>>);
+
+        impl<T: Aggregator + Clone> Inner<T> {
+            #[inline(always)]
+            pub fn new(time: u64) -> Self {
+                Self(Arc::new(RwLock::new(RawTimerWheel::new(time))))
+            }
+
+            #[inline(always)]
+            pub fn read(&self) -> Ref<'_, T> {
+                parking_lot::RwLockReadGuard::map(self.0.read(), |v| v)
+            }
+
+            #[inline(always)]
+            pub fn write(&self) -> RefMut<'_, T> {
+                parking_lot::RwLockWriteGuard::map(self.0.write(), |v| v)
+            }
+        }
+    }
+
+    #[cfg(not(feature = "sync"))]
+    mod inner_impl {
+        use super::{Aggregator, TimerAction};
+        use crate::rw_wheel::timer::RawTimerWheel;
+        #[cfg(not(feature = "std"))]
+        use alloc::rc::Rc;
+        use core::cell::RefCell;
+        #[cfg(feature = "std")]
+        use std::rc::Rc;
+
+        /// An immutably borrowed Option<AggregationWheel<_>> from [`RefCell::borrow´]
+        pub type Ref<'a, T> = core::cell::Ref<'a, RawTimerWheel<TimerAction<T>>>;
+        /// An mutably borrowed Option<AggregationWheel<_>> from [`RefCell::borrow_mut´]
+        pub type RefMut<'a, T> = core::cell::RefMut<'a, RawTimerWheel<TimerAction<T>>>;
+
+        /// A TimerWheel backed by interior mutability
+        ///
+        /// ``RefCell`` for single threded exuections and ``Arc<RwLock<_>>`` with the sync feature enabled
+        //#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+        //#[cfg_attr(feature = "serde", serde(bound = "T: Default"))]
+        #[derive(Clone)]
+        pub struct Inner<T: Aggregator + Clone>(Rc<RefCell<RawTimerWheel<TimerAction<T>>>>);
+
+        impl<T: Aggregator + Clone> Inner<T> {
+            #[inline(always)]
+            pub fn new(time: u64) -> Self {
+                Self(Rc::new(RefCell::new(RawTimerWheel::new(time))))
+            }
+
+            #[inline(always)]
+            pub fn read(&self) -> Ref<'_, T> {
+                self.0.borrow()
+            }
+
+            #[inline(always)]
+            pub fn write(&self) -> RefMut<'_, T> {
+                self.0.borrow_mut()
+            }
+        }
     }
 }

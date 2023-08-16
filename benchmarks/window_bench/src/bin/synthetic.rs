@@ -139,9 +139,7 @@ fn run(id: &str, seconds: u64, mut window: impl WindowExt<U64SumAggregator>, arg
     let full = Instant::now();
     for _i in 0..seconds {
         for _i in 0..events_per_sec {
-            window
-                .insert(Entry::new(1, ts_generator.timestamp()))
-                .unwrap();
+            window.insert(Entry::new(1, ts_generator.timestamp()));
         }
         ts_generator.update_watermark(ts_generator.watermark() + 1000);
 

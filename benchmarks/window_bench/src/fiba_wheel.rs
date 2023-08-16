@@ -69,10 +69,8 @@ impl WindowExt<U64SumAggregator> for BFingerTwoWheel {
     fn insert(
         &mut self,
         entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
-    ) -> Result<(), awheel::Error<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>>
-    {
+    ) {
         self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
-        Ok(())
     }
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
@@ -140,11 +138,9 @@ impl WindowExt<U64SumAggregator> for BFingerFourWheel {
     fn insert(
         &mut self,
         entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
-    ) -> Result<(), awheel::Error<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>>
-    {
+    ) {
         let _measure = Measure::new(&self.stats.insert_ns);
         self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
-        Ok(())
     }
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
@@ -216,11 +212,9 @@ impl WindowExt<U64SumAggregator> for BFingerEightWheel {
     fn insert(
         &mut self,
         entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
-    ) -> Result<(), awheel::Error<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>>
-    {
+    ) {
         let _measure = Measure::new(&self.stats.insert_ns);
         self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
-        Ok(())
     }
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
@@ -362,10 +356,8 @@ impl WindowExt<U64SumAggregator> for PairsFiBA {
     fn insert(
         &mut self,
         entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
-    ) -> Result<(), awheel::Error<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>>
-    {
+    ) {
         self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
-        Ok(())
     }
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();

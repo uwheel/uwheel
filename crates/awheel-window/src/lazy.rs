@@ -9,7 +9,6 @@ use awheel_core::{
     },
     time::{Duration, NumericalDuration},
     Entry,
-    Error,
     RwWheel,
 };
 
@@ -235,10 +234,10 @@ impl<A: Aggregator> WindowExt<A> for LazyWindowWheel<A> {
         self.advance(Duration::milliseconds(diff as i64))
     }
     #[inline]
-    fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
+    fn insert(&mut self, entry: Entry<A::Input>) {
         #[cfg(feature = "stats")]
         let _measure = Measure::new(&self.stats.insert_ns);
-        self.wheel.write().insert(entry)
+        self.wheel.insert(entry);
     }
     /// Returns a reference to the underlying HAW
     fn wheel(&self) -> &ReadWheel<A> {

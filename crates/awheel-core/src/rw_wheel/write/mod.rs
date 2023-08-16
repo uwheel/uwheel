@@ -141,6 +141,25 @@ impl<A: Aggregator> WriteAheadWheel<A> {
             }
         }
     }
+    /// Insert
+    #[inline(always)]
+    pub fn insert_opt(&mut self, e: impl Into<Entry<A::Input>>) -> Option<Entry<A::Input>> {
+        let entry = e.into();
+        let watermark = self.watermark;
+
+        if entry.timestamp > watermark {
+            let diff = entry.timestamp - self.watermark;
+            let seconds = CoreDuration::from_millis(diff).as_secs();
+            if self.can_write_ahead(seconds) {
+                self.write_ahead(seconds, entry.data);
+                None
+            } else {
+                Some(entry)
+            }
+        } else {
+            None
+        }
+    }
 }
 
 impl<A: Aggregator> WheelExt for WriteAheadWheel<A> {

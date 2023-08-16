@@ -82,6 +82,7 @@ impl<T: Debug> Error<T> {
 
 /// Entry that can be inserted into the Wheel
 #[repr(C)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Copy, Clone)]
 pub struct Entry<T: Debug> {
     /// Data to be lifted by the aggregator

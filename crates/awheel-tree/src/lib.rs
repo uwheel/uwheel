@@ -65,7 +65,7 @@ impl<K: Key, A: Aggregator + Clone + 'static> RwTreeWheel<K, A> {
     }
     #[inline]
     pub fn insert(&mut self, key: K, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
-        self.star_wheel.write().insert(entry)?;
+        self.star_wheel.insert(entry);
 
         let wheel = self
             .write

@@ -70,13 +70,10 @@ fn main() -> Result<()> {
     let mut rw_wheel: RwWheel<TopNAggregator<u64, 10, U64SumAggregator>> = RwWheel::new(0);
     for batch in batches {
         for record in batch {
-            rw_wheel
-                .write()
-                .insert(Entry::new(
-                    (record.pu_location_id, record.fare_amount as u64),
-                    record.do_time,
-                ))
-                .unwrap();
+            rw_wheel.insert(Entry::new(
+                (record.pu_location_id, record.fare_amount as u64),
+                record.do_time,
+            ));
         }
         use awheel::time::NumericalDuration;
         rw_wheel.advance(60.seconds());
