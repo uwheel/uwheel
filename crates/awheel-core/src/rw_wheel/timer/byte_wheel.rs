@@ -13,9 +13,9 @@
 //! # Example
 //! Example usage of this abstraction can be seen in the source code of the [quad_wheel](crate::wheels::quad_wheel::QuadWheelWithOverflow).
 //!
+
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-
 #[cfg(feature = "serde")]
 use serde_big_array::BigArray;
 

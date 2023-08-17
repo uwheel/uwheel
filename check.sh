@@ -13,7 +13,6 @@ rustup target add wasm32-unknown-unknown
 cargo check -p awheel --lib --target thumbv7m-none-eabi --no-default-features
 cargo check -p awheel-demo --target wasm32-unknown-unknown
 cargo hack check --all
-#cargo check --workspace --all-targets
 cargo fmt --all -- --check
 cargo hack clippy --workspace --all-targets --  -D warnings -W clippy::all
 cargo hack test --workspace
