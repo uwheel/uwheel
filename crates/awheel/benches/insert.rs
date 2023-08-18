@@ -16,6 +16,7 @@ pub fn insert_benchmark(c: &mut Criterion) {
     {
         let mut group = c.benchmark_group("latency");
         group.bench_function("insert-wheel-same-timestamp", insert_same_timestamp_wheel);
+        group.bench_function("insert-wheel-to-timer", insert_to_timer);
 
         for seconds in [1u64, 10, 20, 30, 40, 50, 60].iter() {
             group.bench_with_input(
@@ -89,7 +90,7 @@ fn insert_out_of_order(percentage: f32, bencher: &mut Bencher) {
         },
         |(mut wheel, timestamps)| {
             for timestamp in timestamps {
-                wheel.write().insert(Entry::new(1, timestamp)).unwrap();
+                wheel.insert(Entry::new(1, timestamp));
             }
             wheel
         },
@@ -98,17 +99,26 @@ fn insert_out_of_order(percentage: f32, bencher: &mut Bencher) {
 }
 
 fn insert_wheel_random(seconds: u64, bencher: &mut Bencher) {
-    let mut wheel = RwWheel::<U64SumAggregator>::new(0);
+    //let mut wheel = RwWheel::<U64SumAggregator>::new(0);
+    let opts = awheel::rw_wheel::Options::default().with_write_ahead(16);
+    let mut wheel = RwWheel::<U64SumAggregator>::with_options(0, opts);
     bencher.iter(|| {
         let ts = fastrand::u64(1..=seconds) * 1000;
-        wheel.write().insert(Entry::new(1, ts)).unwrap();
+        wheel.insert(Entry::new(1, ts));
     });
 }
 
+fn insert_to_timer(bencher: &mut Bencher) {
+    let mut wheel = RwWheel::<U64SumAggregator>::new(0);
+    bencher.iter(|| {
+        let ts = fastrand::u64(65..=128) * 1000;
+        wheel.insert(Entry::new(1, ts));
+    });
+}
 fn insert_same_timestamp_wheel(bencher: &mut Bencher) {
     let mut wheel = RwWheel::<U64SumAggregator>::new(0);
     bencher.iter(|| {
-        wheel.write().insert(Entry::new(1, 1000)).unwrap();
+        wheel.insert(Entry::new(1, 1000));
     });
 }
 

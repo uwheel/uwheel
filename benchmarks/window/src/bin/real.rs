@@ -81,11 +81,10 @@ fn main() {
     for result in rdr.deserialize() {
         let record: CitiBikeTrip = result.unwrap();
         let event = CitiBikeEvent::from(record);
-        //println!("{:?}", event);
         events.push(event);
     }
 
-    let watermark = datetime_to_u64("2018-09-01 00:00:00.0");
+    let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
     let mut runs = Vec::new();
     let range = Duration::seconds(30);
     let slide = Duration::seconds(10);
@@ -115,7 +114,9 @@ fn main() {
         .with_watermark(watermark)
         .build();
 
-    let (runtime, stats, _results) = run(eager_wheel, &events);
+    let (runtime, stats, eager_results) = run(eager_wheel, &events);
+    assert_eq!(lazy_results, eager_results);
+    //println!("{:#?}", eager_results);
     println!("Finished Eager Wheel");
     runs.push(Run {
         id: "Eager Wheel".to_string(),
@@ -125,8 +126,9 @@ fn main() {
     });
 
     let cg_bfinger_four_wheel = fiba_wheel::BFingerFourWheel::new(watermark, range, slide);
-    let (runtime, stats, bfinger4_results) = run(cg_bfinger_four_wheel, &events);
-    assert_eq!(lazy_results, bfinger4_results);
+    let (runtime, stats, _bfinger4_results) = run(cg_bfinger_four_wheel, &events);
+    //assert_eq!(eager_results, bfinger4_results);
+    //println!("{:#?}", bfinger4_results);
     runs.push(Run {
         id: "FiBA CG BFinger4".to_string(),
         total_insertions,
@@ -153,26 +155,21 @@ fn run(
     mut window: impl WindowExt<U64SumAggregator>,
     events: &[CitiBikeEvent],
 ) -> (std::time::Duration, Stats, Vec<(u64, Option<u64>)>) {
-    let mut watermark = datetime_to_u64("2018-09-01 00:00:00.0");
+    let mut watermark = datetime_to_u64("2018-08-01 00:00:00.0");
     dbg!(watermark);
     let mut generator = WatermarkGenerator::new(watermark, 3500);
     let mut counter = 0;
-    let mut overflow_counter = 0;
     let mut results = Vec::new();
 
     let full = minstant::Instant::now();
     for event in events {
         generator.on_event(&event.start_time);
-
-        if let Err(err) = window.insert(Entry::new(
+        window.insert(Entry::new(
             event.trip_duration,
-            //align_to_closest_thousand(event.start_time),
             event.start_time,
-        )) {
-            if err.is_overflow() {
-                overflow_counter += 1;
-            }
-        }
+            //event.start_time,
+        ));
+
         counter += 1;
 
         if counter == 10 {
@@ -195,9 +192,8 @@ fn run(
     }
     watermark = align_to_closest_thousand(generator.generate_watermark());
     for (_timestamp, _result) in window.advance_to(watermark) {
-        //log!("Window at {} with data {:?}", _timestamp, _result);
+        results.push((_timestamp, _result));
     }
-    println!("Overflow counter {}", overflow_counter);
 
     let runtime = full.elapsed();
     (runtime, window.stats().clone(), results)

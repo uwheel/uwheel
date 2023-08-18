@@ -108,7 +108,7 @@ fn large_wheel() -> RwWheel<AllAggregator> {
     let ticks = 604800; // 7-days as seconds
     for _ in 0..ticks {
         wheel.advance_to(time);
-        wheel.write().insert(Entry::new(1.0, time)).unwrap();
+        wheel.insert(Entry::new(1.0, time));
         time += 1000;
     }
     wheel

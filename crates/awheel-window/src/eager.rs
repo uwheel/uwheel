@@ -11,7 +11,6 @@ use awheel_core::{
     },
     time::{Duration, NumericalDuration},
     Entry,
-    Error,
     RwWheel,
 };
 #[cfg(feature = "rkyv")]
@@ -252,7 +251,7 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
                                 .wheel
                                 .read()
                                 .interval(self.range_interval_duration())
-                                .unwrap();
+                                .unwrap_or_default();
                             self.last_rotation = Some(window_result);
 
                             window_results.push((
@@ -305,10 +304,10 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
         self.advance(Duration::milliseconds(diff as i64))
     }
     #[inline]
-    fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
+    fn insert(&mut self, entry: Entry<A::Input>) {
         #[cfg(feature = "stats")]
         let _measure = Measure::new(&self.stats.insert_ns);
-        self.wheel.write().insert(entry)
+        self.wheel.insert(entry);
     }
     /// Returns a reference to the underlying HAW
     fn wheel(&self) -> &ReadWheel<A> {

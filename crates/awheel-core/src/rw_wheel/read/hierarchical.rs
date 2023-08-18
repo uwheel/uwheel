@@ -258,6 +258,7 @@ where
         self.interval(dur).map(|partial| A::lower(partial))
     }
 
+    // helper function to convert a time interval to the responding time granularities
     #[inline]
     fn duration_to_granularities(dur: time::Duration) -> Granularities {
         // closure that turns i64 to None if it is zero

@@ -764,20 +764,14 @@ impl eframe::App for TemplateApp {
             if ui.button("Insert").clicked() {
                 match (aggregate.parse::<u64>(), timestamp.parse::<u64>()) {
                     (Ok(aggregate), Ok(timestamp)) => {
-                        if let Err(err) = insert_wheel
+                        insert_wheel
                             .borrow_mut()
-                            .write()
-                            .insert(Entry::new(aggregate, timestamp))
-                        {
-                            log.push_front(LogEntry::Red(err.to_string()));
-                        } else {
-                            // should not fail
-                            star_wheel.borrow_mut().write().insert(Entry::new(aggregate, timestamp)).unwrap();
+                            .insert(Entry::new(aggregate, timestamp));
+                            star_wheel.borrow_mut().insert(Entry::new(aggregate, timestamp));
                             log.push_front(LogEntry::Green(format!(
                                 "Inserted {} with timestamp {}",
                                 aggregate, timestamp
                             )));
-                        }
                     }
                     (Ok(_), Err(_)) => {
                         log.push_front(LogEntry::Red(format!(
@@ -885,7 +879,7 @@ impl eframe::App for TemplateApp {
                 ui.label(RichText::new("Watermark: ").strong());
                 ui.label(RichText::new(&*labels.watermark_label).strong());
             });
-            let write_ahead_len = insert_wheel.borrow_mut().write().write_ahead_len();
+            let write_ahead_len = insert_wheel.borrow().write().write_ahead_len();
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Write ahead Slots: ").strong());
                 ui.label(RichText::new(write_ahead_len.to_string()).strong());
@@ -950,8 +944,8 @@ impl eframe::App for TemplateApp {
                             let student = Student::random();
                             let ts = fastrand::u64(time..time + 60000);
                             let agg = fastrand::u64(1..5);
-                            wheels.get(&student).unwrap().borrow_mut().write().insert(Entry::new(agg, ts)).unwrap();
-                            star_wheel.borrow_mut().write().insert(Entry::new(agg, ts)).unwrap();
+                            wheels.get(&student).unwrap().borrow_mut().insert(Entry::new(agg, ts));
+                            star_wheel.borrow_mut().insert(Entry::new(agg, ts));
                         }
                         for wheel in wheels.values() {
                             wheel.borrow_mut().advance(60.seconds());

@@ -27,7 +27,7 @@ pub mod top_n;
 /// Aggregation interface that library users must implement to use awheel
 pub trait Aggregator: Default + Debug + Clone + 'static {
     /// Input type that can be inserted into [Self::MutablePartialAggregate]
-    type Input: Debug + Copy + Send;
+    type Input: InputBounds;
 
     /// Mutable Partial Aggregate type
     type MutablePartialAggregate: MutablePartialAggregateType;
@@ -61,6 +61,24 @@ pub trait InverseExt: Aggregator {
         a: Self::PartialAggregate,
         b: Self::PartialAggregate,
     ) -> Self::PartialAggregate;
+}
+#[cfg(not(feature = "serde"))]
+/// Bounds for Aggregator Input
+pub trait InputBounds: Debug + Clone + Copy + Send {}
+#[cfg(feature = "serde")]
+/// Bounds for Aggregator Input
+pub trait InputBounds:
+    Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a> + 'static
+{
+}
+
+#[cfg(not(feature = "serde"))]
+impl<T> InputBounds for T where T: Debug + Clone + Copy + Send {}
+
+#[cfg(feature = "serde")]
+impl<T> InputBounds for T where
+    T: Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a> + 'static
+{
 }
 
 /// A mutable aggregate type

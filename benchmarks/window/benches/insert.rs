@@ -175,7 +175,7 @@ fn insert_batch_wheel(seconds: u64, bencher: &mut Bencher) {
         |mut wheel| {
             for _i in 0..NUM_ELEMENTS {
                 let timestamp = random_timestamp(seconds);
-                wheel.write().insert(Entry::new(1, timestamp)).unwrap();
+                wheel.insert(Entry::new(1, timestamp));
             }
             wheel
         },
@@ -193,7 +193,7 @@ fn _insert_out_of_order(percentage: f32, bencher: &mut Bencher) {
         },
         |(mut wheel, timestamps)| {
             for timestamp in timestamps {
-                wheel.write().insert(Entry::new(1, timestamp)).unwrap();
+                wheel.insert(Entry::new(1, timestamp));
             }
             wheel
         },
@@ -313,14 +313,14 @@ fn insert_wheel_random(seconds: u64, bencher: &mut Bencher) {
     let mut wheel = RwWheel::<U64SumAggregator>::new(0);
     bencher.iter(|| {
         let ts = random_timestamp(seconds);
-        wheel.write().insert(Entry::new(1, ts)).unwrap();
+        wheel.insert(Entry::new(1, ts));
     });
 }
 
 fn insert_same_timestamp_wheel(bencher: &mut Bencher) {
     let mut wheel = RwWheel::<U64SumAggregator>::new(0);
     bencher.iter(|| {
-        wheel.write().insert(Entry::new(1, 1000)).unwrap();
+        wheel.insert(Entry::new(1, 1000));
     });
 }
 

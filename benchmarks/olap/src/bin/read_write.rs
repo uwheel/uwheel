@@ -50,10 +50,7 @@ fn main() -> Result<()> {
     let mut wheel: RwWheel<AllAggregator> = RwWheel::new(0);
     for batch in batches {
         for record in batch {
-            wheel
-                .write()
-                .insert(Entry::new(record.fare_amount, record.do_time))
-                .unwrap();
+            wheel.insert(Entry::new(record.fare_amount, record.do_time));
         }
         use awheel::time::NumericalDuration;
         wheel.advance(60.seconds());
@@ -110,7 +107,7 @@ fn main() -> Result<()> {
             let write_now = Instant::now();
             for _i in 0..args.advances {
                 let wm = wheel.watermark();
-                wheel.write().insert(Entry::new(1.0, wm + 1)).unwrap();
+                wheel.insert(Entry::new(1.0, wm + 1));
                 wheel.advance(time::Duration::seconds(args.advance_step as i64));
             }
             let runtime = write_now.elapsed();

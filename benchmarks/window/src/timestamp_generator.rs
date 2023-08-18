@@ -3,7 +3,7 @@ use awheel::time::Duration;
 #[inline]
 pub fn align_to_closest_thousand(timestamp: u64) -> u64 {
     let remainder = timestamp % 1000;
-    if remainder <= 500 {
+    if remainder < 500 {
         timestamp - remainder
     } else {
         timestamp + (1000 - remainder)
