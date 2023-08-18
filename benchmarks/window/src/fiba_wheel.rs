@@ -85,6 +85,7 @@ impl WindowExt<U64SumAggregator> for BFingerTwoWheel {
 }
 
 pub struct BFingerFourWheel {
+    range: Duration,
     slide: Duration,
     watermark: u64,
     next_window_end: u64,
@@ -94,6 +95,7 @@ pub struct BFingerFourWheel {
 impl BFingerFourWheel {
     pub fn new(watermark: u64, range: Duration, slide: Duration) -> Self {
         Self {
+            range,
             slide,
             watermark,
             next_window_end: watermark + range.whole_milliseconds() as u64,
@@ -119,22 +121,28 @@ impl WindowExt<U64SumAggregator> for BFingerFourWheel {
         u64,
         Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
     )> {
+        let diff = watermark.saturating_sub(self.watermark);
+        let seconds = Duration::milliseconds(diff as i64).whole_seconds() as u64;
         let _adv_measure = Measure::new(&self.stats.advance_ns);
         let mut res = Vec::new();
 
-        self.watermark = watermark;
-
-        if self.watermark == self.next_window_end {
-            let from = self.fiba.oldest();
-            let to = self.watermark;
-            {
-                let _measure = Measure::new(&self.stats.window_computation_ns);
-                let window = self.fiba.range(from, to);
-                res.push((watermark, Some(window)));
+        for _tick in 0..seconds {
+            self.watermark += 1000;
+            if self.watermark == self.next_window_end {
+                let from = self.watermark - self.range.whole_milliseconds() as u64;
+                let to = self.watermark;
+                {
+                    let _measure = Measure::new(&self.stats.window_computation_ns);
+                    let window = self.fiba.range(from, to);
+                    res.push((self.watermark, Some(window)));
+                }
+                let _measure = Measure::new(&self.stats.cleanup_ns);
+                let evict_point = (self.watermark - self.range.whole_milliseconds() as u64)
+                    + self.slide.whole_milliseconds() as u64;
+                //dbg!(self.watermark, evict_point, from, to);
+                self.fiba.pin_mut().bulk_evict(&evict_point);
+                self.next_window_end = self.watermark + self.slide.whole_milliseconds() as u64;
             }
-            let _measure = Measure::new(&self.stats.cleanup_ns);
-            self.fiba.pin_mut().bulk_evict(&self.watermark);
-            self.next_window_end = self.watermark + self.slide.whole_milliseconds() as u64;
         }
         res
     }
@@ -145,7 +153,9 @@ impl WindowExt<U64SumAggregator> for BFingerFourWheel {
     ) -> Result<(), awheel::Error<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>>
     {
         let _measure = Measure::new(&self.stats.insert_ns);
-        self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
+        if entry.timestamp > self.watermark {
+            self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
+        }
         Ok(())
     }
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
@@ -218,7 +228,9 @@ impl WindowExt<U64SumAggregator> for BFingerEightWheel {
     ) -> Result<(), awheel::Error<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>>
     {
         let _measure = Measure::new(&self.stats.insert_ns);
-        self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
+        if entry.timestamp > self.watermark {
+            self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
+        }
         Ok(())
     }
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {

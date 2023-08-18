@@ -1,7 +1,7 @@
 [workspace]
 resolver = "1"                         # needed for awheel-demo to work on web
 members = ["crates/*", "benchmarks/*", "examples/*"]
-exclude = ["benchmarks/results"]
+exclude = ["benchmarks/results", "benchmarks/data"]
 
 
 [workspace.package]

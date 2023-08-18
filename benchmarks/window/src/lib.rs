@@ -1,7 +1,8 @@
 pub mod fiba_wheel;
 pub mod timestamp_generator;
 
-pub use timestamp_generator::TimestampGenerator;
+use awheel::window::stats::Stats;
+pub use timestamp_generator::{align_to_closest_thousand, TimestampGenerator};
 
 pub use cxx::UniquePtr;
 
@@ -68,5 +69,40 @@ pub mod bfinger_eight {
         fn youngest(&self) -> u64;
 
         fn size(&self) -> usize;
+    }
+}
+
+pub struct Run {
+    pub id: String,
+    pub total_insertions: u64,
+    pub runtime: std::time::Duration,
+    pub stats: Stats,
+}
+#[derive(Debug)]
+pub struct Execution {
+    pub range: u64,
+    pub slide: u64,
+}
+impl Execution {
+    pub const fn new(range: u64, slide: u64) -> Self {
+        Self { range, slide }
+    }
+}
+
+#[allow(dead_code)]
+pub struct BenchResult {
+    execution: Execution,
+    runs: Vec<Run>,
+}
+impl BenchResult {
+    pub fn new(execution: Execution, runs: Vec<Run>) -> Self {
+        Self { execution, runs }
+    }
+    pub fn print(&self) {
+        println!("{:#?}", self.execution);
+        for run in self.runs.iter() {
+            println!("{} (took {:.2}s)", run.id, run.runtime.as_secs_f64(),);
+            println!("{:#?}", run.stats);
+        }
     }
 }

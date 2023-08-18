@@ -2,4 +2,5 @@
 /Cargo.lock
 crates/awheel-demo/dist
 benchmarks/results
+benchmarks/data
 .DS_STORE

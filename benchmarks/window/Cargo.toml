@@ -12,6 +12,9 @@ plot = ["dep:plotpy"]
 cxx = "1.0"
 awheel = { workspace = true, features = ["window", "stats"] }
 plotpy = { workspace = true, optional = true }
+serde.workspace = true
+csv = "1.2.2"
+chrono = "0.4"
 clap.workspace = true
 fastrand.workspace = true
 hdrhistogram.workspace = true
