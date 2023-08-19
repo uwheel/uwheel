@@ -94,7 +94,9 @@ impl<A: Aggregator> RwWheel<A> {
         {
             // If entry does not fit within the write-ahead wheel then schedule it to be inserted in the future
             // TODO: cluster the entry with other timestamps around the same write-ahead range
-            let timestamp = entry.timestamp - (self.write.capacity() as u64 * 1000); // into milli
+            let write_ahead_ms = time::Duration::seconds(self.write.write_ahead_len() as i64)
+                .whole_milliseconds() as u64;
+            let timestamp = entry.timestamp - write_ahead_ms / 2; // for now
             self.entry_timer.schedule_at(timestamp, entry).unwrap();
         }
     }

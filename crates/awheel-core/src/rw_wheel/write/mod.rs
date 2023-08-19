@@ -56,16 +56,14 @@ impl<A: Aggregator> WriteAheadWheel<A> {
     #[inline]
     pub(super) fn tick(&mut self) -> Option<A::MutablePartialAggregate> {
         self.watermark += Duration::seconds(1i64).whole_milliseconds() as u64;
+
         // bump head
         self.head = self.wrap_add(self.head, 1);
 
-        if !self.is_empty() {
-            let tail = self.tail;
-            self.tail = self.wrap_add(self.tail, 1);
-            self.slot(tail).take()
-        } else {
-            None
-        }
+        // bump tail and return the taken slot
+        let tail = self.tail;
+        self.tail = self.wrap_add(self.tail, 1);
+        self.slot(tail).take()
     }
     pub(super) fn watermark_mut(&mut self) -> &mut u64 {
         &mut self.watermark
@@ -73,7 +71,7 @@ impl<A: Aggregator> WriteAheadWheel<A> {
 
     /// Check whether this wheel can write ahead by ´addend` slots
     pub(crate) fn can_write_ahead(&self, addend: u64) -> bool {
-        addend as usize <= self.write_ahead_len()
+        (addend as usize) < self.write_ahead_len()
     }
 
     /// How many write ahead slots are available
@@ -89,7 +87,7 @@ impl<A: Aggregator> WriteAheadWheel<A> {
     }
 
     /// Attempts to write `entry` into the Wheel
-    #[inline]
+    #[inline(always)]
     fn write_ahead(&mut self, addend: u64, data: A::Input) {
         let slot_idx = self.slot_idx_forward_from_head(addend as usize);
         self.combine_or_lift(slot_idx, data);
@@ -99,7 +97,7 @@ impl<A: Aggregator> WriteAheadWheel<A> {
     fn slot(&mut self, idx: usize) -> &mut Option<A::MutablePartialAggregate> {
         &mut self.slots[idx]
     }
-    #[inline]
+    #[inline(always)]
     fn combine_or_lift(&mut self, idx: usize, entry: A::Input) {
         let slot = self.slot(idx);
         match slot {
@@ -141,25 +139,6 @@ impl<A: Aggregator> WriteAheadWheel<A> {
             }
         }
     }
-    /// Insert
-    #[inline(always)]
-    pub fn insert_opt(&mut self, e: impl Into<Entry<A::Input>>) -> Option<Entry<A::Input>> {
-        let entry = e.into();
-        let watermark = self.watermark;
-
-        if entry.timestamp > watermark {
-            let diff = entry.timestamp - self.watermark;
-            let seconds = CoreDuration::from_millis(diff).as_secs();
-            if self.can_write_ahead(seconds) {
-                self.write_ahead(seconds, entry.data);
-                None
-            } else {
-                Some(entry)
-            }
-        } else {
-            None
-        }
-    }
 }
 
 impl<A: Aggregator> WheelExt for WriteAheadWheel<A> {
@@ -178,5 +157,54 @@ impl<A: Aggregator> WheelExt for WriteAheadWheel<A> {
     fn size_bytes(&self) -> Option<usize> {
         let inner_slots = mem::size_of::<Option<A::MutablePartialAggregate>>() * self.num_slots;
         Some(mem::size_of::<Self>() + inner_slots)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::aggregator::sum::U64SumAggregator;
+
+    use super::*;
+
+    #[test]
+    fn write_ahead_test() {
+        let mut wheel: WriteAheadWheel<U64SumAggregator> =
+            WriteAheadWheel::with_capacity_and_watermark(16, 0);
+
+        assert!(wheel.insert(Entry::new(1, 0)).is_ok());
+        assert!(wheel.insert(Entry::new(10, 1000)).is_ok());
+        assert!(wheel.insert(Entry::new(20, 2000)).is_ok());
+        assert!(wheel.insert(Entry::new(10, 15000)).is_ok());
+        assert!(wheel
+            .insert(Entry::new(10, 16000))
+            .unwrap_err()
+            .is_overflow());
+
+        assert_eq!(wheel.tick(), Some(1));
+        assert_eq!(wheel.head, 1);
+        assert_eq!(wheel.tail, 1);
+
+        assert!(wheel.insert(Entry::new(10, 0)).unwrap_err().is_late());
+
+        assert_eq!(wheel.at(0), Some(&10));
+        assert!(wheel.insert(Entry::new(5, 1000)).is_ok());
+        assert_eq!(wheel.at(0), Some(&15));
+
+        assert_eq!(wheel.tick(), Some(15));
+        assert_eq!(wheel.head, 2);
+        assert_eq!(wheel.tail, 2);
+
+        assert_eq!(wheel.tick(), Some(20));
+        assert_eq!(wheel.head, 3);
+        assert_eq!(wheel.tail, 3);
+
+        for _ in 0..12 {
+            assert_eq!(wheel.tick(), None);
+        }
+
+        assert!(wheel.insert(Entry::new(2, 16000)).is_ok());
+        assert_eq!(wheel.tick(), Some(10));
+        assert_eq!(wheel.head, 0);
+        assert_eq!(wheel.tail, 0);
     }
 }

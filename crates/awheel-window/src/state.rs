@@ -2,6 +2,7 @@ use crate::util::{create_pair_type, PairType};
 use awheel_core::time::Duration;
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Debug)]
 pub struct State {
     pub(crate) pair_type: PairType,
     pub(crate) pair_ticks_remaining: usize,

@@ -57,6 +57,40 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn window_30_sec_range_10_sec_slide_lazy_test() {
+        let wheel: LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
+            .with_range(Duration::seconds(30))
+            .with_slide(Duration::seconds(10))
+            .with_watermark(1533081600000)
+            .build();
+        window_30_sec_range_10_sec_slide(wheel);
+    }
+    #[test]
+    fn window_30_sec_range_10_sec_slide_eager_test() {
+        let wheel: EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
+            .with_range(Duration::seconds(30))
+            .with_slide(Duration::seconds(10))
+            .with_watermark(1533081600000)
+            .build();
+        window_30_sec_range_10_sec_slide(wheel);
+    }
+    fn window_30_sec_range_10_sec_slide(mut wheel: impl WindowExt<U64SumAggregator>) {
+        wheel.insert(Entry::new(681, 1533081607321));
+        wheel.insert(Entry::new(625, 1533081619748));
+        wheel.insert(Entry::new(1319, 1533081621175));
+        wheel.insert(Entry::new(220, 1533081626470));
+        wheel.insert(Entry::new(398, 1533081630291));
+        wheel.insert(Entry::new(2839, 1533081662717));
+        wheel.insert(Entry::new(172, 1533081663534));
+        wheel.insert(Entry::new(1133, 1533081664024));
+        wheel.insert(Entry::new(1417, 1533081678095));
+        wheel.insert(Entry::new(195, 1533081679609));
+
+        let results = wheel.advance_to(1533081630000);
+        assert_eq!(results, [(1533081630000, Some(2845))])
+    }
+
     fn window_60_sec_range_10_sec_slide(mut wheel: impl WindowExt<U64SumAggregator>) {
         wheel.insert(Entry::new(1, 9000));
         wheel.insert(Entry::new(1, 15000));
