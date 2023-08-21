@@ -7,10 +7,12 @@ use awheel_core::{
     aggregator::{Aggregator, InverseExt},
     rw_wheel::{
         read::{aggregation::combine_or_insert, ReadWheel},
+        write::DEFAULT_WRITE_AHEAD_SLOTS,
         WheelExt,
     },
     time::{Duration, NumericalDuration},
     Entry,
+    Options,
     RwWheel,
 };
 #[cfg(feature = "rkyv")]
@@ -69,8 +71,10 @@ impl<A: Aggregator> InverseWheel<A> {
         let _ = self.tick();
     }
     #[inline]
-    fn push(&mut self, data: A::PartialAggregate) {
-        combine_or_insert::<A>(self.slot(self.head), data);
+    fn push(&mut self, data_opt: Option<A::PartialAggregate>) {
+        if let Some(data) = data_opt {
+            combine_or_insert::<A>(self.slot(self.head), data);
+        }
         self.head = self.wrap_add(self.head, 1);
     }
 
@@ -100,14 +104,32 @@ impl<A: Aggregator> WheelExt for InverseWheel<A> {
 }
 
 /// A Builder type for [EagerWindowWheel]
-#[derive(Default, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct Builder {
     range: usize,
     slide: usize,
+    write_ahead: usize,
     time: u64,
 }
 
+impl Default for Builder {
+    fn default() -> Self {
+        Self {
+            range: 0,
+            slide: 0,
+            write_ahead: DEFAULT_WRITE_AHEAD_SLOTS,
+            time: 0,
+        }
+    }
+}
+
 impl Builder {
+    /// Configures the builder to create a wheel with the given write-ahead capacity
+    pub fn with_write_ahead(mut self, write_ahead: usize) -> Self {
+        self.write_ahead = write_ahead;
+        self
+    }
+
     /// Configures the builder to create a wheel with the given watermark
     pub fn with_watermark(mut self, watermark: u64) -> Self {
         self.time = watermark;
@@ -129,7 +151,7 @@ impl Builder {
             self.range >= self.slide,
             "Range must be larger or equal to slide"
         );
-        EagerWindowWheel::new(self.time, self.range, self.slide)
+        EagerWindowWheel::new(self.time, self.write_ahead, self.range, self.slide)
     }
 }
 
@@ -155,14 +177,14 @@ pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
 }
 
 impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
-    fn new(time: u64, range: usize, slide: usize) -> Self {
+    fn new(time: u64, write_ahead: usize, range: usize, slide: usize) -> Self {
         let state = State::new(time, range, slide);
         let pair_slots = pairs_capacity(range, slide);
         Self {
             range,
             slide,
             inverse_wheel: InverseWheel::with_capacity(pair_slots),
-            wheel: RwWheel::new(time),
+            wheel: RwWheel::with_options(time, Options::default().with_write_ahead(write_ahead)),
             state,
             next_full_rotation: time + range as u64,
             current_secs_rotation: 0,
@@ -227,8 +249,7 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
                 let partial = self
                     .wheel
                     .read()
-                    .interval(self.state.current_pair_duration())
-                    .unwrap_or_default();
+                    .interval(self.state.current_pair_duration());
 
                 self.inverse_wheel.push(partial);
 
@@ -331,9 +352,9 @@ mod tests {
     #[test]
     fn inverse_wheel_test() {
         let mut iwheel: InverseWheel<U64SumAggregator> = InverseWheel::with_capacity(64);
-        iwheel.push(2u64);
-        iwheel.push(3u64);
-        iwheel.push(10u64);
+        iwheel.push(Some(2u64));
+        iwheel.push(Some(3u64));
+        iwheel.push(Some(10u64));
 
         assert_eq!(iwheel.tick().unwrap(), 2u64);
         assert_eq!(iwheel.tick().unwrap(), 5u64);

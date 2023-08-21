@@ -67,12 +67,6 @@ impl WindowExt<U64SumAggregator> for BFingerFourWheel {
                 profile_scope!(&self.stats.cleanup_ns);
                 let evict_point = (self.watermark - self.range.whole_milliseconds() as u64)
                     + self.slide.whole_milliseconds() as u64;
-                /*
-                println!(
-                    "watermark {} evict_point {} from {} to {}",
-                    self.watermark, evict_point, from, to
-                );
-                */
                 self.fiba.pin_mut().bulk_evict(&(evict_point - 1));
                 self.next_window_end = self.watermark + self.slide.whole_milliseconds() as u64;
             }
@@ -85,16 +79,10 @@ impl WindowExt<U64SumAggregator> for BFingerFourWheel {
         entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
     ) {
         profile_scope!(&self.stats.insert_ns);
-        if entry.timestamp > self.watermark {
+        if entry.timestamp >= self.watermark {
             let diff = entry.timestamp - self.watermark;
             let seconds = std::time::Duration::from_millis(diff).as_secs();
             let ts = self.watermark + (seconds * 1000);
-            /*
-            println!(
-                "Original ts {} new ts {} watermark {} data {:?}",
-                entry.timestamp, ts, self.watermark, entry.data
-            );
-            */
             self.fiba.pin_mut().insert(&ts, &entry.data);
         }
     }
@@ -108,6 +96,7 @@ impl WindowExt<U64SumAggregator> for BFingerFourWheel {
 }
 
 pub struct BFingerEightWheel {
+    range: Duration,
     slide: Duration,
     watermark: u64,
     next_window_end: u64,
@@ -117,6 +106,7 @@ pub struct BFingerEightWheel {
 impl BFingerEightWheel {
     pub fn new(watermark: u64, range: Duration, slide: Duration) -> Self {
         Self {
+            range,
             slide,
             watermark,
             next_window_end: watermark + range.whole_milliseconds() as u64,
@@ -144,21 +134,27 @@ impl WindowExt<U64SumAggregator> for BFingerEightWheel {
     )> {
         profile_scope!(&self.stats.advance_ns);
 
+        let diff = watermark.saturating_sub(self.watermark);
+        let seconds = Duration::milliseconds(diff as i64).whole_seconds() as u64;
+        profile_scope!(&self.stats.advance_ns);
         let mut res = Vec::new();
 
-        self.watermark = watermark;
-
-        if self.watermark == self.next_window_end {
-            let from = self.fiba.oldest();
-            let to = self.watermark;
-            {
-                profile_scope!(&self.stats.window_computation_ns);
-                let window = self.fiba.range(from, to);
-                res.push((watermark, Some(window)));
+        for _tick in 0..seconds {
+            self.watermark += 1000;
+            if self.watermark == self.next_window_end {
+                let from = self.watermark - self.range.whole_milliseconds() as u64;
+                let to = self.watermark;
+                {
+                    profile_scope!(&self.stats.window_computation_ns);
+                    let window = self.fiba.range(from, to - 1);
+                    res.push((self.watermark, Some(window)));
+                }
+                profile_scope!(&self.stats.cleanup_ns);
+                let evict_point = (self.watermark - self.range.whole_milliseconds() as u64)
+                    + self.slide.whole_milliseconds() as u64;
+                self.fiba.pin_mut().bulk_evict(&(evict_point - 1));
+                self.next_window_end = self.watermark + self.slide.whole_milliseconds() as u64;
             }
-            profile_scope!(&self.stats.cleanup_ns);
-            self.fiba.pin_mut().bulk_evict(&self.watermark);
-            self.next_window_end = self.watermark + self.slide.whole_milliseconds() as u64;
         }
         res
     }
@@ -168,8 +164,13 @@ impl WindowExt<U64SumAggregator> for BFingerEightWheel {
         entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
     ) {
         profile_scope!(&self.stats.insert_ns);
-        if entry.timestamp > self.watermark {
-            self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
+        if entry.timestamp >= self.watermark {
+            let diff = entry.timestamp - self.watermark;
+            let seconds = std::time::Duration::from_millis(diff).as_secs();
+            let ts = self.watermark + (seconds * 1000);
+            // align per second
+
+            self.fiba.pin_mut().insert(&ts, &entry.data);
         }
     }
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
@@ -182,6 +183,7 @@ impl WindowExt<U64SumAggregator> for BFingerEightWheel {
 }
 
 pub struct PairsFiBA {
+    range: Duration,
     slide: Duration,
     query_pairs: usize,
     watermark: u64,
@@ -207,6 +209,7 @@ impl PairsFiBA {
         };
         let next_pair_end = watermark + current_pair_len as u64;
         Self {
+            range,
             slide,
             watermark,
             query_pairs: pairs_space(range_ms, slide_ms),
@@ -262,9 +265,10 @@ impl WindowExt<U64SumAggregator> for PairsFiBA {
                 // pair ended
                 // query FIBA:
                 let from = self.watermark - self.current_pair_len as u64;
-                let partial = self.fiba.range(from, self.watermark);
+                let to = self.watermark;
+                let partial = self.fiba.range(from, to - 1);
 
-                self.pairs_wheel.push(partial);
+                self.pairs_wheel.push(Some(partial));
 
                 // Update pair metadata
                 self.update_pair_len();
@@ -287,8 +291,11 @@ impl WindowExt<U64SumAggregator> for PairsFiBA {
                     };
                     for _i in 0..removals {
                         let _ = self.pairs_wheel.tick();
-                        self.fiba.pin_mut().evict();
                     }
+
+                    let evict_point = (self.watermark - self.range.whole_milliseconds() as u64)
+                        + self.slide.whole_milliseconds() as u64;
+                    self.fiba.pin_mut().bulk_evict(&(evict_point - 1));
 
                     // next window ends at next slide (p1+p2)
                     self.next_window_end += self.slide.whole_milliseconds() as u64;
@@ -313,7 +320,14 @@ impl WindowExt<U64SumAggregator> for PairsFiBA {
         &mut self,
         entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
     ) {
-        self.fiba.pin_mut().insert(&entry.timestamp, &entry.data);
+        profile_scope!(&self.stats.insert_ns);
+        if entry.timestamp >= self.watermark {
+            let diff = entry.timestamp - self.watermark;
+            let seconds = std::time::Duration::from_millis(diff).as_secs();
+            let ts = self.watermark + (seconds * 1000);
+            // align per second
+            self.fiba.pin_mut().insert(&ts, &entry.data);
+        }
     }
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
@@ -433,7 +447,6 @@ mod tests {
         window_60_sec_range_10_sec_slide(wheel);
     }
     #[test]
-    #[should_panic]
     fn window_60_sec_range_10_sec_slide_fiba_b8_test() {
         let wheel = BFingerEightWheel::new(0, Duration::minutes(1), Duration::seconds(10));
         window_60_sec_range_10_sec_slide(wheel);

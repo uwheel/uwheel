@@ -5,10 +5,12 @@ use awheel_core::{
     aggregator::{Aggregator, InverseExt},
     rw_wheel::{
         read::{aggregation::combine_or_insert, ReadWheel},
+        write::DEFAULT_WRITE_AHEAD_SLOTS,
         WheelExt,
     },
     time::{Duration, NumericalDuration},
     Entry,
+    Options,
     RwWheel,
 };
 
@@ -64,8 +66,10 @@ impl<A: Aggregator> PairsWheel<A> {
     }
 
     #[inline]
-    pub fn push(&mut self, data: A::PartialAggregate) {
-        combine_or_insert::<A>(self.slot(self.head), data);
+    pub fn push(&mut self, data_opt: Option<A::PartialAggregate>) {
+        if let Some(data) = data_opt {
+            combine_or_insert::<A>(self.slot(self.head), data);
+        }
         self.head = self.wrap_add(self.head, 1);
     }
 
@@ -105,17 +109,34 @@ impl<A: Aggregator> WheelExt for PairsWheel<A> {
 }
 
 /// A Builder type for [LazyWindowWheel]
-#[derive(Default, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct Builder {
     range: usize,
     slide: usize,
+    write_ahead: usize,
     time: u64,
+}
+
+impl Default for Builder {
+    fn default() -> Self {
+        Self {
+            range: 0,
+            slide: 0,
+            write_ahead: DEFAULT_WRITE_AHEAD_SLOTS,
+            time: 0,
+        }
+    }
 }
 
 impl Builder {
     /// Configures the builder to create a wheel with the given watermark
     pub fn with_watermark(mut self, watermark: u64) -> Self {
         self.time = watermark;
+        self
+    }
+    /// Configures the builder to create a wheel with the given write-ahead capacity
+    pub fn with_write_ahead(mut self, write_ahead: usize) -> Self {
+        self.write_ahead = write_ahead;
         self
     }
     /// Configures the builder to create a window with the given range
@@ -134,7 +155,7 @@ impl Builder {
             self.range >= self.slide,
             "Range must be larger or equal to slide"
         );
-        LazyWindowWheel::new(self.time, self.range, self.slide)
+        LazyWindowWheel::new(self.time, self.write_ahead, self.range, self.slide)
     }
 }
 
@@ -154,13 +175,13 @@ pub struct LazyWindowWheel<A: Aggregator> {
 }
 
 impl<A: Aggregator> LazyWindowWheel<A> {
-    fn new(time: u64, range: usize, slide: usize) -> Self {
+    fn new(time: u64, write_ahead: usize, range: usize, slide: usize) -> Self {
         let state = State::new(time, range, slide);
         Self {
             range,
             slide,
             pairs_wheel: PairsWheel::with_capacity(pairs_capacity(range, slide)),
-            wheel: RwWheel::new(time),
+            wheel: RwWheel::with_options(time, Options::default().with_write_ahead(write_ahead)),
             state,
             #[cfg(feature = "stats")]
             stats: Default::default(),
@@ -189,8 +210,7 @@ impl<A: Aggregator> WindowExt<A> for LazyWindowWheel<A> {
                 let partial = self
                     .wheel
                     .read()
-                    .interval(self.state.current_pair_duration())
-                    .unwrap_or_default();
+                    .interval(self.state.current_pair_duration());
 
                 self.pairs_wheel.push(partial);
 
