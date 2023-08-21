@@ -99,8 +99,11 @@ impl BenchResult {
         Self { execution, runs }
     }
     pub fn print(&self) {
+        let throughput =
+            |run: &Run| (run.total_insertions as f64 / run.runtime.as_secs_f64()) / 1_000_000.0;
         println!("{:#?}", self.execution);
         for run in self.runs.iter() {
+            println!("Throughput {} Mops/s", throughput(run));
             println!("{} (took {:.2}s)", run.id, run.runtime.as_secs_f64(),);
             println!("{:#?}", run.stats);
         }

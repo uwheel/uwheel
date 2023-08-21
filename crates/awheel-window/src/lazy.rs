@@ -22,7 +22,7 @@ use alloc::{boxed::Box, vec::Vec};
 use rkyv::{Archive, Deserialize, Serialize};
 
 #[cfg(feature = "stats")]
-use awheel_stats::Measure;
+use awheel_stats::profile_scope;
 
 #[doc(hidden)]
 #[repr(C)]
@@ -171,7 +171,7 @@ impl<A: Aggregator> LazyWindowWheel<A> {
     fn compute_window(&self) -> A::PartialAggregate {
         let pair_slots = pairs_space(self.range, self.slide);
         #[cfg(feature = "stats")]
-        let _measure = Measure::new(&self.stats.window_computation_ns);
+        profile_scope!(&self.stats.window_computation_ns);
         self.pairs_wheel.interval(pair_slots).unwrap_or_default()
     }
 }
@@ -209,7 +209,7 @@ impl<A: Aggregator> WindowExt<A> for LazyWindowWheel<A> {
                     window_results.push((self.wheel.read().watermark(), Some(A::lower(window))));
 
                     #[cfg(feature = "stats")]
-                    let _measure = Measure::new(&self.stats.cleanup_ns);
+                    profile_scope!(&self.stats.cleanup_ns);
 
                     // how many "pairs" we need to pop off from the Pairs wheel
                     let removals = match self.state.pair_type {
@@ -230,13 +230,14 @@ impl<A: Aggregator> WindowExt<A> for LazyWindowWheel<A> {
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)> {
         let diff = watermark.saturating_sub(self.wheel.read().watermark());
         #[cfg(feature = "stats")]
-        let _measure = Measure::new(&self.stats.advance_ns);
+        profile_scope!(&self.stats.advance_ns);
         self.advance(Duration::milliseconds(diff as i64))
     }
     #[inline]
     fn insert(&mut self, entry: Entry<A::Input>) {
         #[cfg(feature = "stats")]
-        let _measure = Measure::new(&self.stats.insert_ns);
+        profile_scope!(&self.stats.insert_ns);
+
         self.wheel.insert(entry);
     }
     /// Returns a reference to the underlying HAW

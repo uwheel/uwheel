@@ -9,6 +9,9 @@ pub mod wheel_ext;
 /// Optimised for a single writer
 pub mod write;
 
+#[cfg(feature = "profiler")]
+mod stats;
+
 /// Hierarchical Wheel Timer
 #[allow(dead_code)]
 mod timer;
@@ -25,6 +28,9 @@ use self::timer::RawTimerWheel;
 #[cfg(not(feature = "serde"))]
 use self::timer::{timer_wheel::TimerAction, timer_wheel::TimerWheel};
 
+#[cfg(feature = "profiler")]
+use awheel_stats::profile_scope;
+
 /// A Reader-Writer aggregation wheel with decoupled read and write paths.
 ///
 /// Writes are handled by a Write-ahead wheel which contain aggregates above the current watermark.
@@ -34,13 +40,14 @@ use self::timer::{timer_wheel::TimerAction, timer_wheel::TimerWheel};
 /// the ``sync`` feature must be enabled.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
-//#[derive(Clone)]
 pub struct RwWheel<A: Aggregator> {
     entry_timer: RawTimerWheel<Entry<A::Input>>,
     write: WriteAheadWheel<A>,
     read: ReadWheel<A>,
     #[cfg(not(feature = "serde"))]
     timer: TimerWheel<A>,
+    #[cfg(feature = "profiler")]
+    stats: stats::Stats,
 }
 impl<A: Aggregator> RwWheel<A> {
     /// Creates a new Wheel starting from the given time
@@ -53,6 +60,8 @@ impl<A: Aggregator> RwWheel<A> {
             read: ReadWheel::new(time),
             #[cfg(not(feature = "serde"))]
             timer: TimerWheel::new(time),
+            #[cfg(feature = "profiler")]
+            stats: stats::Stats::default(),
         }
     }
     /// Creates a new Wheel starting from the given time with drill down enabled
@@ -65,6 +74,8 @@ impl<A: Aggregator> RwWheel<A> {
             read: ReadWheel::with_drill_down(time),
             #[cfg(not(feature = "serde"))]
             timer: TimerWheel::new(time),
+            #[cfg(feature = "profiler")]
+            stats: stats::Stats::default(),
         }
     }
     /// Creates a new wheel starting from the given time and the specified [Options]
@@ -82,17 +93,24 @@ impl<A: Aggregator> RwWheel<A> {
             read,
             #[cfg(not(feature = "serde"))]
             timer: TimerWheel::new(time),
+            #[cfg(feature = "profiler")]
+            stats: stats::Stats::default(),
         }
     }
     /// Inserts an entry into the wheel
     #[inline]
     pub fn insert(&mut self, e: impl Into<Entry<A::Input>>) {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.insert);
+
+        // If entry does not fit within the write-ahead wheel then schedule it to be inserted in the future
         if let Err(Error::Overflow {
             entry,
             max_write_ahead_ts: _,
         }) = self.write.insert(e)
         {
-            // If entry does not fit within the write-ahead wheel then schedule it to be inserted in the future
+            #[cfg(feature = "profiler")]
+            profile_scope!(&self.stats.overflow_schedule);
             // TODO: cluster the entry with other timestamps around the same write-ahead range
             let write_ahead_ms = time::Duration::seconds(self.write.write_ahead_len() as i64)
                 .whole_milliseconds() as u64;
@@ -132,6 +150,9 @@ impl<A: Aggregator> RwWheel<A> {
     /// Advances the time of the wheel aligned by the lowest unit (Second)
     #[inline]
     pub fn advance_to(&mut self, watermark: u64) {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.advance);
+
         // Advance the read wheel
         self.read.advance_to(watermark, &mut self.write);
         debug_assert_eq!(self.write.watermark(), self.read.watermark());
@@ -167,6 +188,20 @@ impl<A: Aggregator> RwWheel<A> {
         let read = self.read.size_bytes();
         let write = self.write.size_bytes().unwrap();
         read + write
+    }
+    #[cfg(feature = "profiler")]
+    /// Prints the stats of the [RwWheel]
+    pub fn print_stats(&self) {
+        println!("{:#?}", self.stats);
+        #[cfg(all(feature = "profiler", not(feature = "sync")))]
+        println!("{:#?}", self.read.stats());
+    }
+}
+
+impl<A: Aggregator> Drop for RwWheel<A> {
+    fn drop(&mut self) {
+        #[cfg(feature = "profiler")]
+        self.print_stats();
     }
 }
 

@@ -8,5 +8,4 @@ license.workspace = true
 readme.workspace = true
 
 [dependencies]
-#awheel.workspace = true
-awheel = { path = "../../crates/awheel" }
+awheel.workspace = true

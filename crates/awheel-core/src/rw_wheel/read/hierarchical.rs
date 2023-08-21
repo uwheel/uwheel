@@ -15,6 +15,11 @@ use super::{
 use crate::{aggregator::Aggregator, time};
 pub use watermark_impl::Watermark;
 
+#[cfg(all(feature = "profiler", not(feature = "sync")))]
+use super::stats::Stats;
+#[cfg(all(feature = "profiler", not(feature = "sync")))]
+use awheel_stats::profile_scope;
+
 /// Default capacity of second slots
 pub const SECONDS: usize = 60;
 /// Default capacity of minute slots
@@ -69,6 +74,8 @@ where
     days_wheel: MaybeWheel<A>,
     weeks_wheel: MaybeWheel<A>,
     years_wheel: MaybeWheel<A>,
+    #[cfg(all(feature = "profiler", not(feature = "sync")))]
+    stats: Stats,
 }
 
 impl<A> Haw<A>
@@ -113,6 +120,8 @@ where
             days_wheel: MaybeWheel::with_capacity(DAYS),
             weeks_wheel: MaybeWheel::with_capacity(WEEKS),
             years_wheel: MaybeWheel::with_capacity(YEARS),
+            #[cfg(all(feature = "profiler", not(feature = "sync")))]
+            stats: Stats::default(),
         }
     }
     fn base_drill_down(time: u64) -> Self {
@@ -124,6 +133,8 @@ where
             days_wheel: MaybeWheel::with_capacity_and_drill_down(DAYS),
             weeks_wheel: MaybeWheel::with_capacity_and_drill_down(WEEKS),
             years_wheel: MaybeWheel::with_capacity_and_drill_down(YEARS),
+            #[cfg(all(feature = "profiler", not(feature = "sync")))]
+            stats: Stats::default(),
         }
     }
 
@@ -289,6 +300,9 @@ where
     /// The given time duration must be quantizable to the time intervals of the HAW
     #[inline]
     pub fn interval(&self, dur: time::Duration) -> Option<A::PartialAggregate> {
+        #[cfg(all(feature = "profiler", not(feature = "sync")))]
+        profile_scope!(&self.stats.interval);
+
         if Self::is_quantizable(dur) {
             let Granularities {
                 second,
@@ -457,6 +471,9 @@ where
     /// Executes a Landmark Window that combines total partial aggregates across all wheels
     #[inline]
     pub fn landmark(&self) -> Option<A::PartialAggregate> {
+        #[cfg(all(feature = "profiler", not(feature = "sync")))]
+        profile_scope!(&self.stats.landmark);
+
         let wheels = [
             self.seconds_wheel.total(),
             self.minutes_wheel.total(),
@@ -492,6 +509,9 @@ where
     /// In the worst case, a tick may cause a rotation of all the wheels in the hierarchy.
     #[inline]
     fn tick(&self, waw: &mut WriteAheadWheel<A>) {
+        #[cfg(all(feature = "profiler", not(feature = "sync")))]
+        profile_scope!(&self.stats.tick);
+
         self.watermark.inc(Self::SECOND_AS_MS);
 
         let mut seconds = self.seconds_wheel.get_or_insert();
@@ -499,7 +519,7 @@ where
         // Tick the Write-ahead wheel, if new entry insert into head of seconds wheel
         if let Some(window) = waw.tick() {
             let partial_agg = A::freeze(window);
-            seconds.as_mut().unwrap().insert_head(partial_agg)
+            seconds.as_mut().unwrap().insert_head(partial_agg);
         }
 
         // full rotation of seconds wheel
@@ -592,6 +612,11 @@ where
         self.days_wheel.merge(&other.days_wheel);
         self.weeks_wheel.merge(&other.weeks_wheel);
         self.years_wheel.merge(&other.years_wheel);
+    }
+    #[cfg(all(feature = "profiler", not(feature = "sync")))]
+    /// Returns a reference to the stats of the [HAW]
+    pub fn stats(&self) -> &Stats {
+        &self.stats
     }
 }
 

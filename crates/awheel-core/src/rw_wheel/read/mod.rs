@@ -5,6 +5,9 @@ pub mod aggregation;
 /// Hierarchical Aggregation Wheel (HAW)
 pub mod hierarchical;
 
+#[cfg(all(feature = "profiler", not(feature = "sync")))]
+pub(crate) mod stats;
+
 use core::ops::Deref;
 
 pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};

@@ -18,3 +18,10 @@ serde = { workspace = true, optional = true, features = [
     "derive",
     "rc",
 ] }
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "benchmark"
+harness = false

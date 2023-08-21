@@ -20,7 +20,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use alloc::{boxed::Box, vec::Vec};
 
 #[cfg(feature = "stats")]
-use awheel_stats::Measure;
+use awheel_stats::profile_scope;
 
 /// A fixed-sized wheel used to maintain partial aggregates for slides that can later
 /// be used to inverse windows.
@@ -189,13 +189,13 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
     #[inline]
     fn compute_window(&mut self) -> A::PartialAggregate {
         #[cfg(feature = "stats")]
-        let _measure = Measure::new(&self.stats.window_computation_ns);
+        profile_scope!(&self.stats.window_computation_ns);
 
         let inverse = self.inverse_wheel.tick().unwrap_or_default();
 
         {
             #[cfg(feature = "stats")]
-            let _cleanup_measure = Measure::new(&self.stats.cleanup_ns);
+            profile_scope!(&self.stats.cleanup_ns);
             self.merge_pairs();
         }
 
@@ -243,9 +243,9 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
                 if self.wheel.read().watermark() == self.state.next_window_end {
                     if self.state.next_window_end == self.next_full_rotation {
                         {
-                            // Need to scope the drop of Measure
+                            // Need to scope the for profiling
                             #[cfg(feature = "stats")]
-                            let _measure = Measure::new(&self.stats.window_computation_ns);
+                            profile_scope!(&self.stats.window_computation_ns);
 
                             let window_result = self
                                 .wheel
@@ -260,7 +260,7 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
                             ));
                         }
                         #[cfg(feature = "stats")]
-                        let _measure = Measure::new(&self.stats.cleanup_ns);
+                        profile_scope!(&self.stats.cleanup_ns);
 
                         // If we are working with uneven pairs, we need to adjust range.
                         let next_rotation_distance = if self.state.pair_type.is_uneven() {
@@ -300,13 +300,13 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)> {
         let diff = watermark.saturating_sub(self.wheel.read().watermark());
         #[cfg(feature = "stats")]
-        let _measure = Measure::new(&self.stats.advance_ns);
+        profile_scope!(&self.stats.advance_ns);
         self.advance(Duration::milliseconds(diff as i64))
     }
     #[inline]
     fn insert(&mut self, entry: Entry<A::Input>) {
         #[cfg(feature = "stats")]
-        let _measure = Measure::new(&self.stats.insert_ns);
+        profile_scope!(&self.stats.insert_ns);
         self.wheel.insert(entry);
     }
     /// Returns a reference to the underlying HAW

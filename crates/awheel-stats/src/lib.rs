@@ -88,3 +88,23 @@ impl Drop for Measure {
         self.sketch.add(self.start.elapsed().as_nanos() as f64);
     }
 }
+
+/// Profile the current scope with the given [Sketch]
+///
+/// # Example
+///
+/// ```rust
+/// use awheel_stats::{profile_scope, Sketch};
+///
+/// let my_sketch = Sketch::default();
+/// {
+///     profile_scope!(&my_sketch);
+///     // do some work
+/// }
+/// ```
+#[macro_export]
+macro_rules! profile_scope {
+    ($id:expr) => {
+        let _measure_scope = $crate::Measure::new($id);
+    };
+}

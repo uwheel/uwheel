@@ -26,6 +26,7 @@ window = ["dep:awheel-window"]
 tree = ["dep:awheel-tree"]
 stats = ["std", "dep:awheel-stats", "awheel-window?/stats"]
 serde = ["awheel-core/serde", "awheel-window?/serde"]
+profiler = ["std", "awheel-core/profiler"]
 
 [dependencies]
 awheel-core = { workspace = true, default-features = false }
