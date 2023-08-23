@@ -406,6 +406,13 @@ where
                     let year = self.years_wheel.interval(year);
                     Self::reduce([year, week])
                 }
+                // wd
+                (None, Some(week), Some(day), None, None, None) => {
+                    let day = cmp::min(self.days_wheel.rotation_count(), day);
+                    let day = self.days_wheel.interval_or_total(day);
+                    let week = self.weeks_wheel.interval(week);
+                    Self::reduce([week, day])
+                }
                 // y
                 (Some(year), None, None, None, None, None) => {
                     self.years_wheel.interval_or_total(year)

@@ -1,15 +1,10 @@
-use crate::*;
+use crate::{tree::Tree, *};
 
 use awheel::{
     aggregator::sum::U64SumAggregator,
     stats::profile_scope,
     time::Duration,
-    window::{
-        lazy::PairsWheel,
-        stats::Stats,
-        util::{create_pair_type, pairs_capacity, pairs_space, PairType},
-        WindowExt,
-    },
+    window::{state::State, stats::Stats, WindowExt},
 };
 
 pub struct BFingerFourWheel {
@@ -169,7 +164,6 @@ impl WindowExt<U64SumAggregator> for BFingerEightWheel {
             let seconds = std::time::Duration::from_millis(diff).as_secs();
             let ts = self.watermark + (seconds * 1000);
             // align per second
-
             self.fiba.pin_mut().insert(&ts, &entry.data);
         }
     }
@@ -182,72 +176,37 @@ impl WindowExt<U64SumAggregator> for BFingerEightWheel {
     }
 }
 
-pub struct PairsFiBA {
+pub struct PairsTree<T: Tree<U64SumAggregator>> {
     range: Duration,
     slide: Duration,
-    query_pairs: usize,
     watermark: u64,
-    pair_ticks_remaining: usize,
-    current_pair_len: usize,
-    pair_type: PairType,
-    // When the next window ends
-    next_window_end: u64,
-    next_pair_end: u64,
-    in_p1: bool,
-    pairs_wheel: PairsWheel<U64SumAggregator>,
-    fiba: UniquePtr<crate::bfinger_eight::FiBA_SUM_8>,
+    state: State,
+    pairs_tree: T,
+    tree: T,
     stats: Stats,
 }
-impl PairsFiBA {
+impl<T: Tree<U64SumAggregator>> PairsTree<T> {
     pub fn new(watermark: u64, range: Duration, slide: Duration) -> Self {
         let range_ms = range.whole_milliseconds() as usize;
         let slide_ms = slide.whole_milliseconds() as usize;
-        let pair_type = create_pair_type(range_ms, slide_ms);
-        let current_pair_len = match pair_type {
-            PairType::Even(slide) => slide,
-            PairType::Uneven(_, p2) => p2,
-        };
-        let next_pair_end = watermark + current_pair_len as u64;
+        let state = State::new(watermark, range_ms, slide_ms);
         Self {
             range,
             slide,
             watermark,
-            query_pairs: pairs_space(range_ms, slide_ms),
-            next_window_end: watermark + range.whole_milliseconds() as u64,
-            pairs_wheel: PairsWheel::with_capacity(pairs_capacity(range_ms, slide_ms)),
-            current_pair_len,
-            pair_ticks_remaining: current_pair_len / 1000,
-            pair_type,
-            next_pair_end,
-            in_p1: false,
-            fiba: crate::bfinger_eight::create_fiba_8_with_sum(),
+            state,
+            pairs_tree: T::default(),
+            tree: T::default(),
             stats: Default::default(),
         }
     }
-    fn current_pair_duration(&self) -> Duration {
-        Duration::milliseconds(self.current_pair_len as i64)
-    }
-    fn update_pair_len(&mut self) {
-        if let PairType::Uneven(p1, p2) = self.pair_type {
-            if self.in_p1 {
-                self.current_pair_len = p2;
-                self.in_p1 = false;
-            } else {
-                self.current_pair_len = p1;
-                self.in_p1 = true;
-            }
-        }
-    }
-    // Combines aggregates from the Pairs Wheel in worst-case [2r/s] or best-case [r/s]
     #[inline]
-    fn compute_window(&self) -> u64 {
+    fn compute_window(&self) -> Option<u64> {
         profile_scope!(&self.stats.window_computation_ns);
-        self.pairs_wheel
-            .interval(self.query_pairs)
-            .unwrap_or_default()
+        self.pairs_tree.query()
     }
 }
-impl WindowExt<U64SumAggregator> for PairsFiBA {
+impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
     fn advance(
         &mut self,
         duration: awheel::time::Duration,
@@ -258,47 +217,42 @@ impl WindowExt<U64SumAggregator> for PairsFiBA {
         let ticks = duration.whole_seconds();
         let mut window_results = Vec::new();
         for _tick in 0..ticks {
-            self.watermark += 1000; // hardcoded for now
-            self.pair_ticks_remaining -= 1;
+            self.watermark += 1000;
+            self.state.pair_ticks_remaining -= 1;
 
-            if self.pair_ticks_remaining == 0 {
+            if self.state.pair_ticks_remaining == 0 {
                 // pair ended
-                // query FIBA:
-                let from = self.watermark - self.current_pair_len as u64;
+                let from = self.watermark - self.state.current_pair_len as u64;
                 let to = self.watermark;
-                let partial = self.fiba.range(from, to - 1);
+                let partial = self.tree.range_query(from, to - 1);
 
-                self.pairs_wheel.push(Some(partial));
+                // insert pair into tree
+                self.pairs_tree
+                    .insert(self.watermark, partial.unwrap_or_default());
 
                 // Update pair metadata
-                self.update_pair_len();
+                self.state.update_pair_len();
 
-                self.next_pair_end = self.watermark + self.current_pair_len as u64;
-                self.pair_ticks_remaining = self.current_pair_duration().whole_seconds() as usize;
+                self.state.next_pair_end = self.watermark + self.state.current_pair_len as u64;
+                self.state.pair_ticks_remaining =
+                    self.state.current_pair_duration().whole_seconds() as usize;
 
-                if self.watermark == self.next_window_end {
+                if self.watermark == self.state.next_window_end {
                     // Window computation:
                     let window = self.compute_window();
-                    use awheel::aggregator::Aggregator;
-                    window_results.push((self.watermark, Some(U64SumAggregator::lower(window))));
+                    window_results.push((self.watermark, window));
 
                     profile_scope!(&self.stats.cleanup_ns);
 
-                    // how many "pairs" we need to pop off from the Pairs wheel
-                    let removals = match self.pair_type {
-                        PairType::Even(_) => 1,
-                        PairType::Uneven(_, _) => 2,
-                    };
-                    for _i in 0..removals {
-                        let _ = self.pairs_wheel.tick();
-                    }
-
                     let evict_point = (self.watermark - self.range.whole_milliseconds() as u64)
                         + self.slide.whole_milliseconds() as u64;
-                    self.fiba.pin_mut().bulk_evict(&(evict_point - 1));
+
+                    // clean up main and pairs tree
+                    self.tree.evict_range(evict_point - 1);
+                    self.pairs_tree.evict_range(evict_point - 1);
 
                     // next window ends at next slide (p1+p2)
-                    self.next_window_end += self.slide.whole_milliseconds() as u64;
+                    self.state.next_window_end += self.slide.whole_milliseconds() as u64;
                 }
             }
         }
@@ -326,7 +280,7 @@ impl WindowExt<U64SumAggregator> for PairsFiBA {
             let seconds = std::time::Duration::from_millis(diff).as_secs();
             let ts = self.watermark + (seconds * 1000);
             // align per second
-            self.fiba.pin_mut().insert(&ts, &entry.data);
+            self.tree.insert(ts, entry.data);
         }
     }
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {

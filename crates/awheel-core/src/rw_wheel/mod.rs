@@ -192,9 +192,49 @@ impl<A: Aggregator> RwWheel<A> {
     #[cfg(feature = "profiler")]
     /// Prints the stats of the [RwWheel]
     pub fn print_stats(&self) {
-        println!("{:#?}", self.stats);
+        use awheel_stats::Sketch;
+        use prettytable::{row, Table};
+        let mut table = Table::new();
+        table.add_row(row![
+            "name", "count", "min", "p50", "p99", "p99.9", "p99.99", "p99.999", "max",
+        ]);
+        // helper fn to format percentile
+        let percentile_fmt = |p: f64| -> String { format!("{:.2}ns", p) };
+
+        // helper fn to add row to the table
+        let add_row = |id: &str, table: &mut Table, sketch: &Sketch| {
+            let percentiles = sketch.percentiles();
+            table.add_row(row![
+                id,
+                percentiles.count,
+                percentiles.min,
+                percentile_fmt(percentiles.p50),
+                percentile_fmt(percentiles.p99),
+                percentile_fmt(percentiles.p99_9),
+                percentile_fmt(percentiles.p99_99),
+                percentile_fmt(percentiles.p99_999),
+                percentiles.min,
+            ]);
+        };
+
+        add_row("insert", &mut table, &self.stats.insert);
+        add_row("advance", &mut table, &self.stats.advance);
+        add_row(
+            "overflow schedule",
+            &mut table,
+            &self.stats.overflow_schedule,
+        );
+
         #[cfg(all(feature = "profiler", not(feature = "sync")))]
-        println!("{:#?}", self.read.stats());
+        {
+            let read_stats = self.read.stats();
+            add_row("tick", &mut table, &read_stats.tick);
+            add_row("interval", &mut table, &read_stats.interval);
+            add_row("landmark", &mut table, &read_stats.landmark);
+        }
+
+        println!("====RwWheel Profiler Dump====");
+        table.printstd();
     }
 }
 

@@ -23,7 +23,7 @@ max = []
 top_n = ["dep:hashbrown"]
 serde = ["dep:serde", "dep:serde-big-array", "parking_lot?/serde", "hashbrown?/serde", "awheel-stats?/serde"]
 sync = ["dep:parking_lot", "std"]
-profiler = ["dep:awheel-stats", "std"]
+profiler = ["dep:awheel-stats", "prettytable-rs", "std"]
 
 
 [dependencies]
@@ -35,3 +35,4 @@ serde = { workspace = true, optional = true, features = [
     "rc",
 ] }
 serde-big-array = { workspace = true, optional = true }
+prettytable-rs = { version = "0.10.0", optional = true }

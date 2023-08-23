@@ -13,7 +13,7 @@ use awheel::{
 };
 use clap::{ArgEnum, Parser};
 use minstant::Instant;
-use window::{fiba_wheel, TimestampGenerator};
+use window::{external_impls, TimestampGenerator};
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
 pub enum Workload {
@@ -213,7 +213,7 @@ fn window_computation_bench(args: &Args) {
             stats,
         });
 
-        let cg_bfinger_four_wheel = fiba_wheel::BFingerFourWheel::new(0, range, slide);
+        let cg_bfinger_four_wheel = external_impls::BFingerFourWheel::new(0, range, slide);
         let (runtime, stats) = run(seconds, cg_bfinger_four_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger4".to_string(),
@@ -222,7 +222,7 @@ fn window_computation_bench(args: &Args) {
             stats,
         });
 
-        let cg_bfinger_eight_wheel = fiba_wheel::BFingerEightWheel::new(0, range, slide);
+        let cg_bfinger_eight_wheel = external_impls::BFingerEightWheel::new(0, range, slide);
         let (runtime, stats) = run(seconds, cg_bfinger_eight_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger8".to_string(),
@@ -283,7 +283,7 @@ fn insert_rate_bench(args: &mut Args) {
             stats,
         });
 
-        let cg_bfinger_four_wheel = fiba_wheel::BFingerFourWheel::new(0, range, slide);
+        let cg_bfinger_four_wheel = external_impls::BFingerFourWheel::new(0, range, slide);
         let (runtime, stats) = run(seconds, cg_bfinger_four_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger4".to_string(),
@@ -292,7 +292,7 @@ fn insert_rate_bench(args: &mut Args) {
             stats,
         });
 
-        let cg_bfinger_eight_wheel = fiba_wheel::BFingerEightWheel::new(0, range, slide);
+        let cg_bfinger_eight_wheel = external_impls::BFingerEightWheel::new(0, range, slide);
         let (runtime, stats) = run(seconds, cg_bfinger_eight_wheel, args);
         runs.push(Run {
             id: "FiBA CG BFinger8".to_string(),

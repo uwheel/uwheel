@@ -1,8 +1,9 @@
 pub mod btreemap_wheel;
-pub mod fiba_wheel;
+pub mod external_impls;
 pub mod timestamp_generator;
+pub mod tree;
 
-use awheel::window::stats::Stats;
+use awheel::{time::Duration, window::stats::Stats};
 pub use timestamp_generator::{align_to_closest_thousand, TimestampGenerator};
 
 pub use cxx::UniquePtr;
@@ -81,19 +82,28 @@ pub struct Run {
 }
 #[derive(Debug)]
 pub struct Execution {
-    pub range: u64,
-    pub slide: u64,
+    pub range: Duration,
+    pub slide: Duration,
 }
 impl Execution {
-    pub const fn new(range: u64, slide: u64) -> Self {
+    pub const fn new(range: Duration, slide: Duration) -> Self {
         Self { range, slide }
+    }
+    pub fn slide_ms(&self) -> u64 {
+        self.slide.whole_milliseconds() as u64
+    }
+    pub fn range_ms(&self) -> u64 {
+        self.range.whole_milliseconds() as u64
+    }
+    pub fn range_seconds(&self) -> u64 {
+        self.range.whole_seconds() as u64
     }
 }
 
 #[allow(dead_code)]
 pub struct BenchResult {
-    execution: Execution,
-    runs: Vec<Run>,
+    pub execution: Execution,
+    pub runs: Vec<Run>,
 }
 impl BenchResult {
     pub fn new(execution: Execution, runs: Vec<Run>) -> Self {
