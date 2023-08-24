@@ -12,6 +12,7 @@ pub trait Tree<A: Aggregator>: Default {
     fn query(&self) -> Option<A::PartialAggregate>;
     fn range_query(&self, from: u64, to: u64) -> Option<A::PartialAggregate>;
     fn evict_range(&mut self, to: u64);
+    fn evict(&mut self);
 }
 
 impl<A: Aggregator> Tree<A> for BTreeMap<u64, A::PartialAggregate> {
@@ -41,8 +42,11 @@ impl<A: Aggregator> Tree<A> for BTreeMap<u64, A::PartialAggregate> {
     }
     #[inline]
     fn evict_range(&mut self, to: u64) {
-        let mut split_tree = self.split_off(&to);
+        let mut split_tree = self.split_off(&(to - 1));
         std::mem::swap(&mut split_tree, self);
+    }
+    fn evict(&mut self) {
+        let _ = self.pop_first();
     }
 }
 pub struct FiBA4 {
@@ -67,11 +71,14 @@ impl Tree<U64SumAggregator> for FiBA4 {
     }
     #[inline]
     fn range_query(&self, from: u64, to: u64) -> Option<u64> {
-        Some(self.fiba.range(from, to))
+        Some(self.fiba.range(from, to - 1))
     }
     #[inline]
     fn evict_range(&mut self, to: u64) {
-        self.fiba.pin_mut().bulk_evict(&to);
+        self.fiba.pin_mut().bulk_evict(&(to - 1));
+    }
+    fn evict(&mut self) {
+        self.fiba.pin_mut().evict();
     }
 }
 
@@ -97,10 +104,13 @@ impl Tree<U64SumAggregator> for FiBA8 {
     }
     #[inline]
     fn range_query(&self, from: u64, to: u64) -> Option<u64> {
-        Some(self.fiba.range(from, to))
+        Some(self.fiba.range(from, to - 1))
     }
     #[inline]
     fn evict_range(&mut self, to: u64) {
-        self.fiba.pin_mut().bulk_evict(&to);
+        self.fiba.pin_mut().bulk_evict(&(to - 1));
+    }
+    fn evict(&mut self) {
+        self.fiba.pin_mut().evict();
     }
 }

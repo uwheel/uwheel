@@ -17,7 +17,7 @@ use window::{
     Run,
 };
 
-const EXECUTIONS: [Execution; 7] = [
+const EXECUTIONS: [Execution; 8] = [
     Execution::new(Duration::seconds(30), Duration::seconds(10)),
     Execution::new(Duration::seconds(60), Duration::seconds(10)),
     Execution::new(Duration::minutes(15), Duration::seconds(10)),
@@ -25,7 +25,7 @@ const EXECUTIONS: [Execution; 7] = [
     Execution::new(Duration::hours(1), Duration::seconds(10)),
     Execution::new(Duration::hours(12), Duration::seconds(10)),
     Execution::new(Duration::days(1), Duration::seconds(10)),
-    //Execution::new(Duration::weeks(1), Duration::seconds(10)),
+    Execution::new(Duration::weeks(1), Duration::seconds(10)),
 ];
 
 #[inline]
@@ -216,30 +216,6 @@ fn nyc_citi_bike_bench_sum() {
             stats,
         });
 
-        /*
-        let cg_bfinger_four_wheel = fiba_wheel::BFingerFourWheel::new(watermark, range, slide);
-        let (runtime, stats, bfinger4_results) = run(cg_bfinger_four_wheel, &events);
-        runs.push(Run {
-            id: "FiBA CG BFinger4".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-        });
-        println!("Finished CG BFinger4");
-        assert_eq!(eager_results, bfinger4_results);
-
-        let cg_bfinger_eight_wheel = fiba_wheel::BFingerEightWheel::new(watermark, range, slide);
-        let (runtime, stats, bfinger_8_results) = run(cg_bfinger_eight_wheel, &events);
-        runs.push(Run {
-            id: "FiBA CG BFinger8".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-        });
-        println!("Finished CG BFinger8");
-        assert_eq!(bfinger4_results, bfinger_8_results);
-        */
-
         let pairs_fiba_4: PairsTree<tree::FiBA4> =
             external_impls::PairsTree::new(watermark, range, slide);
         let (runtime, stats, _pairs_fiba_results) = run(pairs_fiba_4, &events);
@@ -273,35 +249,13 @@ fn nyc_citi_bike_bench_sum() {
             runtime,
             stats,
         });
+        /*
+        let mismatches =
+            find_first_mismatch(&eager_results, &_pairs_fiba_results, &btreemap_results);
+        dbg!(mismatches);
+        */
+        assert_eq!(eager_results, btreemap_results);
         assert_eq!(_pairs_fiba_results, btreemap_results);
-        //assert_eq!(bfinger_8_results, pairs_fiba_results);
-
-        /*
-        let btreemap_wheel = btreemap_wheel::BTreeMapWheel::new(watermark, range, slide);
-        let (runtime, stats, btreewheel_results) = run(btreemap_wheel, &events);
-        println!("Finished BTreeMap Wheel");
-        runs.push(Run {
-            id: "BTreeMap Wheel".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-        });
-        assert_eq!(pairs_fiba_results, btreewheel_results);
-        */
-        /*
-
-
-        let pairs_fiba = fiba_wheel::PairsFiBA::new(watermark, range, slide);
-        let (runtime, stats, pairs_fiba_results) = run(pairs_fiba, &events);
-        println!("Finished Pairs FiBA Wheel");
-        runs.push(Run {
-            id: "Pairs FiBA".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-        });
-        assert_eq!(btreewheel_results, pairs_fiba_results);
-        */
 
         let result = BenchResult::new(exec, runs);
         result.print();

@@ -4,7 +4,7 @@ use awheel::{
     aggregator::sum::U64SumAggregator,
     stats::profile_scope,
     time::Duration,
-    window::{state::State, stats::Stats, WindowExt},
+    window::{state::State, stats::Stats, util::PairType, WindowExt},
 };
 
 pub struct BFingerFourWheel {
@@ -224,7 +224,7 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
                 // pair ended
                 let from = self.watermark - self.state.current_pair_len as u64;
                 let to = self.watermark;
-                let partial = self.tree.range_query(from, to - 1);
+                let partial = self.tree.range_query(from, to);
 
                 // insert pair into tree
                 self.pairs_tree
@@ -244,12 +244,20 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
 
                     profile_scope!(&self.stats.cleanup_ns);
 
+                    let removals = match self.state.pair_type {
+                        PairType::Even(_) => 1,
+                        PairType::Uneven(_, _) => 2,
+                    };
+
+                    for _i in 0..removals {
+                        self.pairs_tree.evict();
+                    }
+
                     let evict_point = (self.watermark - self.range.whole_milliseconds() as u64)
                         + self.slide.whole_milliseconds() as u64;
 
                     // clean up main and pairs tree
-                    self.tree.evict_range(evict_point - 1);
-                    self.pairs_tree.evict_range(evict_point - 1);
+                    self.tree.evict_range(evict_point);
 
                     // next window ends at next slide (p1+p2)
                     self.state.next_window_end += self.slide.whole_milliseconds() as u64;
