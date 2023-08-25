@@ -13,14 +13,17 @@ use core::{
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, vec::Vec};
 
+#[cfg(feature = "profiler")]
+pub(crate) mod stats;
+
 /// Iterator implementations for [AggregationWheel]
 pub mod iter;
 /// A maybe initialized [AggregationWheel]
 pub mod maybe;
 
-pub use maybe::AggWheelRef;
-
 use iter::{DrillIter, Iter};
+#[cfg(feature = "profiler")]
+use stats::Stats;
 
 use crate::rw_wheel::WheelExt;
 
@@ -128,6 +131,8 @@ pub struct AggregationWheel<A: Aggregator> {
     tail: usize,
     #[cfg(test)]
     pub(crate) total_ticks: usize,
+    #[cfg(feature = "profiler")]
+    stats: Stats,
 }
 
 impl<A: Aggregator> AggregationWheel<A> {
@@ -154,6 +159,8 @@ impl<A: Aggregator> AggregationWheel<A> {
             tail: 0,
             #[cfg(test)]
             total_ticks: 0,
+            #[cfg(feature = "profiler")]
+            stats: Stats::default(),
         }
     }
 
@@ -176,7 +183,7 @@ impl<A: Aggregator> AggregationWheel<A> {
     #[inline]
     pub fn interval_or_total(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
         if subtrahend == self.rotation_count {
-            self.total
+            self.total()
         } else {
             self.interval(subtrahend)
         }
@@ -438,7 +445,11 @@ impl<A: Aggregator> AggregationWheel<A> {
     }
 
     /// Returns the partial aggregate for the current rotation
+    #[inline]
     pub fn total(&self) -> Option<A::PartialAggregate> {
+        #[cfg(feature = "profiler")]
+        self.stats.bump_total();
+
         self.total
     }
     /// Returns a reference to the underyling roll-up slots
@@ -643,6 +654,11 @@ impl<A: Aggregator> AggregationWheel<A> {
             .map(|_| None)
             .collect::<Vec<_>>()
             .into_boxed_slice()
+    }
+    #[cfg(feature = "profiler")]
+    /// Returns a reference to the stats of the [AggregationWheel]
+    pub fn stats(&self) -> &Stats {
+        &self.stats
     }
 }
 

@@ -9,6 +9,7 @@ use alloc::vec::Vec;
     feature = "serde",
     serde(bound = "A: serde::Serialize + for<'a> serde::Deserialize<'a>")
 )]
+#[derive(Default)]
 pub struct RawTimerWheel<A: Bounds> {
     timer: QuadWheelWithOverflow<A>,
     time: u64,

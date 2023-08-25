@@ -1,6 +1,12 @@
 use std::{cell::RefCell, rc::Rc};
 
-use awheel::{aggregator::sum::U32SumAggregator, time::NumericalDuration, Entry, RwWheel};
+use awheel::{
+    aggregator::sum::U32SumAggregator,
+    time::NumericalDuration,
+    Entry,
+    ReadWheel,
+    RwWheel,
+};
 
 fn main() {
     let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
@@ -10,7 +16,7 @@ fn main() {
     // schedule a repeat action
     let _ = wheel
         .timer()
-        .schdule_repeat(5000, 5.seconds(), move |read| {
+        .schdule_repeat(5000, 5.seconds(), move |read: &ReadWheel<_>| {
             if let Some(last_five) = read.interval(5.seconds()) {
                 println!("Last five {}", last_five);
                 *inner_sum.borrow_mut() += last_five;

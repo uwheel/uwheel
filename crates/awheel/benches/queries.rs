@@ -65,25 +65,22 @@ fn random_drill_down_interval(wheel: &RwWheel<AllAggregator>) {
     if pick == 0usize {
         assert!(wheel
             .read()
-            .minutes()
             .as_ref()
-            .unwrap()
+            .minutes_unchecked()
             .drill_down_interval(random_minute())
             .is_some());
     } else if pick == 1usize {
         assert!(wheel
             .read()
-            .hours()
             .as_ref()
-            .unwrap()
+            .hours_unchecked()
             .drill_down_interval(random_hours())
             .is_some());
     } else {
         assert!(wheel
             .read()
-            .days()
             .as_ref()
-            .unwrap()
+            .days_unchecked()
             .drill_down_interval(random_days())
             .is_some());
     }
@@ -172,9 +169,8 @@ fn random_minutes_drill_down_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .minutes()
             .as_ref()
-            .unwrap()
+            .minutes_unchecked()
             .drill_down_interval(random_minute())
             .is_some());
     });
@@ -185,9 +181,8 @@ fn random_hours_drill_down_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .hours()
             .as_ref()
-            .unwrap()
+            .hours_unchecked()
             .drill_down_interval(random_hours())
             .is_some());
     });
@@ -197,9 +192,8 @@ fn random_days_drill_down_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .days()
             .as_ref()
-            .unwrap()
+            .days_unchecked()
             .drill_down_interval(random_days())
             .is_some());
     });

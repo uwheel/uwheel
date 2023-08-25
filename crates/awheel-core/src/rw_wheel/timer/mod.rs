@@ -95,6 +95,8 @@ pub struct TimerExpiredError<T: Debug> {
     pub entry: T,
 }
 use core::{fmt, fmt::Display};
+
+use crate::{time, Aggregator, ReadWheel};
 impl<T: Debug> Display for TimerExpiredError<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -104,21 +106,23 @@ impl<T: Debug> Display for TimerExpiredError<T> {
         )
     }
 }
+#[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
+
+pub type WheelFn<A> = Box<dyn Fn(&ReadWheel<A>)>;
+
+pub enum TimerAction<A: Aggregator> {
+    Oneshot(WheelFn<A>),
+    Repeat((u64, time::Duration, WheelFn<A>)),
+}
 
 #[cfg(not(feature = "serde"))]
 pub mod timer_wheel {
-    use crate::{rw_wheel::timer::TimerError, time, Aggregator, Entry, ReadWheel};
+    use super::TimerAction;
+    use crate::{rw_wheel::timer::TimerError, time, Aggregator, ReadWheel};
     #[cfg(not(feature = "std"))]
     use alloc::{boxed::Box, vec::Vec};
     use inner_impl::Inner;
-
-    pub type WheelFn<A> = Box<dyn Fn(&ReadWheel<A>)>;
-
-    pub enum TimerAction<A: Aggregator> {
-        Insert(Entry<A::Input>),
-        Oneshot(WheelFn<A>),
-        Repeat((u64, time::Duration, WheelFn<A>)),
-    }
 
     #[derive(Clone)]
     pub struct TimerWheel<A: Aggregator> {

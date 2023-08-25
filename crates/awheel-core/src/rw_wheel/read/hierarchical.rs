@@ -10,14 +10,13 @@ use core::{
 
 use super::{
     super::write::WriteAheadWheel,
-    aggregation::{maybe::MaybeWheel, AggWheelRef},
+    aggregation::{maybe::MaybeWheel, AggregationWheel},
 };
 use crate::{aggregator::Aggregator, time};
-pub use watermark_impl::Watermark;
 
-#[cfg(all(feature = "profiler", not(feature = "sync")))]
+#[cfg(feature = "profiler")]
 use super::stats::Stats;
-#[cfg(all(feature = "profiler", not(feature = "sync")))]
+#[cfg(feature = "profiler")]
 use awheel_stats::profile_scope;
 
 /// Default capacity of second slots
@@ -67,14 +66,14 @@ pub struct Haw<A>
 where
     A: Aggregator,
 {
-    watermark: Watermark,
+    watermark: u64,
     seconds_wheel: MaybeWheel<A>,
     minutes_wheel: MaybeWheel<A>,
     hours_wheel: MaybeWheel<A>,
     days_wheel: MaybeWheel<A>,
     weeks_wheel: MaybeWheel<A>,
     years_wheel: MaybeWheel<A>,
-    #[cfg(all(feature = "profiler", not(feature = "sync")))]
+    #[cfg(feature = "profiler")]
     stats: Stats,
 }
 
@@ -113,27 +112,27 @@ where
 
     fn base(time: u64) -> Self {
         Self {
-            watermark: Watermark::new(time),
+            watermark: time,
             seconds_wheel: MaybeWheel::with_capacity(SECONDS),
             minutes_wheel: MaybeWheel::with_capacity(MINUTES),
             hours_wheel: MaybeWheel::with_capacity(HOURS),
             days_wheel: MaybeWheel::with_capacity(DAYS),
             weeks_wheel: MaybeWheel::with_capacity(WEEKS),
             years_wheel: MaybeWheel::with_capacity(YEARS),
-            #[cfg(all(feature = "profiler", not(feature = "sync")))]
+            #[cfg(feature = "profiler")]
             stats: Stats::default(),
         }
     }
     fn base_drill_down(time: u64) -> Self {
         Self {
-            watermark: Watermark::new(time),
+            watermark: time,
             seconds_wheel: MaybeWheel::with_capacity_and_drill_down(SECONDS),
             minutes_wheel: MaybeWheel::with_capacity_and_drill_down(MINUTES),
             hours_wheel: MaybeWheel::with_capacity_and_drill_down(HOURS),
             days_wheel: MaybeWheel::with_capacity_and_drill_down(DAYS),
             weeks_wheel: MaybeWheel::with_capacity_and_drill_down(WEEKS),
             years_wheel: MaybeWheel::with_capacity_and_drill_down(YEARS),
-            #[cfg(all(feature = "profiler", not(feature = "sync")))]
+            #[cfg(feature = "profiler")]
             stats: Stats::default(),
         }
     }
@@ -189,11 +188,11 @@ where
 
     /// Advance the watermark of the wheel by the given [time::Duration]
     #[inline(always)]
-    pub fn advance(&self, duration: time::Duration, waw: &mut WriteAheadWheel<A>) {
+    pub fn advance(&mut self, duration: time::Duration, waw: &mut WriteAheadWheel<A>) {
         let mut ticks: usize = duration.whole_seconds() as usize;
 
         // helper fn to tick N times
-        let tick_n = |ticks: usize, haw: &Self, waw: &mut WriteAheadWheel<A>| {
+        let tick_n = |ticks: usize, haw: &mut Self, waw: &mut WriteAheadWheel<A>| {
             for _ in 0..ticks {
                 haw.tick(waw);
             }
@@ -203,12 +202,7 @@ where
             tick_n(ticks, self, waw);
         } else if ticks <= Self::CYCLE_LENGTH_SECS as usize {
             // force full rotation
-            let rem_ticks = self
-                .seconds_wheel
-                .get_or_insert()
-                .as_ref()
-                .unwrap()
-                .ticks_remaining();
+            let rem_ticks = self.seconds_wheel.get_or_insert().ticks_remaining();
             tick_n(rem_ticks, self, waw);
             ticks -= rem_ticks;
 
@@ -223,12 +217,8 @@ where
                 // NOTE: currently a fast tick is a full SECONDS rotation.
                 let fast_tick_ms = (SECONDS - 1) as u64 * Self::SECOND_AS_MS;
                 for _ in 0..fast_ticks {
-                    self.seconds_wheel
-                        .get_or_insert()
-                        .as_mut()
-                        .unwrap()
-                        .fast_skip_tick();
-                    self.watermark.inc(fast_tick_ms);
+                    self.seconds_wheel.get_or_insert().fast_skip_tick();
+                    self.watermark += fast_tick_ms;
                     *waw.watermark_mut() += fast_tick_ms;
                     self.tick(waw);
                     ticks -= SECONDS;
@@ -244,13 +234,13 @@ where
 
     /// Advances the time of the wheel aligned by the lowest unit (Second)
     #[inline]
-    pub(crate) fn advance_to(&self, watermark: u64, waw: &mut WriteAheadWheel<A>) {
+    pub(crate) fn advance_to(&mut self, watermark: u64, waw: &mut WriteAheadWheel<A>) {
         let diff = watermark.saturating_sub(self.watermark());
         self.advance(time::Duration::milliseconds(diff as i64), waw);
     }
 
     /// Clears the state of all wheels
-    pub fn clear(&self) {
+    pub fn clear(&mut self) {
         self.seconds_wheel.clear();
         self.minutes_wheel.clear();
         self.hours_wheel.clear();
@@ -262,7 +252,7 @@ where
     /// Return the current watermark as milliseconds for this wheel
     #[inline]
     pub fn watermark(&self) -> u64 {
-        self.watermark.get()
+        self.watermark
     }
     /// Returns the aggregate in the given time interval
     pub fn interval_and_lower(&self, dur: time::Duration) -> Option<A::Aggregate> {
@@ -300,7 +290,7 @@ where
     /// The given time duration must be quantizable to the time intervals of the HAW
     #[inline]
     pub fn interval(&self, dur: time::Duration) -> Option<A::PartialAggregate> {
-        #[cfg(all(feature = "profiler", not(feature = "sync")))]
+        #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.interval);
 
         if Self::is_quantizable(dur) {
@@ -478,7 +468,7 @@ where
     /// Executes a Landmark Window that combines total partial aggregates across all wheels
     #[inline]
     pub fn landmark(&self) -> Option<A::PartialAggregate> {
-        #[cfg(all(feature = "profiler", not(feature = "sync")))]
+        #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.landmark);
 
         let wheels = [
@@ -515,55 +505,55 @@ where
     ///
     /// In the worst case, a tick may cause a rotation of all the wheels in the hierarchy.
     #[inline]
-    fn tick(&self, waw: &mut WriteAheadWheel<A>) {
-        #[cfg(all(feature = "profiler", not(feature = "sync")))]
+    fn tick(&mut self, waw: &mut WriteAheadWheel<A>) {
+        #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.tick);
 
-        self.watermark.inc(Self::SECOND_AS_MS);
+        self.watermark += Self::SECOND_AS_MS;
 
-        let mut seconds = self.seconds_wheel.get_or_insert();
+        let seconds = self.seconds_wheel.get_or_insert();
 
         // Tick the Write-ahead wheel, if new entry insert into head of seconds wheel
         if let Some(window) = waw.tick() {
             let partial_agg = A::freeze(window);
-            seconds.as_mut().unwrap().insert_head(partial_agg);
+            seconds.insert_head(partial_agg);
         }
 
         // full rotation of seconds wheel
-        if let Some(rot_data) = seconds.as_mut().unwrap().tick() {
+        if let Some(rot_data) = seconds.tick() {
             // insert 60 seconds worth of partial aggregates into minute wheel and then tick it
-            let mut minutes = self.minutes_wheel.get_or_insert();
+            let minutes = self.minutes_wheel.get_or_insert();
 
-            minutes.as_mut().unwrap().insert_rotation_data(rot_data);
+            minutes.insert_rotation_data(rot_data);
 
             // full rotation of minutes wheel
-            if let Some(rot_data) = minutes.as_mut().unwrap().tick() {
+            if let Some(rot_data) = minutes.tick() {
                 // insert 60 minutes worth of partial aggregates into hours wheel and then tick it
-                let mut hours = self.hours_wheel.get_or_insert();
+                let hours = self.hours_wheel.get_or_insert();
 
-                hours.as_mut().unwrap().insert_rotation_data(rot_data);
+                hours.insert_rotation_data(rot_data);
 
                 // full rotation of hours wheel
-                if let Some(rot_data) = hours.as_mut().unwrap().tick() {
+                if let Some(rot_data) = hours.tick() {
                     // insert 24 hours worth of partial aggregates into days wheel and then tick it
-                    let mut days = self.days_wheel.get_or_insert();
-                    days.as_mut().unwrap().insert_rotation_data(rot_data);
+                    let days = self.days_wheel.get_or_insert();
+                    days.insert_rotation_data(rot_data);
 
                     // full rotation of days wheel
-                    if let Some(rot_data) = days.as_mut().unwrap().tick() {
+                    if let Some(rot_data) = days.tick() {
                         // insert 7 days worth of partial aggregates into weeks wheel and then tick it
-                        let mut weeks = self.weeks_wheel.get_or_insert();
+                        let weeks = self.weeks_wheel.get_or_insert();
 
-                        weeks.as_mut().unwrap().insert_rotation_data(rot_data);
+                        weeks.insert_rotation_data(rot_data);
 
                         // full rotation of weeks wheel
-                        if let Some(rot_data) = weeks.as_mut().unwrap().tick() {
+                        if let Some(rot_data) = weeks.tick() {
                             // insert 1 years worth of partial aggregates into year wheel and then tick it
-                            let mut years = self.years_wheel.get_or_insert();
-                            years.as_mut().unwrap().insert_rotation_data(rot_data);
+                            let years = self.years_wheel.get_or_insert();
+                            years.insert_rotation_data(rot_data);
 
                             // tick but ignore full rotations as this is the last hierarchy
-                            let _ = years.as_mut().unwrap().tick();
+                            let _ = years.tick();
                         }
                     }
                 }
@@ -572,37 +562,62 @@ where
     }
 
     /// Returns a reference to the seconds wheel
-    pub fn seconds(&self) -> AggWheelRef<'_, A> {
-        self.seconds_wheel.read()
+    pub fn seconds(&self) -> Option<&AggregationWheel<A>> {
+        self.seconds_wheel.as_ref()
+    }
+    /// Returns an unchecked reference to the seconds wheel
+    pub fn seconds_unchecked(&self) -> &AggregationWheel<A> {
+        self.seconds_wheel.as_ref().unwrap()
     }
 
     /// Returns a reference to the minutes wheel
-    pub fn minutes(&self) -> AggWheelRef<'_, A> {
-        self.minutes_wheel.read()
+    pub fn minutes(&self) -> Option<&AggregationWheel<A>> {
+        self.minutes_wheel.as_ref()
+    }
+    /// Returns an unchecked reference to the minutes wheel
+    pub fn minutes_unchecked(&self) -> &AggregationWheel<A> {
+        self.minutes_wheel.as_ref().unwrap()
     }
     /// Returns a reference to the hours wheel
-    pub fn hours(&self) -> AggWheelRef<'_, A> {
-        self.hours_wheel.read()
+    pub fn hours(&self) -> Option<&AggregationWheel<A>> {
+        self.hours_wheel.as_ref()
+    }
+    /// Returns an unchecked reference to the hours wheel
+    pub fn hours_unchecked(&self) -> &AggregationWheel<A> {
+        self.hours_wheel.as_ref().unwrap()
     }
     /// Returns a reference to the days wheel
-    pub fn days(&self) -> AggWheelRef<'_, A> {
-        self.days_wheel.read()
+    pub fn days(&self) -> Option<&AggregationWheel<A>> {
+        self.days_wheel.as_ref()
+    }
+    /// Returns an unchecked reference to the days wheel
+    pub fn days_unchecked(&self) -> &AggregationWheel<A> {
+        self.days_wheel.as_ref().unwrap()
     }
 
     /// Returns a reference to the weeks wheel
-    pub fn weeks(&self) -> AggWheelRef<'_, A> {
-        self.weeks_wheel.read()
+    pub fn weeks(&self) -> Option<&AggregationWheel<A>> {
+        self.weeks_wheel.as_ref()
+    }
+
+    /// Returns an unchecked reference to the weeks wheel
+    pub fn weeks_unchecked(&self) -> &AggregationWheel<A> {
+        self.weeks_wheel.as_ref().unwrap()
     }
 
     /// Returns a reference to the years wheel
-    pub fn years(&self) -> AggWheelRef<'_, A> {
-        self.years_wheel.read()
+    pub fn years(&self) -> Option<&AggregationWheel<A>> {
+        self.years_wheel.as_ref()
+    }
+    /// Returns a reference to the years wheel
+    pub fn years_unchecked(&self) -> &AggregationWheel<A> {
+        self.years_wheel.as_ref().unwrap()
     }
 
     /// Merges two wheels
     ///
     /// Note that the time in `other` may be advanced and thus change state
-    pub(crate) fn merge(&self, other: &Self) {
+    pub(crate) fn merge(&mut self, other: &mut Self) {
         let other_watermark = other.watermark();
 
         // make sure both wheels are aligned by time
@@ -620,64 +635,9 @@ where
         self.weeks_wheel.merge(&other.weeks_wheel);
         self.years_wheel.merge(&other.years_wheel);
     }
-    #[cfg(all(feature = "profiler", not(feature = "sync")))]
+    #[cfg(feature = "profiler")]
     /// Returns a reference to the stats of the [HAW]
     pub fn stats(&self) -> &Stats {
         &self.stats
-    }
-}
-
-#[cfg(feature = "sync")]
-mod watermark_impl {
-    use core::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::Arc;
-
-    /// A watermark backed by interior mutability
-    ///
-    /// ``Cell`` for single threded exuections and ``Arc<AtomicU64<_>>`` with the sync feature enabled
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-    #[derive(Clone, Debug)]
-    pub struct Watermark(Arc<AtomicU64>);
-    impl Watermark {
-        #[inline(always)]
-        pub(super) fn new(watermark: u64) -> Self {
-            Self(Arc::new(AtomicU64::new(watermark)))
-        }
-        #[inline(always)]
-        pub(super) fn get(&self) -> u64 {
-            self.0.load(Ordering::Relaxed)
-        }
-        #[inline(always)]
-        pub(super) fn inc(&self, step: u64) {
-            let _ = self.0.fetch_add(step, Ordering::Relaxed);
-        }
-    }
-}
-
-#[cfg(not(feature = "sync"))]
-mod watermark_impl {
-    use core::cell::Cell;
-
-    /// A watermark backed by interior mutability
-    ///
-    /// ``Cell`` for single threded exuections and ``Arc<AtomicU64<_>>`` with the sync feature enabled
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-    #[derive(Clone, Debug)]
-    pub struct Watermark(Cell<u64>);
-
-    impl Watermark {
-        #[inline(always)]
-        pub(super) fn new(watermark: u64) -> Self {
-            Self(Cell::new(watermark))
-        }
-        #[inline(always)]
-        pub(super) fn get(&self) -> u64 {
-            self.0.get()
-        }
-        #[inline(always)]
-        pub(super) fn inc(&self, step: u64) {
-            let curr = self.get();
-            self.0.set(curr + step);
-        }
     }
 }
