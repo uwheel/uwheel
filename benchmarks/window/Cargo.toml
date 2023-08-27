@@ -6,6 +6,7 @@ edition.workspace = true
 [features]
 default = ["plot"]
 debug = []
+sync = ["awheel/sync"]
 plot = ["dep:plotpy"]
 
 [dependencies]

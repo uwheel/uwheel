@@ -2,7 +2,7 @@ use crate::{state::State, WindowExt};
 
 use super::util::{pairs_capacity, pairs_space, PairType};
 use awheel_core::{
-    aggregator::{Aggregator, InverseExt},
+    aggregator::Aggregator,
     rw_wheel::{
         read::{aggregation::combine_or_insert, ReadWheel},
         write::DEFAULT_WRITE_AHEAD_SLOTS,
@@ -20,9 +20,6 @@ use core::{iter::Iterator, mem};
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, vec::Vec};
 
-#[cfg(feature = "rkyv")]
-use rkyv::{Archive, Deserialize, Serialize};
-
 #[cfg(feature = "stats")]
 use awheel_stats::profile_scope;
 
@@ -30,7 +27,6 @@ use awheel_stats::profile_scope;
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
-#[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[derive(Debug, Clone)]
 pub struct PairsWheel<A: Aggregator> {
     num_slots: usize,
@@ -150,7 +146,7 @@ impl Builder {
         self
     }
     /// Consumes the builder and returns a [LazyWindowWheel]
-    pub fn build<A: Aggregator + InverseExt>(self) -> LazyWindowWheel<A> {
+    pub fn build<A: Aggregator>(self) -> LazyWindowWheel<A> {
         assert!(
             self.range >= self.slide,
             "Range must be larger or equal to slide"

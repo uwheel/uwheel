@@ -79,6 +79,7 @@ pub struct Run {
     pub total_insertions: u64,
     pub runtime: std::time::Duration,
     pub stats: Stats,
+    pub qps: Option<f64>,
 }
 #[derive(Debug)]
 pub struct Execution {
@@ -114,7 +115,11 @@ impl BenchResult {
             |run: &Run| (run.total_insertions as f64 / run.runtime.as_secs_f64()) / 1_000_000.0;
         println!("{:#?}", self.execution);
         for run in self.runs.iter() {
-            println!("Throughput {} Mops/s", throughput(run));
+            if let Some(qps) = run.qps {
+                println!("Throughput {} Mops/s with {} M/qps", throughput(run), qps);
+            } else {
+                println!("Throughput {} Mops/s", throughput(run));
+            }
             println!("{} (took {:.2}s)", run.id, run.runtime.as_secs_f64(),);
             println!("{:#?}", run.stats);
         }

@@ -1,9 +1,16 @@
+use minstant::Instant;
+#[cfg(feature = "sync")]
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::{cmp, collections::BTreeMap};
 
 use awheel::{
-    aggregator::sum::U64SumAggregator,
+    aggregator::{min::U64MinAggregator, sum::U64SumAggregator},
     time::Duration,
     window::{eager, lazy, stats::Stats, WindowExt},
+    Aggregator,
     Entry,
 };
 use chrono::NaiveDateTime;
@@ -117,7 +124,14 @@ fn nyc_citi_bike_bench_sum() {
             .with_watermark(watermark)
             .build();
 
+        #[cfg(feature = "sync")]
+        let (gate, handle) = spawn_query_thread(&lazy_wheel_64);
         let (runtime, stats, lazy_results) = run(lazy_wheel_64, &events);
+        #[cfg(feature = "sync")]
+        gate.store(false, Ordering::Relaxed);
+        #[cfg(feature = "sync")]
+        let qps = handle.join().unwrap();
+
         println!("Finished Lazy Wheel 64");
 
         runs.push(Run {
@@ -125,6 +139,10 @@ fn nyc_citi_bike_bench_sum() {
             total_insertions,
             runtime,
             stats,
+            #[cfg(feature = "sync")]
+            qps: Some(qps),
+            #[cfg(not(feature = "sync"))]
+            qps: None,
         });
 
         let lazy_wheel_256: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
@@ -134,7 +152,14 @@ fn nyc_citi_bike_bench_sum() {
             .with_watermark(watermark)
             .build();
 
+        #[cfg(feature = "sync")]
+        let (gate, handle) = spawn_query_thread(&lazy_wheel_256);
         let (runtime, stats, _lazy_results) = run(lazy_wheel_256, &events);
+        #[cfg(feature = "sync")]
+        gate.store(false, Ordering::Relaxed);
+        #[cfg(feature = "sync")]
+        let qps = handle.join().unwrap();
+
         println!("Finished Lazy Wheel 256");
 
         runs.push(Run {
@@ -142,6 +167,10 @@ fn nyc_citi_bike_bench_sum() {
             total_insertions,
             runtime,
             stats,
+            #[cfg(feature = "sync")]
+            qps: Some(qps),
+            #[cfg(not(feature = "sync"))]
+            qps: None,
         });
 
         let lazy_wheel_512: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
@@ -151,7 +180,14 @@ fn nyc_citi_bike_bench_sum() {
             .with_watermark(watermark)
             .build();
 
+        #[cfg(feature = "sync")]
+        let (gate, handle) = spawn_query_thread(&lazy_wheel_512);
         let (runtime, stats, _lazy_results) = run(lazy_wheel_512, &events);
+        #[cfg(feature = "sync")]
+        gate.store(false, Ordering::Relaxed);
+        #[cfg(feature = "sync")]
+        let qps = handle.join().unwrap();
+
         println!("Finished Lazy Wheel 512");
 
         runs.push(Run {
@@ -159,10 +195,13 @@ fn nyc_citi_bike_bench_sum() {
             total_insertions,
             runtime,
             stats,
+            #[cfg(feature = "sync")]
+            qps: Some(qps),
+            #[cfg(not(feature = "sync"))]
+            qps: None,
         });
 
         // EAGER
-
         let eager_wheel_64: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
             .with_range(range)
             .with_slide(slide)
@@ -170,7 +209,13 @@ fn nyc_citi_bike_bench_sum() {
             .with_watermark(watermark)
             .build();
 
+        #[cfg(feature = "sync")]
+        let (gate, handle) = spawn_query_thread(&eager_wheel_64);
         let (runtime, stats, eager_results) = run(eager_wheel_64, &events);
+        #[cfg(feature = "sync")]
+        gate.store(false, Ordering::Relaxed);
+        #[cfg(feature = "sync")]
+        let qps = handle.join().unwrap();
 
         assert_eq!(lazy_results, eager_results);
 
@@ -180,6 +225,10 @@ fn nyc_citi_bike_bench_sum() {
             total_insertions,
             runtime,
             stats,
+            #[cfg(feature = "sync")]
+            qps: Some(qps),
+            #[cfg(not(feature = "sync"))]
+            qps: None,
         });
 
         let eager_wheel_256: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
@@ -189,7 +238,13 @@ fn nyc_citi_bike_bench_sum() {
             .with_watermark(watermark)
             .build();
 
+        #[cfg(feature = "sync")]
+        let (gate, handle) = spawn_query_thread(&eager_wheel_256);
         let (runtime, stats, _eager_results) = run(eager_wheel_256, &events);
+        #[cfg(feature = "sync")]
+        gate.store(false, Ordering::Relaxed);
+        #[cfg(feature = "sync")]
+        let qps = handle.join().unwrap();
 
         println!("Finished Eager Wheel W256");
         runs.push(Run {
@@ -197,6 +252,10 @@ fn nyc_citi_bike_bench_sum() {
             total_insertions,
             runtime,
             stats,
+            #[cfg(feature = "sync")]
+            qps: Some(qps),
+            #[cfg(not(feature = "sync"))]
+            qps: None,
         });
 
         let eager_wheel_512: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
@@ -206,7 +265,13 @@ fn nyc_citi_bike_bench_sum() {
             .with_watermark(watermark)
             .build();
 
+        #[cfg(feature = "sync")]
+        let (gate, handle) = spawn_query_thread(&eager_wheel_512);
         let (runtime, stats, eager_results) = run(eager_wheel_512, &events);
+        #[cfg(feature = "sync")]
+        gate.store(false, Ordering::Relaxed);
+        #[cfg(feature = "sync")]
+        let qps = handle.join().unwrap();
 
         println!("Finished Eager Wheel W512");
         runs.push(Run {
@@ -214,6 +279,10 @@ fn nyc_citi_bike_bench_sum() {
             total_insertions,
             runtime,
             stats,
+            #[cfg(feature = "sync")]
+            qps: Some(qps),
+            #[cfg(not(feature = "sync"))]
+            qps: None,
         });
 
         let pairs_fiba_4: PairsTree<tree::FiBA4> =
@@ -225,6 +294,7 @@ fn nyc_citi_bike_bench_sum() {
             total_insertions,
             runtime,
             stats,
+            qps: None,
         });
         assert_eq!(eager_results, _pairs_fiba_results);
 
@@ -237,6 +307,7 @@ fn nyc_citi_bike_bench_sum() {
             total_insertions,
             runtime,
             stats,
+            qps: None,
         });
 
         let pairs_btreemap: PairsTree<BTreeMap<u64, _>> =
@@ -248,6 +319,7 @@ fn nyc_citi_bike_bench_sum() {
             total_insertions,
             runtime,
             stats,
+            qps: None,
         });
         /*
         let mismatches =
@@ -271,13 +343,135 @@ fn nyc_citi_bike_bench_sum() {
     plot_nyc_citi_bike_insert_latency(&results);
 }
 
+#[cfg(feature = "sync")]
+fn spawn_query_thread(
+    window: &impl WindowExt<U64SumAggregator>,
+) -> (Arc<AtomicBool>, std::thread::JoinHandle<f64>) {
+    let read_wheel = window.wheel().clone();
+    let gate = Arc::new(AtomicBool::new(true));
+    let inner_gate = gate.clone();
+    let handle = std::thread::spawn(move || {
+        let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
+        // wait with querying until the wheel has been advanced 24 hours
+        loop {
+            use awheel::time;
+            if read_wheel.watermark()
+                > watermark + time::Duration::hours(24).whole_milliseconds() as u64
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        let now = Instant::now();
+        let mut counter = 0;
+        while inner_gate.load(Ordering::Relaxed) {
+            // Execute queries on random granularities
+            let pick = fastrand::usize(0..3);
+            if pick == 0 {
+                let _res = read_wheel.interval(Duration::seconds(fastrand::i64(1..60)));
+            } else if pick == 1 {
+                let _res = read_wheel.interval(Duration::minutes(fastrand::i64(1..60)));
+            } else {
+                let _res = read_wheel.interval(Duration::hours(fastrand::i64(1..24)));
+            }
+            counter += 1;
+        }
+        (counter as f64 / now.elapsed().as_secs_f64()) / 1_000_000.0
+        // println!(
+        //     "Concurrent Read task ran at {} Mops/s",
+        //     (counter as f64 / now.elapsed().as_secs_f64()) as u64 / 1_000_000
+        // );
+    });
+    (gate, handle)
+}
+
+fn _nyc_citi_bike_bench_min() {
+    let path = "../data/citibike-tripdata.csv";
+    let mut events = Vec::new();
+    let mut rdr = csv::Reader::from_path(path).unwrap();
+    for result in rdr.deserialize() {
+        let record: CitiBikeTrip = result.unwrap();
+        let event = CitiBikeEvent::from(record);
+        events.push(event);
+    }
+
+    let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
+    let mut results = Vec::new();
+
+    for exec in EXECUTIONS {
+        let range = exec.range;
+        let slide = exec.slide;
+        let total_insertions = events.len() as u64;
+
+        let mut runs = Vec::new();
+        let lazy_wheel_64: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(64)
+            .with_watermark(watermark)
+            .build();
+
+        let (runtime, stats, _lazy_results) = run(lazy_wheel_64, &events);
+        println!("Finished Lazy Wheel 64");
+
+        runs.push(Run {
+            id: "Lazy Wheel 64".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+            qps: None,
+        });
+
+        let lazy_wheel_256: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(256)
+            .with_watermark(watermark)
+            .build();
+
+        let (runtime, stats, _lazy_results) = run(lazy_wheel_256, &events);
+        println!("Finished Lazy Wheel 256");
+
+        runs.push(Run {
+            id: "Lazy Wheel 256".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+            qps: None,
+        });
+
+        let lazy_wheel_512: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(512)
+            .with_watermark(watermark)
+            .build();
+
+        let (runtime, stats, _lazy_results) = run(lazy_wheel_512, &events);
+        println!("Finished Lazy Wheel 512");
+
+        runs.push(Run {
+            id: "Lazy Wheel 512".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+            qps: None,
+        });
+
+        let result = BenchResult::new(exec, runs);
+        result.print();
+        results.push(result);
+    }
+}
+
 fn main() {
     nyc_citi_bike_bench_sum();
     // TODO: add non-inversible aggregation function
+    // nyc_citi_bike_bench_min();
 }
 
-fn run(
-    mut window: impl WindowExt<U64SumAggregator>,
+fn run<A: Aggregator<Input = u64, Aggregate = u64>>(
+    mut window: impl WindowExt<A>,
     events: &[CitiBikeEvent],
 ) -> (std::time::Duration, Stats, Vec<(u64, Option<u64>)>) {
     let mut watermark = datetime_to_u64("2018-08-01 00:00:00.0");
@@ -286,7 +480,7 @@ fn run(
     let mut counter = 0;
     let mut results = Vec::new();
 
-    let full = minstant::Instant::now();
+    let full = Instant::now();
     for event in events {
         generator.on_event(&event.start_time);
         window.insert(Entry::new(event.trip_duration, event.start_time));
@@ -464,7 +658,12 @@ fn plot_nyc_citi_bike(results: &Vec<BenchResult>) {
         .add(&legend);
 
     // modify manually in generated python code: plt.gca().set_xscale('log', base=2)
-    let path = Path::new("../results/nyc_citi_bike_window_throughput.png");
+    #[cfg(feature = "sync")]
+    let path = "../results/nyc_citi_bike_window_throughput_sync.png";
+    #[cfg(not(feature = "sync"))]
+    let path = "../results/nyc_citi_bike_window_throughput.png";
+
+    let path = Path::new(&path);
     plot.save(&path).unwrap();
 }
 
@@ -604,7 +803,13 @@ fn plot_nyc_citi_bike_window_latency(results: &Vec<BenchResult>) {
         .add(&legend);
 
     // modify manually in generated python code: plt.gca().set_xscale('log', base=2)
-    let path = Path::new("../results/nyc_citi_bike_window_computation_latency.png");
+
+    #[cfg(feature = "sync")]
+    let path = "../results/nyc_citi_bike_window_computation_latency_sync.png";
+    #[cfg(not(feature = "sync"))]
+    let path = "../results/nyc_citi_bike_window_computation_latency.png";
+
+    let path = Path::new(&path);
     plot.save(&path).unwrap();
 }
 
@@ -725,7 +930,12 @@ fn plot_nyc_citi_bike_insert_latency(results: &Vec<BenchResult>) {
         .add(&pairs_btreemap_curve)
         .add(&legend);
 
+    #[cfg(feature = "sync")]
+    let path = "../results/nyc_citi_bike_window_insert_latency_sync.png";
+    #[cfg(not(feature = "sync"))]
+    let path = "../results/nyc_citi_bike_window_insert_latency.png";
+
+    let path = Path::new(&path);
     // modify manually in generated python code: plt.gca().set_xscale('log', base=2)
-    let path = Path::new("../results/nyc_citi_bike_window_insert_latency.png");
     plot.save(&path).unwrap();
 }
