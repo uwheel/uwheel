@@ -30,10 +30,10 @@ touch results/synthetic_window_insert.log
 (cd window && cargo run --release --bin synthetic -- insert >> ../results/synthetic_window_insert.log )
 echo "Finished Synthetic Window Insert experiment (3/5)"
 
-echo "Starting Synthetic Window Computation experiment (4/5)"
-touch results/synthetic_window_computation.log
-(cd window && cargo run --release --bin synthetic -- computation >> ../results/synthetic_window_computation.log )
-echo "Finished Synthetic Window Computation experiment (4/5)"
+echo "Starting Synthetic Window OOO experiment (4/5)"
+touch results/synthetic_window_insert_ooo.log
+(cd window && cargo run --release --bin synthetic -- ooo >> ../results/synthetic_window_insert_oo.log )
+echo "Finished Synthetic Window OOO experiment (4/5)
 
 echo "Starting TopN experiment (5/5)"
 touch results/top_n.log

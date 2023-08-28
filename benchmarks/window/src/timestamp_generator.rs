@@ -31,7 +31,7 @@ impl TimestampGenerator {
     pub fn timestamp(&self) -> u64 {
         // generate a timestamp above the current watermark and below the max out of orderness.
         let max_distance_ms = self.max_distance.whole_milliseconds() as u64;
-        let ts = fastrand::u64(self.watermark..=(self.watermark + max_distance_ms));
+        let ts = fastrand::u64(self.watermark..(self.watermark + max_distance_ms));
         align_to_closest_thousand(ts)
     }
     pub fn update_watermark(&mut self, watermark: u64) {

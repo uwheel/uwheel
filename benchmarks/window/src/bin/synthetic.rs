@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use awheel::{
     aggregator::sum::U64SumAggregator,
     time::Duration,
@@ -13,56 +15,24 @@ use awheel::{
 };
 use clap::{ArgEnum, Parser};
 use minstant::Instant;
-use window::{external_impls, TimestampGenerator};
+use window::{
+    external_impls::{self, PairsTree},
+    tree,
+    TimestampGenerator,
+};
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
 pub enum Workload {
     Insert,
-    Computation,
+    Ooo,
     All,
 }
-
-const EXECUTIONS: [Execution; 5] = [
-    Execution::new(30, 10),
-    Execution::new(60, 10),
-    Execution::new(1800, 10),
-    Execution::new(3600, 10),
-    Execution::new(86400, 10),
-    //Execution::new(604800, 10),
-];
 
 // max possible out of order distance
 // for example if 8, then may generate timestamp with lowest 1 second distance from the watermark and highest 8.
 const OUT_OF_ORDER_DISTANCE: [usize; 7] = [1, 2, 4, 8, 16, 32, 64];
+const EVENTS_PER_SECOND: [usize; 6] = [10, 100, 1000, 10000, 100000, 1000000];
 
-#[derive(Debug)]
-struct Execution {
-    pub range: u64,
-    pub slide: u64,
-}
-impl Execution {
-    pub const fn new(range: u64, slide: u64) -> Self {
-        Self { range, slide }
-    }
-}
-
-#[allow(dead_code)]
-struct Result {
-    execution: Execution,
-    runs: Vec<Run>,
-}
-impl Result {
-    pub fn new(execution: Execution, runs: Vec<Run>) -> Self {
-        Self { execution, runs }
-    }
-    pub fn print(&self) {
-        println!("{:#?}", self.execution);
-        for run in self.runs.iter() {
-            println!("{} (took {:.2}s)", run.id, run.runtime.as_secs_f64(),);
-            println!("{:#?}", run.stats);
-        }
-    }
-}
 struct Run {
     pub id: String,
     pub total_insertions: u64,
@@ -111,51 +81,16 @@ fn main() {
 
     match args.workload {
         Workload::All => {
-            window_computation_bench(&args);
             insert_rate_bench(&mut args);
+            insert_random_ooo_distance(&mut args);
         }
         Workload::Insert => {
             insert_rate_bench(&mut args);
         }
-        Workload::Computation => {
-            window_computation_bench(&args);
+        Workload::Ooo => {
+            insert_random_ooo_distance(&mut args);
         }
     }
-
-    /*
-    let gate = Arc::new(AtomicBool::new(true));
-    let read_wheel = eager_wheel.wheel().clone();
-    let inner_gate = gate.clone();
-    let handle = std::thread::spawn(move || {
-        let now = Instant::now();
-        let mut counter = 0;
-        while inner_gate.load(Ordering::Relaxed) {
-            // Execute queries on random granularities
-            let pick = fastrand::usize(0..3);
-            if pick == 0 {
-                let _res = std::hint::black_box(
-                    read_wheel.interval(Duration::seconds(fastrand::i64(1..60))),
-                );
-            } else if pick == 1 {
-                let _res = std::hint::black_box(
-                    read_wheel.interval(Duration::minutes(fastrand::i64(1..60))),
-                );
-            } else {
-                let _res = std::hint::black_box(
-                    read_wheel.interval(Duration::hours(fastrand::i64(1..24))),
-                );
-            }
-            counter += 1;
-        }
-        println!(
-            "Concurrent Read task ran at {} Mops/s",
-            (counter as f64 / now.elapsed().as_secs_f64()) as u64 / 1_000_000
-        );
-    });
-    run("Eager Wheel SUM", seconds, eager_wheel, &args);
-    gate.store(false, Ordering::Relaxed);
-    handle.join().unwrap();
-    */
 }
 
 #[cfg(feature = "debug")]
@@ -170,78 +105,169 @@ macro_rules! log {
     ($( $args:expr ),*) => {};
 }
 
-// focus: measure computation latency (p99) of each window for growing window ranges with a slide of 10s
-fn window_computation_bench(args: &Args) {
-    let mut results = Vec::new();
-
-    for exec in EXECUTIONS {
-        let range = Duration::seconds(exec.range as i64);
-        let slide = Duration::seconds(exec.slide as i64);
-        let seconds = number_of_seconds(
-            args.windows,
-            range.whole_seconds() as u64,
-            slide.whole_seconds() as u64,
-        );
-        let total_insertions = seconds * args.events_per_sec;
-
-        let mut runs = Vec::new();
-
-        let lazy_wheel: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .build();
-
-        let (runtime, stats) = run(seconds, lazy_wheel, args);
-
-        runs.push(Run {
-            id: "Lazy Wheel".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-        });
-
-        let eager_wheel: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .build();
-
-        let (runtime, stats) = run(seconds, eager_wheel, args);
-        runs.push(Run {
-            id: "Eager Wheel".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-        });
-
-        let cg_bfinger_four_wheel = external_impls::BFingerFourWheel::new(0, range, slide);
-        let (runtime, stats) = run(seconds, cg_bfinger_four_wheel, args);
-        runs.push(Run {
-            id: "FiBA CG BFinger4".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-        });
-
-        let cg_bfinger_eight_wheel = external_impls::BFingerEightWheel::new(0, range, slide);
-        let (runtime, stats) = run(seconds, cg_bfinger_eight_wheel, args);
-        runs.push(Run {
-            id: "FiBA CG BFinger8".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-        });
-
-        let result = Result::new(exec, runs);
-
-        result.print();
-        results.push(result);
-    }
-    #[cfg(feature = "plot")]
-    plot_window_computation_bench(results);
-}
-
 // focus: measure runtime of 30s range and 10s slide with growing events per second
 fn insert_rate_bench(args: &mut Args) {
+    let range = Duration::seconds(30);
+    let slide = Duration::seconds(10);
+    let seconds = number_of_seconds(
+        args.windows,
+        range.whole_seconds() as u64,
+        slide.whole_seconds() as u64,
+    );
+
+    let mut results = Vec::new();
+    for events in EVENTS_PER_SECOND.iter() {
+        args.max_distance = 1;
+        let total_insertions = seconds * *events as u64;
+        let mut runs = Vec::new();
+
+        let lazy_wheel_8: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(8)
+            .build();
+
+        let (runtime, stats) = run(seconds, lazy_wheel_8, args);
+
+        println!("Finished Lazy Wheel 8");
+
+        runs.push(Run {
+            id: "Lazy Wheel 8".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+
+        let lazy_wheel_32: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(32)
+            .build();
+
+        let (runtime, stats) = run(seconds, lazy_wheel_32, args);
+
+        println!("Finished Lazy Wheel 32");
+
+        runs.push(Run {
+            id: "Lazy Wheel 32".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+
+        let lazy_wheel_64: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(64)
+            .build();
+
+        let (runtime, stats) = run(seconds, lazy_wheel_64, args);
+
+        println!("Finished Lazy Wheel 64");
+
+        runs.push(Run {
+            id: "Lazy Wheel 64".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+
+        let eager_wheel_8: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(8)
+            .build();
+
+        let (runtime, stats) = run(seconds, eager_wheel_8, args);
+
+        println!("Finished Eager Wheel 8");
+
+        runs.push(Run {
+            id: "Eager Wheel 8".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+        let eager_wheel_32: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(32)
+            .build();
+
+        let (runtime, stats) = run(seconds, eager_wheel_32, args);
+
+        println!("Finished Eager Wheel 32");
+
+        runs.push(Run {
+            id: "Eager Wheel 32".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+        let eager_wheel_64: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(64)
+            .build();
+
+        let (runtime, stats) = run(seconds, eager_wheel_64, args);
+
+        println!("Finished Eager Wheel 64");
+
+        runs.push(Run {
+            id: "Eager Wheel 64".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+
+        let pairs_fiba_4: PairsTree<tree::FiBA4> = external_impls::PairsTree::new(0, range, slide);
+        let (runtime, stats) = run(seconds, pairs_fiba_4, args);
+        println!("Finished Pairs FiBA Bfinger 4 Wheel");
+        runs.push(Run {
+            id: "Pairs FiBA Bfinger 4".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+
+        let pairs_fiba8: PairsTree<tree::FiBA8> = external_impls::PairsTree::new(0, range, slide);
+        let (runtime, stats) = run(seconds, pairs_fiba8, args);
+        println!("Finished Pairs FiBA Bfinger 8 Wheel");
+        runs.push(Run {
+            id: "Pairs FiBA Bfinger 8".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+
+        let pairs_btreemap: PairsTree<BTreeMap<u64, _>> =
+            external_impls::PairsTree::new(0, range, slide);
+        let (runtime, stats) = run(seconds, pairs_btreemap, args);
+        println!("Finished Pairs BTreeMap");
+        runs.push(Run {
+            id: "Pairs BTreeMap".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+
+        results.push(runs);
+        for runs in &results {
+            //println!("Events per second: {}", events);
+            for run in runs.iter() {
+                println!("{} (took {:.2}s)", run.id, run.runtime.as_secs_f64(),);
+                println!("{:#?}", run.stats);
+            }
+        }
+    }
+
+    #[cfg(feature = "plot")]
+    plot_insert_rate(&results)
+}
+
+// focus: measure the impact of out of order data
+fn insert_random_ooo_distance(args: &mut Args) {
     let range = Duration::seconds(30);
     let slide = Duration::seconds(10);
     let seconds = number_of_seconds(
@@ -256,46 +282,131 @@ fn insert_rate_bench(args: &mut Args) {
         let total_insertions = seconds * args.events_per_sec;
         let mut runs = Vec::new();
 
-        let lazy_wheel: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
+        let lazy_wheel_8: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
             .with_range(range)
             .with_slide(slide)
+            .with_write_ahead(8)
             .build();
 
-        let (runtime, stats) = run(seconds, lazy_wheel, args);
+        let (runtime, stats) = run(seconds, lazy_wheel_8, args);
+
+        println!("Finished Lazy Wheel 8");
 
         runs.push(Run {
-            id: "Lazy Wheel".to_string(),
+            id: "Lazy Wheel 8".to_string(),
             total_insertions,
             runtime,
             stats,
         });
 
-        let eager_wheel: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
+        let lazy_wheel_32: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
             .with_range(range)
             .with_slide(slide)
+            .with_write_ahead(32)
             .build();
 
-        let (runtime, stats) = run(seconds, eager_wheel, args);
+        let (runtime, stats) = run(seconds, lazy_wheel_32, args);
+
+        println!("Finished Lazy Wheel 32");
+
         runs.push(Run {
-            id: "Eager Wheel".to_string(),
+            id: "Lazy Wheel 32".to_string(),
             total_insertions,
             runtime,
             stats,
         });
 
-        let cg_bfinger_four_wheel = external_impls::BFingerFourWheel::new(0, range, slide);
-        let (runtime, stats) = run(seconds, cg_bfinger_four_wheel, args);
+        let lazy_wheel_64: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(64)
+            .build();
+
+        let (runtime, stats) = run(seconds, lazy_wheel_64, args);
+
+        println!("Finished Lazy Wheel 64");
+
         runs.push(Run {
-            id: "FiBA CG BFinger4".to_string(),
+            id: "Lazy Wheel 64".to_string(),
             total_insertions,
             runtime,
             stats,
         });
 
-        let cg_bfinger_eight_wheel = external_impls::BFingerEightWheel::new(0, range, slide);
-        let (runtime, stats) = run(seconds, cg_bfinger_eight_wheel, args);
+        let eager_wheel_8: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(8)
+            .build();
+
+        let (runtime, stats) = run(seconds, eager_wheel_8, args);
+
+        println!("Finished Eager Wheel 8");
+
         runs.push(Run {
-            id: "FiBA CG BFinger8".to_string(),
+            id: "Eager Wheel 8".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+        let eager_wheel_32: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(32)
+            .build();
+
+        let (runtime, stats) = run(seconds, eager_wheel_32, args);
+
+        println!("Finished Eager Wheel 32");
+
+        runs.push(Run {
+            id: "Eager Wheel 32".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+        let eager_wheel_64: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(64)
+            .build();
+
+        let (runtime, stats) = run(seconds, eager_wheel_64, args);
+
+        println!("Finished Eager Wheel 64");
+
+        runs.push(Run {
+            id: "Eager Wheel 64".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+        let pairs_fiba_4: PairsTree<tree::FiBA4> = external_impls::PairsTree::new(0, range, slide);
+        let (runtime, stats) = run(seconds, pairs_fiba_4, args);
+        println!("Finished Pairs FiBA Bfinger 4 Wheel");
+        runs.push(Run {
+            id: "Pairs FiBA Bfinger 4".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+
+        let pairs_fiba8: PairsTree<tree::FiBA8> = external_impls::PairsTree::new(0, range, slide);
+        let (runtime, stats) = run(seconds, pairs_fiba8, args);
+        println!("Finished Pairs FiBA Bfinger 8 Wheel");
+        runs.push(Run {
+            id: "Pairs FiBA Bfinger 8".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+        });
+
+        let pairs_btreemap: PairsTree<BTreeMap<u64, _>> =
+            external_impls::PairsTree::new(0, range, slide);
+        let (runtime, stats) = run(seconds, pairs_btreemap, args);
+        println!("Finished Pairs BTreeMap");
+        runs.push(Run {
+            id: "Pairs BTreeMap".to_string(),
             total_insertions,
             runtime,
             stats,
@@ -311,62 +422,103 @@ fn insert_rate_bench(args: &mut Args) {
         }
     }
     #[cfg(feature = "plot")]
-    plot_insert_bench(&results);
-    #[cfg(feature = "plot")]
-    plot_insert_bench_latency(results);
+    plot_random_ooo_distance(&results)
 }
 
 #[cfg(feature = "plot")]
-fn plot_insert_bench(results: &Vec<Vec<Run>>) {
+fn plot_random_ooo_distance(results: &Vec<Vec<Run>>) {
     use plotpy::{Curve, Legend, Plot};
     use std::path::Path;
     std::fs::create_dir_all("../results").unwrap();
 
     let x: Vec<f64> = OUT_OF_ORDER_DISTANCE.iter().map(|m| *m as f64).collect();
-    let mut lazy_y = Vec::new();
-    let mut eager_y = Vec::new();
-    let mut bfinger_four_y = Vec::new();
-    let mut bfinger_eight_y = Vec::new();
+    let mut lazy_8_y = Vec::new();
+    let mut lazy_32_y = Vec::new();
+    let mut lazy_64_y = Vec::new();
+    let mut eager_8_y = Vec::new();
+    let mut eager_32_y = Vec::new();
+    let mut eager_64_y = Vec::new();
+    let mut pairs_bfinger_four_y = Vec::new();
+    let mut pairs_bfinger_eight_y = Vec::new();
+    let mut pairs_btreemap_y = Vec::new();
 
     let throughput =
         |run: &Run| (run.total_insertions as f64 / run.runtime.as_secs_f64()) / 1_000_000.0;
     for runs in results {
-        lazy_y.push(throughput(&runs[0]));
-        eager_y.push(throughput(&runs[1]));
-        bfinger_four_y.push(throughput(&runs[2]));
-        bfinger_eight_y.push(throughput(&runs[3]));
+        // let runs = &res.runs;
+        lazy_8_y.push(throughput(&runs[0]));
+        lazy_32_y.push(throughput(&runs[1]));
+        lazy_64_y.push(throughput(&runs[2]));
+        eager_8_y.push(throughput(&runs[3]));
+        eager_32_y.push(throughput(&runs[4]));
+        eager_64_y.push(throughput(&runs[5]));
+        pairs_bfinger_four_y.push(throughput(&runs[6]));
+        pairs_bfinger_eight_y.push(throughput(&runs[7]));
+        pairs_btreemap_y.push(throughput(&runs[8]));
     }
 
-    let mut lazy_curve = Curve::new();
-    lazy_curve.set_label("Lazy Wheel");
-    lazy_curve.set_line_color("g");
-    lazy_curve.set_marker_style("o");
-    lazy_curve.draw(&x, &lazy_y);
+    let mut lazy_curve_8 = Curve::new();
+    lazy_curve_8.set_label("Lazy Wheel W8");
+    lazy_curve_8.set_line_color("g");
+    lazy_curve_8.set_marker_style("o");
+    lazy_curve_8.draw(&x, &lazy_8_y);
 
-    let mut eager_curve = Curve::new();
-    eager_curve.set_label("Eager Wheel");
-    eager_curve.set_marker_style("^");
-    eager_curve.set_line_color("r");
-    eager_curve.draw(&x, &eager_y);
+    let mut lazy_curve_32 = Curve::new();
+    lazy_curve_32.set_label("Lazy Wheel W32");
+    lazy_curve_32.set_line_color("g");
+    lazy_curve_32.set_marker_style("^");
+    lazy_curve_32.draw(&x, &lazy_32_y);
 
-    let mut bfinger_four_curve = Curve::new();
-    bfinger_four_curve.set_label("FiBA CG BFinger 4");
-    bfinger_four_curve.set_line_color("m");
-    bfinger_four_curve.set_marker_style("*");
-    bfinger_four_curve.draw(&x, &bfinger_four_y);
+    let mut lazy_curve_64 = Curve::new();
+    lazy_curve_64.set_label("Lazy Wheel W64");
+    lazy_curve_64.set_line_color("g");
+    lazy_curve_64.set_marker_style("x");
+    lazy_curve_64.draw(&x, &lazy_64_y);
 
-    let mut bfinger_eight_curve = Curve::new();
-    bfinger_eight_curve.set_label("FiBA CG BFinger 8");
-    bfinger_eight_curve.set_line_color("m");
-    bfinger_eight_curve.set_marker_style("^");
-    bfinger_eight_curve.draw(&x, &bfinger_eight_y);
+    let mut eager_curve_8 = Curve::new();
+    eager_curve_8.set_label("Eager Wheel W8");
+    eager_curve_8.set_marker_style("o");
+    eager_curve_8.set_line_color("r");
+    eager_curve_8.draw(&x, &eager_8_y);
+
+    let mut eager_curve_32 = Curve::new();
+    eager_curve_32.set_label("Eager Wheel W32");
+    eager_curve_32.set_marker_style("^");
+    eager_curve_32.set_line_color("r");
+    eager_curve_32.draw(&x, &eager_32_y);
+
+    let mut eager_curve_64 = Curve::new();
+    eager_curve_64.set_label("Eager Wheel W64");
+    eager_curve_64.set_marker_style("x");
+    eager_curve_64.set_line_color("r");
+    eager_curve_64.draw(&x, &eager_64_y);
+
+    let mut pairs_fiba_b4_curve = Curve::new();
+    pairs_fiba_b4_curve.set_label("Pairs + FiBA Bfinger4");
+    pairs_fiba_b4_curve.set_line_color("b");
+    pairs_fiba_b4_curve.set_marker_style("*");
+    pairs_fiba_b4_curve.draw(&x, &pairs_bfinger_four_y);
+
+    let mut pairs_fiba_b8_curve = Curve::new();
+    pairs_fiba_b8_curve.set_label("Pairs + FiBA Bfinger8");
+    pairs_fiba_b8_curve.set_line_color("b");
+    pairs_fiba_b8_curve.set_marker_style("^");
+    pairs_fiba_b8_curve.draw(&x, &pairs_bfinger_eight_y);
+
+    let mut pairs_btreemap_curve = Curve::new();
+    pairs_btreemap_curve.set_label("Pairs + BTreeMap");
+    pairs_btreemap_curve.set_line_color("c");
+    pairs_btreemap_curve.set_marker_style("x");
+    pairs_btreemap_curve.draw(&x, &pairs_btreemap_y);
 
     let mut legend = Legend::new();
+    legend.set_outside(true);
+    legend.set_num_col(2);
     legend.draw();
 
     // configure plot
     let mut plot = Plot::new();
-    plot.set_super_title("30s Range 10s slide (Sum Aggregation)")
+    plot.set_super_title("")
         .set_horizontal_gap(0.5)
         .set_vertical_gap(0.5)
         .set_gaps(0.3, 0.2);
@@ -375,160 +527,143 @@ fn plot_insert_bench(results: &Vec<Vec<Run>>) {
     plot.set_log_x(true);
     plot.set_label_x("ooo distance [seconds]");
 
-    plot.add(&lazy_curve)
-        .add(&eager_curve)
-        .add(&bfinger_four_curve)
-        .add(&bfinger_eight_curve)
+    plot.add(&lazy_curve_8)
+        .add(&lazy_curve_32)
+        .add(&lazy_curve_64)
+        .add(&eager_curve_8)
+        .add(&eager_curve_32)
+        .add(&eager_curve_64)
+        .add(&pairs_fiba_b4_curve)
+        .add(&pairs_fiba_b8_curve)
+        .add(&pairs_btreemap_curve)
         .add(&legend);
 
     // modify manually in generated python code: plt.gca().set_xscale('log', base=2)
-    let path = Path::new("../results/synthetic_window.png");
+    let path = "../results/synthetic_window_random_ooo_distance.png";
+
+    let path = Path::new(&path);
     plot.save(&path).unwrap();
 }
 
 #[cfg(feature = "plot")]
-fn plot_insert_bench_latency(results: Vec<Vec<Run>>) {
-    use awheel::stats::Percentiles;
+fn plot_insert_rate(results: &Vec<Vec<Run>>) {
     use plotpy::{Curve, Legend, Plot};
     use std::path::Path;
     std::fs::create_dir_all("../results").unwrap();
 
-    let x: Vec<f64> = OUT_OF_ORDER_DISTANCE.iter().map(|m| *m as f64).collect();
-    let mut lazy_y = Vec::new();
-    let mut eager_y = Vec::new();
-    let mut bfinger_four_y = Vec::new();
-    let mut bfinger_eight_y = Vec::new();
+    let x: Vec<f64> = EVENTS_PER_SECOND.iter().map(|m| *m as f64).collect();
+    let mut lazy_8_y = Vec::new();
+    let mut lazy_32_y = Vec::new();
+    let mut lazy_64_y = Vec::new();
+    let mut eager_8_y = Vec::new();
+    let mut eager_32_y = Vec::new();
+    let mut eager_64_y = Vec::new();
+    let mut pairs_bfinger_four_y = Vec::new();
+    let mut pairs_bfinger_eight_y = Vec::new();
+    let mut pairs_btreemap_y = Vec::new();
 
-    let p99_latency = |p: Percentiles| p.p99;
+    // let throughput =
+    // |run: &Run| (run.total_insertions as f64 / run.runtime.as_secs_f64()) / 1_000_000.0;
+    let runtime = |run: &Run| run.runtime.as_secs_f64();
+
     for runs in results {
-        lazy_y.push(p99_latency(runs[0].stats.insert_ns.percentiles()));
-        eager_y.push(p99_latency(runs[1].stats.insert_ns.percentiles()));
-        bfinger_four_y.push(p99_latency(runs[2].stats.insert_ns.percentiles()));
-        bfinger_eight_y.push(p99_latency(runs[3].stats.insert_ns.percentiles()));
+        // let runs = &res.runs;
+        lazy_8_y.push(runtime(&runs[0]));
+        lazy_32_y.push(runtime(&runs[1]));
+        lazy_64_y.push(runtime(&runs[2]));
+        eager_8_y.push(runtime(&runs[3]));
+        eager_32_y.push(runtime(&runs[4]));
+        eager_64_y.push(runtime(&runs[5]));
+        pairs_bfinger_four_y.push(runtime(&runs[6]));
+        pairs_bfinger_eight_y.push(runtime(&runs[7]));
+        pairs_btreemap_y.push(runtime(&runs[8]));
     }
 
-    let mut lazy_curve = Curve::new();
-    lazy_curve.set_label("Lazy Wheel");
-    lazy_curve.set_line_color("g");
-    lazy_curve.set_marker_style("o");
-    lazy_curve.draw(&x, &lazy_y);
+    let mut lazy_curve_8 = Curve::new();
+    lazy_curve_8.set_label("Lazy Wheel W8");
+    lazy_curve_8.set_line_color("g");
+    lazy_curve_8.set_marker_style("o");
+    lazy_curve_8.draw(&x, &lazy_8_y);
 
-    let mut eager_curve = Curve::new();
-    eager_curve.set_label("Eager Wheel");
-    eager_curve.set_marker_style("^");
-    eager_curve.set_line_color("r");
-    eager_curve.draw(&x, &eager_y);
+    let mut lazy_curve_32 = Curve::new();
+    lazy_curve_32.set_label("Lazy Wheel W32");
+    lazy_curve_32.set_line_color("g");
+    lazy_curve_32.set_marker_style("^");
+    lazy_curve_32.draw(&x, &lazy_32_y);
 
-    let mut bfinger_four_curve = Curve::new();
-    bfinger_four_curve.set_label("FiBA CG BFinger 4");
-    bfinger_four_curve.set_line_color("m");
-    bfinger_four_curve.set_marker_style("*");
-    bfinger_four_curve.draw(&x, &bfinger_four_y);
+    let mut lazy_curve_64 = Curve::new();
+    lazy_curve_64.set_label("Lazy Wheel W64");
+    lazy_curve_64.set_line_color("g");
+    lazy_curve_64.set_marker_style("x");
+    lazy_curve_64.draw(&x, &lazy_64_y);
 
-    let mut bfinger_eight_curve = Curve::new();
-    bfinger_eight_curve.set_label("FiBA CG BFinger 8");
-    bfinger_eight_curve.set_line_color("m");
-    bfinger_eight_curve.set_marker_style("^");
-    bfinger_eight_curve.draw(&x, &bfinger_eight_y);
+    let mut eager_curve_8 = Curve::new();
+    eager_curve_8.set_label("Eager Wheel W8");
+    eager_curve_8.set_marker_style("o");
+    eager_curve_8.set_line_color("r");
+    eager_curve_8.draw(&x, &eager_8_y);
+
+    let mut eager_curve_32 = Curve::new();
+    eager_curve_32.set_label("Eager Wheel W32");
+    eager_curve_32.set_marker_style("^");
+    eager_curve_32.set_line_color("r");
+    eager_curve_32.draw(&x, &eager_32_y);
+
+    let mut eager_curve_64 = Curve::new();
+    eager_curve_64.set_label("Eager Wheel W64");
+    eager_curve_64.set_marker_style("x");
+    eager_curve_64.set_line_color("r");
+    eager_curve_64.draw(&x, &eager_64_y);
+
+    let mut pairs_fiba_b4_curve = Curve::new();
+    pairs_fiba_b4_curve.set_label("Pairs + FiBA Bfinger4");
+    pairs_fiba_b4_curve.set_line_color("b");
+    pairs_fiba_b4_curve.set_marker_style("*");
+    pairs_fiba_b4_curve.draw(&x, &pairs_bfinger_four_y);
+
+    let mut pairs_fiba_b8_curve = Curve::new();
+    pairs_fiba_b8_curve.set_label("Pairs + FiBA Bfinger8");
+    pairs_fiba_b8_curve.set_line_color("b");
+    pairs_fiba_b8_curve.set_marker_style("^");
+    pairs_fiba_b8_curve.draw(&x, &pairs_bfinger_eight_y);
+
+    let mut pairs_btreemap_curve = Curve::new();
+    pairs_btreemap_curve.set_label("Pairs + BTreeMap");
+    pairs_btreemap_curve.set_line_color("c");
+    pairs_btreemap_curve.set_marker_style("x");
+    pairs_btreemap_curve.draw(&x, &pairs_btreemap_y);
 
     let mut legend = Legend::new();
+    legend.set_outside(true);
+    legend.set_num_col(2);
     legend.draw();
 
     // configure plot
     let mut plot = Plot::new();
-    plot.set_super_title("30s Range 10s slide (Sum Aggregation)")
+    plot.set_super_title("")
         .set_horizontal_gap(0.5)
         .set_vertical_gap(0.5)
         .set_gaps(0.3, 0.2);
 
-    plot.set_label_y("p99 insert latency (nanoseconds)");
+    plot.set_label_y("runtime (seconds)");
     plot.set_log_x(true);
-    plot.set_label_x("ooo distance [seconds]");
+    plot.set_label_x("events per second");
 
-    plot.add(&lazy_curve)
-        .add(&eager_curve)
-        .add(&bfinger_four_curve)
-        .add(&bfinger_eight_curve)
+    plot.add(&lazy_curve_8)
+        .add(&lazy_curve_32)
+        .add(&lazy_curve_64)
+        .add(&eager_curve_8)
+        .add(&eager_curve_32)
+        .add(&eager_curve_64)
+        .add(&pairs_fiba_b4_curve)
+        .add(&pairs_fiba_b8_curve)
+        .add(&pairs_btreemap_curve)
         .add(&legend);
 
-    // save figure
-    let path = Path::new("../results/synthetic_window_latency.png");
-    plot.save(&path).unwrap();
-}
+    // modify manually in generated python code: plt.gca().set_xscale('log', base=2)
+    let path = "../results/synthetic_window_insert_rate.png";
 
-#[cfg(feature = "plot")]
-fn plot_window_computation_bench(results: Vec<Result>) {
-    use plotpy::{Curve, Legend, Plot};
-    use std::path::Path;
-    std::fs::create_dir_all("../results").unwrap();
-
-    let x = vec![30.0, 60.0, 1800.0, 3600.0, 86400.0, 604800.0];
-    let mut lazy_y = Vec::new();
-    let mut eager_y = Vec::new();
-    let mut bfinger_four_y = Vec::new();
-    let mut bfinger_eight_y = Vec::new();
-
-    let to_micros = |v: f64| std::time::Duration::from_nanos(v as u64).as_micros() as f64;
-    for result in &results {
-        lazy_y.push(to_micros(
-            result.runs[0].stats.window_computation_ns.percentiles().p99,
-        ));
-        eager_y.push(to_micros(
-            result.runs[1].stats.window_computation_ns.percentiles().p99,
-        ));
-        bfinger_four_y.push(to_micros(
-            result.runs[2].stats.window_computation_ns.percentiles().p99,
-        ));
-        bfinger_eight_y.push(to_micros(
-            result.runs[3].stats.window_computation_ns.percentiles().p99,
-        ));
-    }
-
-    let mut lazy_curve = Curve::new();
-    lazy_curve.set_label("Lazy Wheel");
-    lazy_curve.set_line_color("g");
-    lazy_curve.set_marker_style("^");
-    lazy_curve.draw(&x, &lazy_y);
-
-    let mut eager_curve = Curve::new();
-    eager_curve.set_label("Eager Wheel");
-    eager_curve.set_line_color("r");
-    eager_curve.set_marker_style("o");
-    eager_curve.draw(&x, &eager_y);
-
-    let mut bfinger_four_curve = Curve::new();
-    bfinger_four_curve.set_label("FiBA CG BFinger 4");
-    bfinger_four_curve.set_line_color("m");
-    bfinger_four_curve.set_marker_style("*");
-    bfinger_four_curve.draw(&x, &bfinger_four_y);
-
-    let mut bfinger_eight_curve = Curve::new();
-    bfinger_eight_curve.set_label("FiBA CG BFinger 8");
-    bfinger_eight_curve.set_line_color("m");
-    bfinger_eight_curve.set_marker_style("^");
-    bfinger_eight_curve.draw(&x, &bfinger_eight_y);
-
-    let mut legend = Legend::new();
-    legend.draw();
-
-    // configure plot
-    let mut plot = Plot::new();
-    plot.set_horizontal_gap(0.5)
-        .set_vertical_gap(0.5)
-        .set_gaps(0.3, 0.2);
-
-    plot.set_label_y("P99 Latency (microseconds)");
-    //plot.set_log_y(true);
-    plot.set_label_x("Window Range (seconds)");
-
-    plot.add(&lazy_curve)
-        .add(&eager_curve)
-        .add(&bfinger_four_curve)
-        .add(&bfinger_eight_curve)
-        .add(&legend);
-
-    // save figure
-    let path = Path::new("../results/synthetic_window_comp.png");
+    let path = Path::new(&path);
     plot.save(&path).unwrap();
 }
 
