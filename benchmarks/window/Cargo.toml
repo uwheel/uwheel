@@ -1,12 +1,22 @@
 [package]
-name = "window_bench"
+name = "window"
 version = "0.1.0"
 edition.workspace = true
 
+[features]
+default = ["plot"]
+debug = []
+sync = ["awheel/sync"]
+plot = ["dep:plotpy"]
+
 [dependencies]
-awheel = { workspace = true, features = ["window", "stats", "sync"] }
-fiba_rs.workspace = true
+cxx = "1.0"
+awheel = { workspace = true, features = ["window", "stats"] }
+plotpy = { workspace = true, optional = true }
+csv = "1.2.2"
+chrono = "0.4"
 clap.workspace = true
+serde.workspace = true
 fastrand.workspace = true
 hdrhistogram.workspace = true
 minstant.workspace = true
@@ -16,6 +26,10 @@ sketches-ddsketch.workspace = true
 rand.workspace = true
 criterion.workspace = true
 fastrand.workspace = true
+
+[build-dependencies]
+cxx-build = "1.0"
+
 
 [[bench]]
 name = "insert"

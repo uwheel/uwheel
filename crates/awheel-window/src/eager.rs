@@ -7,11 +7,12 @@ use awheel_core::{
     aggregator::{Aggregator, InverseExt},
     rw_wheel::{
         read::{aggregation::combine_or_insert, ReadWheel},
+        write::DEFAULT_WRITE_AHEAD_SLOTS,
         WheelExt,
     },
     time::{Duration, NumericalDuration},
     Entry,
-    Error,
+    Options,
     RwWheel,
 };
 #[cfg(feature = "rkyv")]
@@ -21,7 +22,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use alloc::{boxed::Box, vec::Vec};
 
 #[cfg(feature = "stats")]
-use awheel_stats::Measure;
+use awheel_stats::profile_scope;
 
 /// A fixed-sized wheel used to maintain partial aggregates for slides that can later
 /// be used to inverse windows.
@@ -70,8 +71,10 @@ impl<A: Aggregator> InverseWheel<A> {
         let _ = self.tick();
     }
     #[inline]
-    fn push(&mut self, data: A::PartialAggregate) {
-        combine_or_insert::<A>(self.slot(self.head), data);
+    fn push(&mut self, data_opt: Option<A::PartialAggregate>) {
+        if let Some(data) = data_opt {
+            combine_or_insert::<A>(self.slot(self.head), data);
+        }
         self.head = self.wrap_add(self.head, 1);
     }
 
@@ -101,14 +104,32 @@ impl<A: Aggregator> WheelExt for InverseWheel<A> {
 }
 
 /// A Builder type for [EagerWindowWheel]
-#[derive(Default, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct Builder {
     range: usize,
     slide: usize,
+    write_ahead: usize,
     time: u64,
 }
 
+impl Default for Builder {
+    fn default() -> Self {
+        Self {
+            range: 0,
+            slide: 0,
+            write_ahead: DEFAULT_WRITE_AHEAD_SLOTS,
+            time: 0,
+        }
+    }
+}
+
 impl Builder {
+    /// Configures the builder to create a wheel with the given write-ahead capacity
+    pub fn with_write_ahead(mut self, write_ahead: usize) -> Self {
+        self.write_ahead = write_ahead;
+        self
+    }
+
     /// Configures the builder to create a wheel with the given watermark
     pub fn with_watermark(mut self, watermark: u64) -> Self {
         self.time = watermark;
@@ -130,7 +151,7 @@ impl Builder {
             self.range >= self.slide,
             "Range must be larger or equal to slide"
         );
-        EagerWindowWheel::new(self.time, self.range, self.slide)
+        EagerWindowWheel::new(self.time, self.write_ahead, self.range, self.slide)
     }
 }
 
@@ -156,14 +177,14 @@ pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
 }
 
 impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
-    fn new(time: u64, range: usize, slide: usize) -> Self {
+    fn new(time: u64, write_ahead: usize, range: usize, slide: usize) -> Self {
         let state = State::new(time, range, slide);
         let pair_slots = pairs_capacity(range, slide);
         Self {
             range,
             slide,
             inverse_wheel: InverseWheel::with_capacity(pair_slots),
-            wheel: RwWheel::new(time),
+            wheel: RwWheel::with_options(time, Options::default().with_write_ahead(write_ahead)),
             state,
             next_full_rotation: time + range as u64,
             current_secs_rotation: 0,
@@ -190,13 +211,13 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
     #[inline]
     fn compute_window(&mut self) -> A::PartialAggregate {
         #[cfg(feature = "stats")]
-        let _measure = Measure::new(&self.stats.window_computation_ns);
+        profile_scope!(&self.stats.window_computation_ns);
 
         let inverse = self.inverse_wheel.tick().unwrap_or_default();
 
         {
             #[cfg(feature = "stats")]
-            let _cleanup_measure = Measure::new(&self.stats.cleanup_ns);
+            profile_scope!(&self.stats.cleanup_ns);
             self.merge_pairs();
         }
 
@@ -228,8 +249,7 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
                 let partial = self
                     .wheel
                     .read()
-                    .interval(self.state.current_pair_duration())
-                    .unwrap_or_default();
+                    .interval(self.state.current_pair_duration());
 
                 self.inverse_wheel.push(partial);
 
@@ -244,15 +264,15 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
                 if self.wheel.read().watermark() == self.state.next_window_end {
                     if self.state.next_window_end == self.next_full_rotation {
                         {
-                            // Need to scope the drop of Measure
+                            // Need to scope the for profiling
                             #[cfg(feature = "stats")]
-                            let _measure = Measure::new(&self.stats.window_computation_ns);
+                            profile_scope!(&self.stats.window_computation_ns);
 
                             let window_result = self
                                 .wheel
                                 .read()
                                 .interval(self.range_interval_duration())
-                                .unwrap();
+                                .unwrap_or_default();
                             self.last_rotation = Some(window_result);
 
                             window_results.push((
@@ -261,7 +281,7 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
                             ));
                         }
                         #[cfg(feature = "stats")]
-                        let _measure = Measure::new(&self.stats.cleanup_ns);
+                        profile_scope!(&self.stats.cleanup_ns);
 
                         // If we are working with uneven pairs, we need to adjust range.
                         let next_rotation_distance = if self.state.pair_type.is_uneven() {
@@ -301,25 +321,25 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)> {
         let diff = watermark.saturating_sub(self.wheel.read().watermark());
         #[cfg(feature = "stats")]
-        let _measure = Measure::new(&self.stats.advance_ns);
+        profile_scope!(&self.stats.advance_ns);
         self.advance(Duration::milliseconds(diff as i64))
     }
     #[inline]
-    fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
+    fn insert(&mut self, entry: Entry<A::Input>) {
         #[cfg(feature = "stats")]
-        let _measure = Measure::new(&self.stats.insert_ns);
-        self.wheel.write().insert(entry)
+        profile_scope!(&self.stats.insert_ns);
+        self.wheel.insert(entry);
     }
     /// Returns a reference to the underlying HAW
     fn wheel(&self) -> &ReadWheel<A> {
         self.wheel.read()
     }
     #[cfg(feature = "stats")]
-    fn print_stats(&self) {
+    fn stats(&self) -> &crate::stats::Stats {
         let rw_wheel = self.wheel.size_bytes();
         let pairs = self.inverse_wheel.size_bytes().unwrap();
         self.stats.size_bytes.set(rw_wheel + pairs);
-        println!("{:#?}", self.stats);
+        &self.stats
     }
 }
 
@@ -332,9 +352,9 @@ mod tests {
     #[test]
     fn inverse_wheel_test() {
         let mut iwheel: InverseWheel<U64SumAggregator> = InverseWheel::with_capacity(64);
-        iwheel.push(2u64);
-        iwheel.push(3u64);
-        iwheel.push(10u64);
+        iwheel.push(Some(2u64));
+        iwheel.push(Some(3u64));
+        iwheel.push(Some(10u64));
 
         assert_eq!(iwheel.tick().unwrap(), 2u64);
         assert_eq!(iwheel.tick().unwrap(), 5u64);

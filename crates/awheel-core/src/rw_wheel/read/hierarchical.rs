@@ -2,6 +2,7 @@ use core::{
     cmp,
     fmt::Debug,
     iter::IntoIterator,
+    marker::PhantomData,
     option::{
         Option,
         Option::{None, Some},
@@ -10,10 +11,16 @@ use core::{
 
 use super::{
     super::write::WriteAheadWheel,
-    aggregation::{maybe::MaybeWheel, AggWheelRef},
+    aggregation::{maybe::MaybeWheel, AggregationWheel},
+    Kind,
+    Lazy,
 };
-use crate::{aggregator::Aggregator, time};
-pub use watermark_impl::Watermark;
+use crate::{aggregator::Aggregator, rw_wheel::read::Mode, time};
+
+#[cfg(feature = "profiler")]
+use super::stats::Stats;
+#[cfg(feature = "profiler")]
+use awheel_stats::profile_scope;
 
 /// Default capacity of second slots
 pub const SECONDS: usize = 60;
@@ -27,6 +34,15 @@ pub const DAYS: usize = 7;
 pub const WEEKS: usize = 52;
 /// Default capacity of year slots
 pub const YEARS: usize = 10;
+
+struct Granularities {
+    pub second: Option<usize>,
+    pub minute: Option<usize>,
+    pub hour: Option<usize>,
+    pub day: Option<usize>,
+    pub week: Option<usize>,
+    pub year: Option<usize>,
+}
 
 /// Hierarchical Aggregation Wheel
 ///
@@ -49,22 +65,27 @@ pub const YEARS: usize = 10;
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone, Debug)]
-pub struct Haw<A>
+pub struct Haw<A, K = Lazy>
 where
     A: Aggregator,
+    K: Kind,
 {
-    watermark: Watermark,
+    watermark: u64,
     seconds_wheel: MaybeWheel<A>,
     minutes_wheel: MaybeWheel<A>,
     hours_wheel: MaybeWheel<A>,
     days_wheel: MaybeWheel<A>,
     weeks_wheel: MaybeWheel<A>,
     years_wheel: MaybeWheel<A>,
+    _marker: PhantomData<K>,
+    #[cfg(feature = "profiler")]
+    stats: Stats,
 }
 
-impl<A> Haw<A>
+impl<A, K> Haw<A, K>
 where
     A: Aggregator,
+    K: Kind,
 {
     const SECOND_AS_MS: u64 = time::Duration::SECOND.whole_milliseconds() as u64;
     const MINUTES_AS_SECS: u64 = time::Duration::MINUTE.whole_seconds() as u64;
@@ -97,24 +118,30 @@ where
 
     fn base(time: u64) -> Self {
         Self {
-            watermark: Watermark::new(time),
+            watermark: time,
             seconds_wheel: MaybeWheel::with_capacity(SECONDS),
             minutes_wheel: MaybeWheel::with_capacity(MINUTES),
             hours_wheel: MaybeWheel::with_capacity(HOURS),
             days_wheel: MaybeWheel::with_capacity(DAYS),
             weeks_wheel: MaybeWheel::with_capacity(WEEKS),
             years_wheel: MaybeWheel::with_capacity(YEARS),
+            _marker: PhantomData,
+            #[cfg(feature = "profiler")]
+            stats: Stats::default(),
         }
     }
     fn base_drill_down(time: u64) -> Self {
         Self {
-            watermark: Watermark::new(time),
+            watermark: time,
             seconds_wheel: MaybeWheel::with_capacity_and_drill_down(SECONDS),
             minutes_wheel: MaybeWheel::with_capacity_and_drill_down(MINUTES),
             hours_wheel: MaybeWheel::with_capacity_and_drill_down(HOURS),
             days_wheel: MaybeWheel::with_capacity_and_drill_down(DAYS),
             weeks_wheel: MaybeWheel::with_capacity_and_drill_down(WEEKS),
             years_wheel: MaybeWheel::with_capacity_and_drill_down(YEARS),
+            _marker: PhantomData,
+            #[cfg(feature = "profiler")]
+            stats: Stats::default(),
         }
     }
 
@@ -169,11 +196,11 @@ where
 
     /// Advance the watermark of the wheel by the given [time::Duration]
     #[inline(always)]
-    pub fn advance(&self, duration: time::Duration, waw: &mut WriteAheadWheel<A>) {
+    pub fn advance(&mut self, duration: time::Duration, waw: &mut WriteAheadWheel<A>) {
         let mut ticks: usize = duration.whole_seconds() as usize;
 
         // helper fn to tick N times
-        let tick_n = |ticks: usize, haw: &Self, waw: &mut WriteAheadWheel<A>| {
+        let tick_n = |ticks: usize, haw: &mut Self, waw: &mut WriteAheadWheel<A>| {
             for _ in 0..ticks {
                 haw.tick(waw);
             }
@@ -183,12 +210,7 @@ where
             tick_n(ticks, self, waw);
         } else if ticks <= Self::CYCLE_LENGTH_SECS as usize {
             // force full rotation
-            let rem_ticks = self
-                .seconds_wheel
-                .get_or_insert()
-                .as_ref()
-                .unwrap()
-                .ticks_remaining();
+            let rem_ticks = self.seconds_wheel.get_or_insert().ticks_remaining();
             tick_n(rem_ticks, self, waw);
             ticks -= rem_ticks;
 
@@ -203,12 +225,8 @@ where
                 // NOTE: currently a fast tick is a full SECONDS rotation.
                 let fast_tick_ms = (SECONDS - 1) as u64 * Self::SECOND_AS_MS;
                 for _ in 0..fast_ticks {
-                    self.seconds_wheel
-                        .get_or_insert()
-                        .as_mut()
-                        .unwrap()
-                        .fast_skip_tick();
-                    self.watermark.inc(fast_tick_ms);
+                    self.seconds_wheel.get_or_insert().fast_skip_tick();
+                    self.watermark += fast_tick_ms;
                     *waw.watermark_mut() += fast_tick_ms;
                     self.tick(waw);
                     ticks -= SECONDS;
@@ -224,13 +242,13 @@ where
 
     /// Advances the time of the wheel aligned by the lowest unit (Second)
     #[inline]
-    pub(crate) fn advance_to(&self, watermark: u64, waw: &mut WriteAheadWheel<A>) {
+    pub(crate) fn advance_to(&mut self, watermark: u64, waw: &mut WriteAheadWheel<A>) {
         let diff = watermark.saturating_sub(self.watermark());
         self.advance(time::Duration::milliseconds(diff as i64), waw);
     }
 
     /// Clears the state of all wheels
-    pub fn clear(&self) {
+    pub fn clear(&mut self) {
         self.seconds_wheel.clear();
         self.minutes_wheel.clear();
         self.hours_wheel.clear();
@@ -242,16 +260,16 @@ where
     /// Return the current watermark as milliseconds for this wheel
     #[inline]
     pub fn watermark(&self) -> u64 {
-        self.watermark.get()
+        self.watermark
     }
     /// Returns the aggregate in the given time interval
     pub fn interval_and_lower(&self, dur: time::Duration) -> Option<A::Aggregate> {
         self.interval(dur).map(|partial| A::lower(partial))
     }
 
-    /// Returns the partial aggregate in the given time interval
+    // helper function to convert a time interval to the responding time granularities
     #[inline]
-    pub fn interval(&self, dur: time::Duration) -> Option<A::PartialAggregate> {
+    fn duration_to_granularities(dur: time::Duration) -> Granularities {
         // closure that turns i64 to None if it is zero
         let to_option = |num: i64| {
             if num == 0 {
@@ -260,157 +278,207 @@ where
                 Some(num as usize)
             }
         };
-        let second = to_option(dur.whole_seconds() % SECONDS as i64);
-        let minute = to_option(dur.whole_minutes() % MINUTES as i64);
-        let hour = to_option(dur.whole_hours() % HOURS as i64);
-        let day = to_option(dur.whole_days() % DAYS as i64);
-        let week = to_option(dur.whole_weeks() % WEEKS as i64);
-        let year = to_option((dur.whole_weeks() / WEEKS as i64) % YEARS as i64);
-        //dbg!((second, minute, hour, day, week, year));
-        self.combine_time(second, minute, hour, day, week, year)
+        Granularities {
+            second: to_option(dur.whole_seconds() % SECONDS as i64),
+            minute: to_option(dur.whole_minutes() % MINUTES as i64),
+            hour: to_option(dur.whole_hours() % HOURS as i64),
+            day: to_option(dur.whole_days() % DAYS as i64),
+            week: to_option(dur.whole_weeks() % WEEKS as i64),
+            year: to_option((dur.whole_weeks() / WEEKS as i64) % YEARS as i64),
+        }
     }
 
+    /// Returns the partial aggregate in the given time interval
+    ///
+    /// This function combines lazily rolled up aggregates meaning that the result may not be up to date
+    /// depending on the current wheel cycle.
+    ///
+    /// # Note
+    ///
+    /// The given time duration must be quantizable to the time intervals of the HAW
     #[inline]
-    #[doc(hidden)]
-    pub fn combine_time(
-        &self,
-        second: Option<usize>,
-        minute: Option<usize>,
-        hour: Option<usize>,
-        day: Option<usize>,
-        week: Option<usize>,
-        year: Option<usize>,
-    ) -> Option<A::PartialAggregate> {
-        // Multi-Wheel Query => Need to make sure we don't duplicate data across granularities.
+    pub fn interval(&self, dur: time::Duration) -> Option<A::PartialAggregate> {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.interval);
 
-        match (year, week, day, hour, minute, second) {
-            // ywdhms
-            (Some(year), Some(week), Some(day), Some(hour), Some(minute), Some(second)) => {
-                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
-                let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
-                let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
-                let day = cmp::min(self.days_wheel.rotation_count(), day);
-                let week = cmp::min(self.weeks_wheel.rotation_count(), week);
+        if Self::is_quantizable(dur) {
+            let Granularities {
+                second,
+                minute,
+                hour,
+                day,
+                week,
+                year,
+            } = Self::duration_to_granularities(dur);
 
-                let sec = self.seconds_wheel.interval_or_total(second);
-                let min = self.minutes_wheel.interval_or_total(minute);
-                let hr = self.hours_wheel.interval_or_total(hour);
-                let day = self.days_wheel.interval_or_total(day);
-                let week = self.weeks_wheel.interval_or_total(week);
-                let year = self.years_wheel.interval(year);
+            // dbg!((second, minute, hour, day, week, year));
 
-                Self::reduce([sec, min, hr, day, week, year])
-            }
-            // wdhms
-            (None, Some(week), Some(day), Some(hour), Some(minute), Some(second)) => {
-                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
-                let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
-                let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
-                let day = cmp::min(self.days_wheel.rotation_count(), day);
+            match (year, week, day, hour, minute, second) {
+                // ywdhms
+                (Some(year), Some(week), Some(day), Some(hour), Some(minute), Some(second)) => {
+                    let second = cmp::min(self.seconds_wheel.rotation_count(), second);
+                    let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
+                    let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
+                    let day = cmp::min(self.days_wheel.rotation_count(), day);
+                    let week = cmp::min(self.weeks_wheel.rotation_count(), week);
 
-                let sec = self.seconds_wheel.interval_or_total(second);
-                let min = self.minutes_wheel.interval_or_total(minute);
-                let hr = self.hours_wheel.interval_or_total(hour);
-                let day = self.days_wheel.interval_or_total(day);
-                let week = self.days_wheel.interval(week);
+                    let sec = self.seconds_wheel.interval_or_total(second);
+                    let min = self.minutes_wheel.interval_or_total(minute);
+                    let hr = self.hours_wheel.interval_or_total(hour);
+                    let day = self.days_wheel.interval_or_total(day);
+                    let week = self.weeks_wheel.interval_or_total(week);
+                    let year = self.years_wheel.interval(year);
 
-                Self::reduce([sec, min, hr, day, week])
-            }
-            // dhms
-            (None, None, Some(day), Some(hour), Some(minute), Some(second)) => {
-                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
-                let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
-                let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
+                    Self::reduce([sec, min, hr, day, week, year])
+                }
+                // wdhms
+                (None, Some(week), Some(day), Some(hour), Some(minute), Some(second)) => {
+                    let second = cmp::min(self.seconds_wheel.rotation_count(), second);
+                    let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
+                    let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
+                    let day = cmp::min(self.days_wheel.rotation_count(), day);
 
-                let sec = self.seconds_wheel.interval_or_total(second);
-                let min = self.minutes_wheel.interval_or_total(minute);
-                let hr = self.hours_wheel.interval_or_total(hour);
-                let day = self.days_wheel.interval(day);
+                    let sec = self.seconds_wheel.interval_or_total(second);
+                    let min = self.minutes_wheel.interval_or_total(minute);
+                    let hr = self.hours_wheel.interval_or_total(hour);
+                    let day = self.days_wheel.interval_or_total(day);
+                    let week = self.days_wheel.interval(week);
 
-                Self::reduce([sec, min, hr, day])
-            }
-            // dhm
-            (None, None, Some(day), Some(hour), Some(minute), None) => {
-                // Do not query below rotation count
-                let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
-                let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
+                    Self::reduce([sec, min, hr, day, week])
+                }
+                // dhms
+                (None, None, Some(day), Some(hour), Some(minute), Some(second)) => {
+                    let second = cmp::min(self.seconds_wheel.rotation_count(), second);
+                    let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
+                    let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
 
-                let min = self.minutes_wheel.interval_or_total(minute);
-                let hr = self.hours_wheel.interval_or_total(hour);
-                let day = self.days_wheel.interval(day);
-                Self::reduce([min, hr, day])
-            }
-            // dh
-            (None, None, Some(day), Some(hour), None, None) => {
-                let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
-                let hr = self.hours_wheel.interval_or_total(hour);
-                let day = self.days_wheel.interval(day);
-                Self::reduce([hr, day])
-            }
-            // d
-            (None, None, Some(day), None, None, None) => self.days_wheel.interval(day),
-            // hms
-            (None, None, None, Some(hour), Some(minute), Some(second)) => {
-                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
-                let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
+                    let sec = self.seconds_wheel.interval_or_total(second);
+                    let min = self.minutes_wheel.interval_or_total(minute);
+                    let hr = self.hours_wheel.interval_or_total(hour);
+                    let day = self.days_wheel.interval(day);
 
-                let sec = self.seconds_wheel.interval_or_total(second);
-                let min = self.minutes_wheel.interval_or_total(minute);
-                let hr = self.hours_wheel.interval(hour);
-                Self::reduce([sec, min, hr])
-            }
-            // hm
-            (None, None, None, Some(hour), Some(minute), None) => {
-                let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
-                let min = self.minutes_wheel.interval_or_total(minute);
+                    Self::reduce([sec, min, hr, day])
+                }
+                // dhm
+                (None, None, Some(day), Some(hour), Some(minute), None) => {
+                    // Do not query below rotation count
+                    let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
+                    let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
 
-                let hr = self.hours_wheel.interval(hour);
-                Self::reduce([min, hr])
+                    let min = self.minutes_wheel.interval_or_total(minute);
+                    let hr = self.hours_wheel.interval_or_total(hour);
+                    let day = self.days_wheel.interval(day);
+                    Self::reduce([min, hr, day])
+                }
+                // dh
+                (None, None, Some(day), Some(hour), None, None) => {
+                    let hour = cmp::min(self.hours_wheel.rotation_count(), hour);
+                    let hr = self.hours_wheel.interval_or_total(hour);
+                    let day = self.days_wheel.interval(day);
+                    Self::reduce([hr, day])
+                }
+                // d
+                (None, None, Some(day), None, None, None) => self.days_wheel.interval(day),
+                // hms
+                (None, None, None, Some(hour), Some(minute), Some(second)) => {
+                    let second = cmp::min(self.seconds_wheel.rotation_count(), second);
+                    let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
+
+                    let sec = self.seconds_wheel.interval_or_total(second);
+                    let min = self.minutes_wheel.interval_or_total(minute);
+                    let hr = self.hours_wheel.interval(hour);
+                    Self::reduce([sec, min, hr])
+                }
+                // hm
+                (None, None, None, Some(hour), Some(minute), None) => {
+                    let minute = cmp::min(self.minutes_wheel.rotation_count(), minute);
+                    let min = self.minutes_wheel.interval_or_total(minute);
+
+                    let hr = self.hours_wheel.interval(hour);
+                    Self::reduce([min, hr])
+                }
+                // yw
+                (Some(year), Some(week), None, None, None, None) => {
+                    let week = cmp::min(self.weeks_wheel.rotation_count(), week);
+                    let week = self.weeks_wheel.interval_or_total(week);
+                    let year = self.years_wheel.interval(year);
+                    Self::reduce([year, week])
+                }
+                // wd
+                (None, Some(week), Some(day), None, None, None) => {
+                    let day = cmp::min(self.days_wheel.rotation_count(), day);
+                    let day = self.days_wheel.interval_or_total(day);
+                    let week = self.weeks_wheel.interval(week);
+                    Self::reduce([week, day])
+                }
+                // y
+                (Some(year), None, None, None, None, None) => {
+                    self.years_wheel.interval_or_total(year)
+                }
+                // w
+                (None, Some(week), None, None, None, None) => {
+                    self.weeks_wheel.interval_or_total(week)
+                }
+                // h
+                (None, None, None, Some(hour), None, None) => {
+                    self.hours_wheel.interval_or_total(hour)
+                }
+                // hs
+                (None, None, None, Some(hour), None, Some(second)) => {
+                    let second = cmp::min(self.seconds_wheel.rotation_count(), second);
+                    let sec = self.seconds_wheel.interval_or_total(second);
+                    let hour = self.hours_wheel.interval_or_total(hour);
+                    Self::reduce([hour, sec])
+                }
+                // ms
+                (None, None, None, None, Some(minute), Some(second)) => {
+                    let second = cmp::min(self.seconds_wheel.rotation_count(), second);
+                    let sec = self.seconds_wheel.interval_or_total(second);
+                    let min = self.minutes_wheel.interval(minute);
+                    Self::reduce([min, sec])
+                }
+                // m
+                (None, None, None, None, Some(minute), None) => {
+                    self.minutes_wheel.interval_or_total(minute)
+                }
+                // s
+                (None, None, None, None, None, Some(second)) => {
+                    self.seconds_wheel.interval_or_total(second)
+                }
+                t @ (_, _, _, _, _, _) => {
+                    panic!("combine_time was given invalid Time arguments {:?}", t);
+                }
             }
-            // yw
-            (Some(year), Some(week), None, None, None, None) => {
-                let week = cmp::min(self.weeks_wheel.rotation_count(), week);
-                let week = self.weeks_wheel.interval_or_total(week);
-                let year = self.years_wheel.interval(year);
-                Self::reduce([year, week])
-            }
-            // y
-            (Some(year), None, None, None, None, None) => self.years_wheel.interval_or_total(year),
-            // w
-            (None, Some(week), None, None, None, None) => self.weeks_wheel.interval_or_total(week),
-            // h
-            (None, None, None, Some(hour), None, None) => self.hours_wheel.interval_or_total(hour),
-            // hs
-            (None, None, None, Some(hour), None, Some(second)) => {
-                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
-                let sec = self.seconds_wheel.interval_or_total(second);
-                let hour = self.hours_wheel.interval_or_total(hour);
-                Self::reduce([hour, sec])
-            }
-            // ms
-            (None, None, None, None, Some(minute), Some(second)) => {
-                let second = cmp::min(self.seconds_wheel.rotation_count(), second);
-                let sec = self.seconds_wheel.interval_or_total(second);
-                let min = self.minutes_wheel.interval(minute);
-                Self::reduce([min, sec])
-            }
-            // m
-            (None, None, None, None, Some(minute), None) => {
-                self.minutes_wheel.interval_or_total(minute)
-            }
-            // s
-            (None, None, None, None, None, Some(second)) => {
-                self.seconds_wheel.interval_or_total(second)
-            }
-            t @ (_, _, _, _, _, _) => {
-                panic!("combine_time was given invalid Time arguments {:?}", t);
-            }
+        } else {
+            None
         }
+    }
+
+    // Checks whether the duration is quantizable to time intervals of HAW
+    #[inline]
+    const fn is_quantizable(duration: time::Duration) -> bool {
+        let seconds = duration.whole_seconds();
+
+        if seconds > 0 && seconds <= 59
+            || seconds % time::Duration::minutes(1).whole_seconds() == 0
+            || seconds % time::Duration::hours(1).whole_seconds() == 0
+            || seconds % time::Duration::days(1).whole_seconds() == 0
+            || seconds % time::Duration::weeks(1).whole_seconds() == 0
+            || seconds % time::Duration::years(1).whole_seconds() == 0
+            || seconds <= time::Duration::years(YEARS as i64).whole_seconds()
+        {
+            return true;
+        }
+
+        false
     }
 
     /// Executes a Landmark Window that combines total partial aggregates across all wheels
     #[inline]
     pub fn landmark(&self) -> Option<A::PartialAggregate> {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.landmark);
+
         let wheels = [
             self.seconds_wheel.total(),
             self.minutes_wheel.total(),
@@ -445,52 +513,60 @@ where
     ///
     /// In the worst case, a tick may cause a rotation of all the wheels in the hierarchy.
     #[inline]
-    fn tick(&self, waw: &mut WriteAheadWheel<A>) {
-        self.watermark.inc(Self::SECOND_AS_MS);
+    fn tick(&mut self, waw: &mut WriteAheadWheel<A>) {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.tick);
 
-        let mut seconds = self.seconds_wheel.get_or_insert();
+        self.watermark += Self::SECOND_AS_MS;
+
+        let seconds = self.seconds_wheel.get_or_insert();
 
         // Tick the Write-ahead wheel, if new entry insert into head of seconds wheel
         if let Some(window) = waw.tick() {
             let partial_agg = A::freeze(window);
-            seconds.as_mut().unwrap().insert_head(partial_agg)
+            seconds.insert_head(partial_agg);
+            if let Mode::Eager = K::mode() {
+                // NOTE: (https://github.com/Max-Meldrum/awheel/issues/64)
+                // pre-agg all wheel heads
+                unimplemented!("Eager Aggregation not Supported yet!");
+            }
         }
 
         // full rotation of seconds wheel
-        if let Some(rot_data) = seconds.as_mut().unwrap().tick() {
+        if let Some(rot_data) = seconds.tick() {
             // insert 60 seconds worth of partial aggregates into minute wheel and then tick it
-            let mut minutes = self.minutes_wheel.get_or_insert();
+            let minutes = self.minutes_wheel.get_or_insert();
 
-            minutes.as_mut().unwrap().insert_rotation_data(rot_data);
+            minutes.insert_rotation_data(rot_data);
 
             // full rotation of minutes wheel
-            if let Some(rot_data) = minutes.as_mut().unwrap().tick() {
+            if let Some(rot_data) = minutes.tick() {
                 // insert 60 minutes worth of partial aggregates into hours wheel and then tick it
-                let mut hours = self.hours_wheel.get_or_insert();
+                let hours = self.hours_wheel.get_or_insert();
 
-                hours.as_mut().unwrap().insert_rotation_data(rot_data);
+                hours.insert_rotation_data(rot_data);
 
                 // full rotation of hours wheel
-                if let Some(rot_data) = hours.as_mut().unwrap().tick() {
+                if let Some(rot_data) = hours.tick() {
                     // insert 24 hours worth of partial aggregates into days wheel and then tick it
-                    let mut days = self.days_wheel.get_or_insert();
-                    days.as_mut().unwrap().insert_rotation_data(rot_data);
+                    let days = self.days_wheel.get_or_insert();
+                    days.insert_rotation_data(rot_data);
 
                     // full rotation of days wheel
-                    if let Some(rot_data) = days.as_mut().unwrap().tick() {
+                    if let Some(rot_data) = days.tick() {
                         // insert 7 days worth of partial aggregates into weeks wheel and then tick it
-                        let mut weeks = self.weeks_wheel.get_or_insert();
+                        let weeks = self.weeks_wheel.get_or_insert();
 
-                        weeks.as_mut().unwrap().insert_rotation_data(rot_data);
+                        weeks.insert_rotation_data(rot_data);
 
                         // full rotation of weeks wheel
-                        if let Some(rot_data) = weeks.as_mut().unwrap().tick() {
+                        if let Some(rot_data) = weeks.tick() {
                             // insert 1 years worth of partial aggregates into year wheel and then tick it
-                            let mut years = self.years_wheel.get_or_insert();
-                            years.as_mut().unwrap().insert_rotation_data(rot_data);
+                            let years = self.years_wheel.get_or_insert();
+                            years.insert_rotation_data(rot_data);
 
                             // tick but ignore full rotations as this is the last hierarchy
-                            let _ = years.as_mut().unwrap().tick();
+                            let _ = years.tick();
                         }
                     }
                 }
@@ -499,37 +575,62 @@ where
     }
 
     /// Returns a reference to the seconds wheel
-    pub fn seconds(&self) -> AggWheelRef<'_, A> {
-        self.seconds_wheel.read()
+    pub fn seconds(&self) -> Option<&AggregationWheel<A>> {
+        self.seconds_wheel.as_ref()
+    }
+    /// Returns an unchecked reference to the seconds wheel
+    pub fn seconds_unchecked(&self) -> &AggregationWheel<A> {
+        self.seconds_wheel.as_ref().unwrap()
     }
 
     /// Returns a reference to the minutes wheel
-    pub fn minutes(&self) -> AggWheelRef<'_, A> {
-        self.minutes_wheel.read()
+    pub fn minutes(&self) -> Option<&AggregationWheel<A>> {
+        self.minutes_wheel.as_ref()
+    }
+    /// Returns an unchecked reference to the minutes wheel
+    pub fn minutes_unchecked(&self) -> &AggregationWheel<A> {
+        self.minutes_wheel.as_ref().unwrap()
     }
     /// Returns a reference to the hours wheel
-    pub fn hours(&self) -> AggWheelRef<'_, A> {
-        self.hours_wheel.read()
+    pub fn hours(&self) -> Option<&AggregationWheel<A>> {
+        self.hours_wheel.as_ref()
+    }
+    /// Returns an unchecked reference to the hours wheel
+    pub fn hours_unchecked(&self) -> &AggregationWheel<A> {
+        self.hours_wheel.as_ref().unwrap()
     }
     /// Returns a reference to the days wheel
-    pub fn days(&self) -> AggWheelRef<'_, A> {
-        self.days_wheel.read()
+    pub fn days(&self) -> Option<&AggregationWheel<A>> {
+        self.days_wheel.as_ref()
+    }
+    /// Returns an unchecked reference to the days wheel
+    pub fn days_unchecked(&self) -> &AggregationWheel<A> {
+        self.days_wheel.as_ref().unwrap()
     }
 
     /// Returns a reference to the weeks wheel
-    pub fn weeks(&self) -> AggWheelRef<'_, A> {
-        self.weeks_wheel.read()
+    pub fn weeks(&self) -> Option<&AggregationWheel<A>> {
+        self.weeks_wheel.as_ref()
+    }
+
+    /// Returns an unchecked reference to the weeks wheel
+    pub fn weeks_unchecked(&self) -> &AggregationWheel<A> {
+        self.weeks_wheel.as_ref().unwrap()
     }
 
     /// Returns a reference to the years wheel
-    pub fn years(&self) -> AggWheelRef<'_, A> {
-        self.years_wheel.read()
+    pub fn years(&self) -> Option<&AggregationWheel<A>> {
+        self.years_wheel.as_ref()
+    }
+    /// Returns a reference to the years wheel
+    pub fn years_unchecked(&self) -> &AggregationWheel<A> {
+        self.years_wheel.as_ref().unwrap()
     }
 
     /// Merges two wheels
     ///
     /// Note that the time in `other` may be advanced and thus change state
-    pub(crate) fn merge(&self, other: &Self) {
+    pub(crate) fn merge(&mut self, other: &mut Self) {
         let other_watermark = other.watermark();
 
         // make sure both wheels are aligned by time
@@ -547,59 +648,9 @@ where
         self.weeks_wheel.merge(&other.weeks_wheel);
         self.years_wheel.merge(&other.years_wheel);
     }
-}
-
-#[cfg(feature = "sync")]
-mod watermark_impl {
-    use core::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::Arc;
-
-    /// A watermark backed by interior mutability
-    ///
-    /// ``Cell`` for single threded exuections and ``Arc<AtomicU64<_>>`` with the sync feature enabled
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-    #[derive(Clone, Debug)]
-    pub struct Watermark(Arc<AtomicU64>);
-    impl Watermark {
-        #[inline(always)]
-        pub(super) fn new(watermark: u64) -> Self {
-            Self(Arc::new(AtomicU64::new(watermark)))
-        }
-        #[inline(always)]
-        pub(super) fn get(&self) -> u64 {
-            self.0.load(Ordering::Relaxed)
-        }
-        #[inline(always)]
-        pub(super) fn inc(&self, step: u64) {
-            let _ = self.0.fetch_add(step, Ordering::Relaxed);
-        }
-    }
-}
-
-#[cfg(not(feature = "sync"))]
-mod watermark_impl {
-    use core::cell::Cell;
-
-    /// A watermark backed by interior mutability
-    ///
-    /// ``Cell`` for single threded exuections and ``Arc<AtomicU64<_>>`` with the sync feature enabled
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-    #[derive(Clone, Debug)]
-    pub struct Watermark(Cell<u64>);
-
-    impl Watermark {
-        #[inline(always)]
-        pub(super) fn new(watermark: u64) -> Self {
-            Self(Cell::new(watermark))
-        }
-        #[inline(always)]
-        pub(super) fn get(&self) -> u64 {
-            self.0.get()
-        }
-        #[inline(always)]
-        pub(super) fn inc(&self, step: u64) {
-            let curr = self.get();
-            self.0.set(curr + step);
-        }
+    #[cfg(feature = "profiler")]
+    /// Returns a reference to the stats of the [HAW]
+    pub fn stats(&self) -> &Stats {
+        &self.stats
     }
 }

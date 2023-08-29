@@ -8,7 +8,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-use awheel_core::{aggregator::Aggregator, time::Duration, Entry, Error, ReadWheel};
+use awheel_core::{aggregator::Aggregator, time::Duration, Entry, ReadWheel};
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -17,7 +17,8 @@ use alloc::vec::Vec;
 pub mod eager;
 /// A Lazy Window Wheel which uses a Pairs Wheel + RwWheel to compute periodic window aggregation
 pub mod lazy;
-mod state;
+#[doc(hidden)]
+pub mod state;
 /// Contains functions to help create window wheels
 pub mod util;
 
@@ -30,7 +31,7 @@ pub use util::{eager_window_query_cost, lazy_window_query_cost, window_wheel};
 /// Extension trait for becoming a window wheel
 pub trait WindowExt<A: Aggregator> {
     /// Inserts an entry to the Window Wheel
-    fn insert(&mut self, entry: Entry<A::Input>) -> Result<(), Error<A::Input>>;
+    fn insert(&mut self, entry: Entry<A::Input>);
     /// Advances time by the given duration
     ///
     /// Returns window computations if they have been triggered
@@ -41,9 +42,9 @@ pub trait WindowExt<A: Aggregator> {
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)>;
     /// Returns a reference to the underlying HAW
     fn wheel(&self) -> &ReadWheel<A>;
-    /// Print the current stats of the wheel
+    /// Returns the current recorded window stats
     #[cfg(feature = "stats")]
-    fn print_stats(&self);
+    fn stats(&self) -> &stats::Stats;
 }
 
 #[cfg(test)]
@@ -57,18 +58,52 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn window_30_sec_range_10_sec_slide_lazy_test() {
+        let wheel: LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
+            .with_range(Duration::seconds(30))
+            .with_slide(Duration::seconds(10))
+            .with_watermark(1533081600000)
+            .build();
+        window_30_sec_range_10_sec_slide(wheel);
+    }
+    #[test]
+    fn window_30_sec_range_10_sec_slide_eager_test() {
+        let wheel: EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
+            .with_range(Duration::seconds(30))
+            .with_slide(Duration::seconds(10))
+            .with_watermark(1533081600000)
+            .build();
+        window_30_sec_range_10_sec_slide(wheel);
+    }
+    fn window_30_sec_range_10_sec_slide(mut wheel: impl WindowExt<U64SumAggregator>) {
+        wheel.insert(Entry::new(681, 1533081607321));
+        wheel.insert(Entry::new(625, 1533081619748));
+        wheel.insert(Entry::new(1319, 1533081621175));
+        wheel.insert(Entry::new(220, 1533081626470));
+        wheel.insert(Entry::new(398, 1533081630291));
+        wheel.insert(Entry::new(2839, 1533081662717));
+        wheel.insert(Entry::new(172, 1533081663534));
+        wheel.insert(Entry::new(1133, 1533081664024));
+        wheel.insert(Entry::new(1417, 1533081678095));
+        wheel.insert(Entry::new(195, 1533081679609));
+
+        let results = wheel.advance_to(1533081630000);
+        assert_eq!(results, [(1533081630000, Some(2845))])
+    }
+
     fn window_60_sec_range_10_sec_slide(mut wheel: impl WindowExt<U64SumAggregator>) {
-        wheel.insert(Entry::new(1, 9000)).unwrap();
-        wheel.insert(Entry::new(1, 15000)).unwrap();
-        wheel.insert(Entry::new(1, 25000)).unwrap();
-        wheel.insert(Entry::new(1, 35000)).unwrap();
-        wheel.insert(Entry::new(1, 59000)).unwrap();
+        wheel.insert(Entry::new(1, 9000));
+        wheel.insert(Entry::new(1, 15000));
+        wheel.insert(Entry::new(1, 25000));
+        wheel.insert(Entry::new(1, 35000));
+        wheel.insert(Entry::new(1, 59000));
 
         assert!(wheel.advance_to(59000).is_empty());
 
-        wheel.insert(Entry::new(3, 69000)).unwrap();
-        wheel.insert(Entry::new(5, 75000)).unwrap();
-        wheel.insert(Entry::new(10, 110000)).unwrap();
+        wheel.insert(Entry::new(3, 69000));
+        wheel.insert(Entry::new(5, 75000));
+        wheel.insert(Entry::new(10, 110000));
 
         let results = wheel.advance_to(130000);
         assert_eq!(
@@ -103,21 +138,21 @@ mod tests {
     }
 
     fn window_120_sec_range_10_sec_slide(mut wheel: impl WindowExt<U64SumAggregator>) {
-        wheel.insert(Entry::new(1, 9000)).unwrap();
-        wheel.insert(Entry::new(1, 15000)).unwrap();
-        wheel.insert(Entry::new(1, 25000)).unwrap();
-        wheel.insert(Entry::new(1, 35000)).unwrap();
-        wheel.insert(Entry::new(1, 59000)).unwrap();
+        wheel.insert(Entry::new(1, 9000));
+        wheel.insert(Entry::new(1, 15000));
+        wheel.insert(Entry::new(1, 25000));
+        wheel.insert(Entry::new(1, 35000));
+        wheel.insert(Entry::new(1, 59000));
 
         assert!(wheel.advance_to(60000).is_empty());
 
-        wheel.insert(Entry::new(3, 69000)).unwrap();
-        wheel.insert(Entry::new(5, 75000)).unwrap();
-        wheel.insert(Entry::new(10, 110000)).unwrap();
+        wheel.insert(Entry::new(3, 69000));
+        wheel.insert(Entry::new(5, 75000));
+        wheel.insert(Entry::new(10, 110000));
 
         assert!(wheel.advance_to(100000).is_empty());
 
-        wheel.insert(Entry::new(3, 125000)).unwrap();
+        wheel.insert(Entry::new(3, 125000));
 
         // 1 window triggered [0-120] -> should be 23
         // 2nd window triggered [10-130] -> should be (23 - 1) + 3 = 25
@@ -175,7 +210,7 @@ mod tests {
     fn window_10_sec_range_3_sec_slide(mut wheel: impl WindowExt<U64SumAggregator>) {
         // Based on Figure 4 in https://asterios.katsifodimos.com/assets/publications/window-semantics-encyclopediaBigDAta18.pdf
         for i in 1..=22 {
-            wheel.insert(Entry::new(i, i * 1000 - 1)).unwrap();
+            wheel.insert(Entry::new(i, i * 1000 - 1));
         }
         let results = wheel.advance(22.seconds());
 

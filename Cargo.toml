@@ -1,6 +1,8 @@
 [workspace]
-resolver = "1"                         # needed for awheel-demo to work on web
+resolver = "1"                         # resolver 1 needed for awheel-demo to work on web
 members = ["crates/*", "benchmarks/*", "examples/*"]
+exclude = ["benchmarks/results", "benchmarks/data"]
+
 
 [workspace.package]
 authors = ["Max Meldrum <max@meldrum.se>"]
@@ -13,7 +15,6 @@ readme = "README.md"
 opt-level = 2 # fast and small wasm
 
 [workspace.dependencies]
-fiba_rs = { path = "crates/fiba_rs", version = "0.1.0" }
 awheel = { path = "crates/awheel", version = "0.1.0" }
 awheel-core = { path = "crates/awheel-core", version = "0.1.0", default-features = false }
 awheel-window = { path = "crates/awheel-window", version = "0.1.0" }
@@ -34,3 +35,4 @@ serde = { version = "1.0", default-features = false }
 serde-big-array = { version = "0.5.1", default-features = false }
 postcard = { version = "1.0.0", features = ["alloc"] }
 lz4_flex = { version = "0.11", default-features = false }
+plotpy = "0.4.0"

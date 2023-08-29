@@ -65,7 +65,7 @@ impl<K: Key, A: Aggregator + Clone + 'static> RwTreeWheel<K, A> {
     }
     #[inline]
     pub fn insert(&mut self, key: K, entry: Entry<A::Input>) -> Result<(), Error<A::Input>> {
-        self.star_wheel.write().insert(entry)?;
+        self.star_wheel.insert(entry);
 
         let wheel = self
             .write
@@ -127,6 +127,7 @@ mod tests {
         // verify star wheel result
         assert_eq!(rw_tree.interval(1.seconds()), Some(18u32));
     }
+    #[cfg(feature = "sync")]
     #[test]
     fn rw_tree_test_across_thread() {
         let mut rw_tree: RwTreeWheel<&'static str, U32SumAggregator> = RwTreeWheel::new(0);

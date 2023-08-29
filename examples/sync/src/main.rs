@@ -2,7 +2,7 @@ use awheel::{aggregator::sum::U32SumAggregator, time::NumericalDuration, Entry, 
 
 fn main() {
     let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
-    rw_wheel.write().insert(Entry::new(1, 999)).unwrap();
+    rw_wheel.insert(Entry::new(1, 999));
     rw_wheel.advance(1.seconds());
 
     // share the ReadWheel across threads

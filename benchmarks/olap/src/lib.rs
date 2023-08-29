@@ -73,11 +73,12 @@ impl DataGenerator {
     }
 
     pub fn generate_query_data(events_per_min: usize) -> (u64, Vec<Vec<RideData>>) {
-        let seven_days_as_mins = 10080;
+        //let seven_days_as_mins = 10080;
+        let fifty_two_days_as_mins = awheel::time::Duration::days(52).whole_minutes();
 
         let mut watermark = 1000u64;
         let mut batches = Vec::new();
-        for _min in 0..seven_days_as_mins {
+        for _min in 0..fifty_two_days_as_mins {
             let batch = generate_ride_data(watermark, events_per_min);
             batches.push(batch);
             watermark += 60000u64; // bump by 1 min
@@ -291,12 +292,14 @@ pub enum QueryInterval {
     Minutes(u32),
     Hours(u32),
     Days(u32),
+    Weeks(u32),
     Landmark,
 }
 
 impl QueryInterval {
     pub fn max_seconds() -> u64 {
-        time::Duration::days(7).whole_seconds() as u64
+        time::Duration::weeks(52).whole_seconds() as u64
+        //time::Duration::days(7).whole_seconds() as u64
     }
     pub fn generate_stream() -> Self {
         let gran = fastrand::usize(0..2);
@@ -313,11 +316,11 @@ impl QueryInterval {
         } else if gran == 1 {
             QueryInterval::Days(fastrand::u32(1..7))
         } else {
-            QueryInterval::Landmark
+            QueryInterval::Weeks(fastrand::u32(1..52))
         }
     }
     pub fn generate_random() -> Self {
-        let gran = fastrand::usize(0..5);
+        let gran = fastrand::usize(0..6);
         if gran == 0 {
             QueryInterval::Seconds(fastrand::u32(1..60))
         } else if gran == 1 {
@@ -326,6 +329,8 @@ impl QueryInterval {
             QueryInterval::Hours(fastrand::u32(1..24))
         } else if gran == 3 {
             QueryInterval::Days(fastrand::u32(1..7))
+        } else if gran == 4 {
+            QueryInterval::Weeks(fastrand::u32(1..52))
         } else {
             QueryInterval::Landmark
         }

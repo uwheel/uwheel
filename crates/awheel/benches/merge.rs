@@ -15,7 +15,7 @@ fn large_wheel() -> RwWheel<U32SumAggregator> {
     let mut wheel = RwWheel::new(time);
     for _ in 0..wheel.read().remaining_ticks() {
         wheel.advance_to(time);
-        wheel.write().insert(Entry::new(1u32, time)).unwrap();
+        wheel.insert(Entry::new(1u32, time));
         time += 1000;
     }
     wheel
@@ -26,7 +26,7 @@ fn small_wheel() -> RwWheel<U32SumAggregator> {
     let mut wheel = RwWheel::new(time);
     for _ in 0..60 {
         wheel.advance_to(time);
-        wheel.write().insert(Entry::new(1u32, time)).unwrap();
+        wheel.insert(Entry::new(1u32, time));
         time += 1000;
     }
     wheel

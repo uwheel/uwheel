@@ -1,0 +1,11 @@
+[package]
+name = "timer"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+categories.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[dependencies]
+awheel.workspace = true

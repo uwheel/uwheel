@@ -18,14 +18,14 @@ pub fn sketch_percentiles(sketch: &DDSketch) -> Percentiles {
 
 #[derive(Default, Clone, Copy)]
 pub struct Percentiles {
-    count: usize,
-    min: f64,
-    p50: f64,
-    p99: f64,
-    p99_9: f64,
-    p99_99: f64,
-    p99_999: f64,
-    max: f64,
+    pub count: usize,
+    pub min: f64,
+    pub p50: f64,
+    pub p99: f64,
+    pub p99_9: f64,
+    pub p99_99: f64,
+    pub p99_999: f64,
+    pub max: f64,
 }
 
 impl std::fmt::Debug for Percentiles {
@@ -87,4 +87,24 @@ impl Drop for Measure {
     fn drop(&mut self) {
         self.sketch.add(self.start.elapsed().as_nanos() as f64);
     }
+}
+
+/// Profile the current scope with the given [Sketch]
+///
+/// # Example
+///
+/// ```rust
+/// use awheel_stats::{profile_scope, Sketch};
+///
+/// let my_sketch = Sketch::default();
+/// {
+///     profile_scope!(&my_sketch);
+///     // do some work
+/// }
+/// ```
+#[macro_export]
+macro_rules! profile_scope {
+    ($id:expr) => {
+        let _measure_scope = $crate::Measure::new($id);
+    };
 }

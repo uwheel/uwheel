@@ -152,38 +152,38 @@ impl HawLabels {
         let remaining_ticks_label = wheel.read().remaining_ticks().to_string();
         let seconds_ticks_label = wheel
             .read()
-            .seconds()
             .as_ref()
+            .seconds()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let minutes_ticks_label = wheel
             .read()
-            .minutes()
             .as_ref()
+            .minutes()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let hours_ticks_label = wheel
             .read()
-            .hours()
             .as_ref()
+            .hours()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let days_ticks_label = wheel
             .read()
-            .days()
             .as_ref()
+            .days()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let weeks_ticks_label = wheel
             .read()
-            .weeks()
             .as_ref()
+            .weeks()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let years_ticks_label = wheel
             .read()
-            .years()
             .as_ref()
+            .years()
             .map(|w| w.ticks_remaining().to_string())
             .unwrap_or_else(|| "None".to_string());
         let landmark_window_label = wheel.read().landmark().unwrap_or(0).to_string();
@@ -314,7 +314,7 @@ impl TemplateApp {
         let wheel = wheel.borrow();
 
         let mut bars = Vec::new();
-        if let Some(seconds_wheel) = wheel.read().seconds().as_ref() {
+        if let Some(seconds_wheel) = wheel.read().as_ref().seconds() {
             for i in 1..=awheel::SECONDS {
                 let val = seconds_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Second));
@@ -330,7 +330,7 @@ impl TemplateApp {
 
         // MINUTES
         let mut bars = Vec::new();
-        if let Some(minutes_wheel) = wheel.read().minutes().as_ref() {
+        if let Some(minutes_wheel) = wheel.read().as_ref().minutes() {
             for i in 1..=awheel::MINUTES {
                 let val = minutes_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Minute));
@@ -346,7 +346,7 @@ impl TemplateApp {
 
         // HOURS
         let mut bars = Vec::new();
-        if let Some(hours_wheel) = wheel.read().hours().as_ref() {
+        if let Some(hours_wheel) = wheel.read().as_ref().hours() {
             for i in 1..=awheel::HOURS {
                 let val = hours_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Hour));
@@ -361,7 +361,7 @@ impl TemplateApp {
             .name("Hours");
 
         let mut bars = Vec::new();
-        if let Some(days_wheel) = wheel.read().days().as_ref() {
+        if let Some(days_wheel) = wheel.read().as_ref().days() {
             for i in 1..=awheel::DAYS {
                 let val = days_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Day));
@@ -376,7 +376,7 @@ impl TemplateApp {
             .name("Days");
 
         let mut bars = Vec::new();
-        if let Some(weeks_wheel) = wheel.read().weeks().as_ref() {
+        if let Some(weeks_wheel) = wheel.read().as_ref().weeks() {
             for i in 1..=awheel::WEEKS {
                 let val = weeks_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Week));
@@ -391,7 +391,7 @@ impl TemplateApp {
             .name("Weeks");
 
         let mut bars = Vec::new();
-        if let Some(years_wheel) = wheel.read().years().as_ref() {
+        if let Some(years_wheel) = wheel.read().as_ref().years() {
             for i in 1..=awheel::YEARS {
                 let val = years_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Year));
@@ -456,7 +456,7 @@ impl TemplateApp {
                                         empty_plot(ui);
                                     }
                                     Some((Granularity::Minute, pos)) => {
-                                        if let Some(minutes) = wheel.read().minutes().as_ref() {
+                                        if let Some(minutes) = wheel.read().as_ref().minutes() {
                                             if let Some(slots) = measure(|| minutes.drill_down(pos))
                                             {
                                                 let mut bars = Vec::new();
@@ -484,7 +484,7 @@ impl TemplateApp {
                                         }
                                     }
                                     Some((Granularity::Hour, pos)) => {
-                                        if let Some(hours) = wheel.read().hours().as_ref() {
+                                        if let Some(hours) = wheel.read().as_ref().hours() {
                                             if let Some(slots) = measure(|| hours.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -511,7 +511,7 @@ impl TemplateApp {
                                         }
                                     }
                                     Some((Granularity::Day, pos)) => {
-                                        if let Some(days) = wheel.read().days().as_ref() {
+                                        if let Some(days) = wheel.read().as_ref().days() {
                                             if let Some(slots) = measure(|| days.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -537,7 +537,7 @@ impl TemplateApp {
                                         }
                                     }
                                     Some((Granularity::Week, pos)) => {
-                                        if let Some(weeks) = wheel.read().weeks().as_ref() {
+                                        if let Some(weeks) = wheel.read().as_ref().weeks() {
                                             if let Some(slots) = measure(|| weeks.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -563,7 +563,7 @@ impl TemplateApp {
                                         }
                                     }
                                     Some((Granularity::Year, pos)) => {
-                                        if let Some(years) = wheel.read().years().as_ref() {
+                                        if let Some(years) = wheel.read().as_ref().years() {
                                             if let Some(slots) = measure(|| years.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -642,38 +642,38 @@ impl eframe::App for TemplateApp {
                 labels.landmark_window_label = wheel.read().landmark().unwrap_or(0).to_string();
                 labels.seconds_ticks_label = wheel
                     .read()
-                    .seconds()
                     .as_ref()
+                    .seconds()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.minutes_ticks_label = wheel
                     .read()
-                    .minutes()
                     .as_ref()
+                    .minutes()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.hours_ticks_label = wheel
                     .read()
-                    .hours()
                     .as_ref()
+                    .hours()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.days_ticks_label = wheel
                     .read()
-                    .days()
                     .as_ref()
+                    .days()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.weeks_ticks_label = wheel
                     .read()
-                    .weeks()
                     .as_ref()
+                    .weeks()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
                 labels.years_ticks_label = wheel
                     .read()
-                    .years()
                     .as_ref()
+                    .years()
                     .map(|w| w.ticks_remaining().to_string())
                     .unwrap_or_else(|| "None".to_string());
             };
@@ -764,20 +764,14 @@ impl eframe::App for TemplateApp {
             if ui.button("Insert").clicked() {
                 match (aggregate.parse::<u64>(), timestamp.parse::<u64>()) {
                     (Ok(aggregate), Ok(timestamp)) => {
-                        if let Err(err) = insert_wheel
+                        insert_wheel
                             .borrow_mut()
-                            .write()
-                            .insert(Entry::new(aggregate, timestamp))
-                        {
-                            log.push_front(LogEntry::Red(err.to_string()));
-                        } else {
-                            // should not fail
-                            star_wheel.borrow_mut().write().insert(Entry::new(aggregate, timestamp)).unwrap();
+                            .insert(Entry::new(aggregate, timestamp));
+                            star_wheel.borrow_mut().insert(Entry::new(aggregate, timestamp));
                             log.push_front(LogEntry::Green(format!(
                                 "Inserted {} with timestamp {}",
                                 aggregate, timestamp
                             )));
-                        }
                     }
                     (Ok(_), Err(_)) => {
                         log.push_front(LogEntry::Red(format!(
@@ -885,7 +879,7 @@ impl eframe::App for TemplateApp {
                 ui.label(RichText::new("Watermark: ").strong());
                 ui.label(RichText::new(&*labels.watermark_label).strong());
             });
-            let write_ahead_len = insert_wheel.borrow_mut().write().write_ahead_len();
+            let write_ahead_len = insert_wheel.borrow().write().write_ahead_len();
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Write ahead Slots: ").strong());
                 ui.label(RichText::new(write_ahead_len.to_string()).strong());
@@ -950,8 +944,8 @@ impl eframe::App for TemplateApp {
                             let student = Student::random();
                             let ts = fastrand::u64(time..time + 60000);
                             let agg = fastrand::u64(1..5);
-                            wheels.get(&student).unwrap().borrow_mut().write().insert(Entry::new(agg, ts)).unwrap();
-                            star_wheel.borrow_mut().write().insert(Entry::new(agg, ts)).unwrap();
+                            wheels.get(&student).unwrap().borrow_mut().insert(Entry::new(agg, ts));
+                            star_wheel.borrow_mut().insert(Entry::new(agg, ts));
                         }
                         for wheel in wheels.values() {
                             wheel.borrow_mut().advance(60.seconds());

@@ -2,14 +2,15 @@ use crate::util::{create_pair_type, PairType};
 use awheel_core::time::Duration;
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Debug)]
 pub struct State {
-    pub(crate) pair_type: PairType,
-    pub(crate) pair_ticks_remaining: usize,
-    pub(crate) current_pair_len: usize,
+    pub pair_type: PairType,
+    pub pair_ticks_remaining: usize,
+    pub current_pair_len: usize,
     // When the next window ends
-    pub(crate) next_window_end: u64,
-    pub(crate) next_pair_end: u64,
-    pub(crate) in_p1: bool,
+    pub next_window_end: u64,
+    pub next_pair_end: u64,
+    pub in_p1: bool,
 }
 impl State {
     pub fn new(time: u64, range: usize, slide: usize) -> Self {

@@ -3,8 +3,13 @@ name = "olap"
 version = "0.1.0"
 edition.workspace = true
 
+[features]
+default = ["plot"]
+plot = ["dep:plotpy"]
+
 [dependencies]
 duckdb.workspace = true
+plotpy = { workspace = true, optional = true }
 awheel = { workspace = true, features = ["tree", "sync", "stats", "top_n"] }
 clap.workspace = true
 fastrand.workspace = true

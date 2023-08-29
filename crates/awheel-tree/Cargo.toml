@@ -20,3 +20,6 @@ sync = ["std", "parking_lot"]
 awheel-core.workspace = true
 hashbrown.workspace = true
 parking_lot = { workspace = true, optional = true }
+
+[dev-dependencies]
+awheel-core = { workspace = true, features = ["sum"] }

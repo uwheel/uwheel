@@ -83,18 +83,9 @@ mod tests {
     fn top_n_all_aggregator_test() {
         let mut wheel: RwWheel<TopNAggregator<u32, 10, AllAggregator>> = RwWheel::new(0);
 
-        wheel
-            .write()
-            .insert(Entry::new((1u32, 10.0), 1000))
-            .unwrap();
-        wheel
-            .write()
-            .insert(Entry::new((2u32, 50.0), 1000))
-            .unwrap();
-        wheel
-            .write()
-            .insert(Entry::new((3u32, 30.0), 1000))
-            .unwrap();
+        wheel.insert(Entry::new((1u32, 10.0), 1000));
+        wheel.insert(Entry::new((2u32, 50.0), 1000));
+        wheel.insert(Entry::new((3u32, 30.0), 1000));
 
         wheel.advance_to(2000);
 
@@ -112,29 +103,14 @@ mod tests {
         assert!(arr[9].is_none());
 
         // insert same keys with different values at different timestamp
-        wheel
-            .write()
-            .insert(Entry::new((1u32, 100.0), 2000))
-            .unwrap();
-        wheel
-            .write()
-            .insert(Entry::new((2u32, 10.0), 2000))
-            .unwrap();
-        wheel
-            .write()
-            .insert(Entry::new((3u32, 20.0), 2000))
-            .unwrap();
+        wheel.insert(Entry::new((1u32, 100.0), 2000));
+        wheel.insert(Entry::new((2u32, 10.0), 2000));
+        wheel.insert(Entry::new((3u32, 20.0), 2000));
 
         // insert some new keys
-        wheel
-            .write()
-            .insert(Entry::new((4u32, 15.0), 2000))
-            .unwrap();
-        wheel.write().insert(Entry::new((5u32, 1.0), 2000)).unwrap();
-        wheel
-            .write()
-            .insert(Entry::new((6u32, 5000.0), 2000))
-            .unwrap();
+        wheel.insert(Entry::new((4u32, 15.0), 2000));
+        wheel.insert(Entry::new((5u32, 1.0), 2000));
+        wheel.insert(Entry::new((6u32, 5000.0), 2000));
 
         // advance again
         wheel.advance_to(3000);
@@ -157,9 +133,9 @@ mod tests {
     fn top_n_u64_sum_aggregator_test() {
         let mut wheel: RwWheel<TopNAggregator<u32, 10, U64SumAggregator>> = RwWheel::new(0);
 
-        wheel.write().insert(Entry::new((1u32, 10), 1000)).unwrap();
-        wheel.write().insert(Entry::new((2u32, 50), 1000)).unwrap();
-        wheel.write().insert(Entry::new((3u32, 30), 1000)).unwrap();
+        wheel.insert(Entry::new((1u32, 10), 1000));
+        wheel.insert(Entry::new((2u32, 50), 1000));
+        wheel.insert(Entry::new((3u32, 30), 1000));
 
         wheel.advance_to(2000);
 
@@ -178,17 +154,14 @@ mod tests {
         assert!(arr[9].is_none());
 
         // insert same keys with different values at different timestamp
-        wheel.write().insert(Entry::new((1u32, 100), 2000)).unwrap();
-        wheel.write().insert(Entry::new((2u32, 10), 2000)).unwrap();
-        wheel.write().insert(Entry::new((3u32, 20), 2000)).unwrap();
+        wheel.insert(Entry::new((1u32, 100), 2000));
+        wheel.insert(Entry::new((2u32, 10), 2000));
+        wheel.insert(Entry::new((3u32, 20), 2000));
 
         // insert some new keys
-        wheel.write().insert(Entry::new((4u32, 15), 2000)).unwrap();
-        wheel.write().insert(Entry::new((5u32, 1), 2000)).unwrap();
-        wheel
-            .write()
-            .insert(Entry::new((6u32, 5000), 2000))
-            .unwrap();
+        wheel.insert(Entry::new((4u32, 15), 2000));
+        wheel.insert(Entry::new((5u32, 1), 2000));
+        wheel.insert(Entry::new((6u32, 5000), 2000));
 
         // advance again
         wheel.advance_to(3000);

@@ -17,7 +17,7 @@ fuzz_target!(|ops: Vec<Op>| {
     for op in ops {
         match op {
             Op::Insert(data, timestamp) => {
-                let _ = wheel.write().insert(Entry::new(data, timestamp));
+                wheel.insert(Entry::new(data, timestamp));
             }
             Op::Advance(watermark) => {
                 wheel.advance_to(watermark);

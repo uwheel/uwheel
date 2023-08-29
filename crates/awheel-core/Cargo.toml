@@ -21,10 +21,13 @@ sum = []
 min = []
 max = []
 top_n = ["dep:hashbrown"]
-serde = ["dep:serde", "dep:serde-big-array", "parking_lot?/serde", "hashbrown?/serde"]
+serde = ["dep:serde", "dep:serde-big-array", "parking_lot?/serde", "hashbrown?/serde", "awheel-stats?/serde"]
 sync = ["dep:parking_lot", "std"]
+profiler = ["dep:awheel-stats", "prettytable-rs", "std"]
+
 
 [dependencies]
+awheel-stats = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
 hashbrown = { workspace = true, optional = true }
 serde = { workspace = true, optional = true, features = [
@@ -32,3 +35,4 @@ serde = { workspace = true, optional = true, features = [
     "rc",
 ] }
 serde-big-array = { workspace = true, optional = true }
+prettytable-rs = { version = "0.10.0", optional = true }
