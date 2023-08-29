@@ -2,6 +2,7 @@ use core::{
     cmp,
     fmt::Debug,
     iter::IntoIterator,
+    marker::PhantomData,
     option::{
         Option,
         Option::{None, Some},
@@ -11,8 +12,10 @@ use core::{
 use super::{
     super::write::WriteAheadWheel,
     aggregation::{maybe::MaybeWheel, AggregationWheel},
+    Kind,
+    Lazy,
 };
-use crate::{aggregator::Aggregator, time};
+use crate::{aggregator::Aggregator, rw_wheel::read::Mode, time};
 
 #[cfg(feature = "profiler")]
 use super::stats::Stats;
@@ -62,9 +65,10 @@ struct Granularities {
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone, Debug)]
-pub struct Haw<A>
+pub struct Haw<A, K = Lazy>
 where
     A: Aggregator,
+    K: Kind,
 {
     watermark: u64,
     seconds_wheel: MaybeWheel<A>,
@@ -73,13 +77,15 @@ where
     days_wheel: MaybeWheel<A>,
     weeks_wheel: MaybeWheel<A>,
     years_wheel: MaybeWheel<A>,
+    _marker: PhantomData<K>,
     #[cfg(feature = "profiler")]
     stats: Stats,
 }
 
-impl<A> Haw<A>
+impl<A, K> Haw<A, K>
 where
     A: Aggregator,
+    K: Kind,
 {
     const SECOND_AS_MS: u64 = time::Duration::SECOND.whole_milliseconds() as u64;
     const MINUTES_AS_SECS: u64 = time::Duration::MINUTE.whole_seconds() as u64;
@@ -119,6 +125,7 @@ where
             days_wheel: MaybeWheel::with_capacity(DAYS),
             weeks_wheel: MaybeWheel::with_capacity(WEEKS),
             years_wheel: MaybeWheel::with_capacity(YEARS),
+            _marker: PhantomData,
             #[cfg(feature = "profiler")]
             stats: Stats::default(),
         }
@@ -132,6 +139,7 @@ where
             days_wheel: MaybeWheel::with_capacity_and_drill_down(DAYS),
             weeks_wheel: MaybeWheel::with_capacity_and_drill_down(WEEKS),
             years_wheel: MaybeWheel::with_capacity_and_drill_down(YEARS),
+            _marker: PhantomData,
             #[cfg(feature = "profiler")]
             stats: Stats::default(),
         }
@@ -517,6 +525,11 @@ where
         if let Some(window) = waw.tick() {
             let partial_agg = A::freeze(window);
             seconds.insert_head(partial_agg);
+            if let Mode::Eager = K::mode() {
+                // NOTE: (https://github.com/Max-Meldrum/awheel/issues/64)
+                // pre-agg all wheel heads
+                unimplemented!("Eager Aggregation not Supported yet!");
+            }
         }
 
         // full rotation of seconds wheel

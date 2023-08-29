@@ -15,16 +15,69 @@ use crate::aggregator::Aggregator;
 
 pub use inner_impl::{HawRef, HawRefMut, Inner};
 
+/// Aggregate Mode
+#[derive(Clone, Debug, Copy, Default)]
+pub enum Mode {
+    /// Lazy aggregation
+    #[default]
+    Lazy,
+    /// Eager aggregation
+    Eager,
+}
+
+/// A Lazy aggregate scheme
+#[derive(Clone, Debug, Copy, Default)]
+pub struct Lazy;
+
+/// An Eager aggregate scheme
+#[derive(Clone, Debug, Copy, Default)]
+pub struct Eager;
+
+/// A trait for defining the type of aggregation scheme
+pub trait Kind: private::Sealed {
+    #[doc(hidden)]
+    fn mode() -> Mode;
+}
+
+impl Kind for Lazy {
+    fn mode() -> Mode {
+        Mode::Lazy
+    }
+}
+impl Kind for Eager {
+    fn mode() -> Mode {
+        Mode::Eager
+    }
+}
+
+/// Sealed traits
+mod private {
+    use core::fmt::Debug;
+
+    pub trait Sealed: Clone + Copy + Debug + Default + Send + 'static {}
+}
+
+impl private::Sealed for Lazy {}
+impl private::Sealed for Eager {}
+
 /// A read wheel with hierarchical aggregation wheels backed by interior mutability.
 ///
 /// By default allows a single reader using `RefCell`, and multiple-readers with the `sync` flag enabled using `parking_lot`
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone, Debug)]
-pub struct ReadWheel<A: Aggregator> {
-    inner: Inner<A>,
+pub struct ReadWheel<A, K = Lazy>
+where
+    A: Aggregator,
+    K: Kind,
+{
+    inner: Inner<A, K>,
 }
-impl<A: Aggregator> ReadWheel<A> {
+impl<A, K> ReadWheel<A, K>
+where
+    A: Aggregator,
+    K: Kind,
+{
     /// Creates a new Wheel starting from the given time and with drill down enabled
     ///
     /// Time is represented as milliseconds
@@ -111,7 +164,7 @@ impl<A: Aggregator> ReadWheel<A> {
         self.inner.write().merge(&mut other.inner.write());
     }
     /// Returns a reference to the internal [Haw] data structure
-    pub fn as_ref(&self) -> HawRef<'_, A> {
+    pub fn as_ref(&self) -> HawRef<'_, A, K> {
         self.inner.read()
     }
 }
@@ -120,35 +173,35 @@ impl<A: Aggregator> ReadWheel<A> {
 
 #[cfg(feature = "sync")]
 mod inner_impl {
-    use super::{hierarchical::Haw, Aggregator};
+    use super::{hierarchical::Haw, Aggregator, Kind};
     use parking_lot::{MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock};
     use std::sync::Arc;
 
     /// The lock you get from [`RwLock::read`].
-    pub type HawRef<'a, T> = MappedRwLockReadGuard<'a, Haw<T>>;
+    pub type HawRef<'a, T, K> = MappedRwLockReadGuard<'a, Haw<T, K>>;
     /// The lock you get from [`RwLock::write`].
-    pub type HawRefMut<'a, T> = MappedRwLockWriteGuard<'a, Haw<T>>;
+    pub type HawRefMut<'a, T, K> = MappedRwLockWriteGuard<'a, Haw<T, K>>;
 
     /// An inner read wheel impl for multi-reader setups
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     #[cfg_attr(feature = "serde", serde(bound = "T: Default"))]
     #[derive(Clone, Debug)]
     #[doc(hidden)]
-    pub struct Inner<T: Aggregator>(Arc<RwLock<Haw<T>>>);
+    pub struct Inner<T: Aggregator, K: Kind>(Arc<RwLock<Haw<T, K>>>);
 
-    impl<T: Aggregator> Inner<T> {
+    impl<T: Aggregator, K: Kind> Inner<T, K> {
         #[inline(always)]
-        pub fn new(val: Haw<T>) -> Self {
+        pub fn new(val: Haw<T, K>) -> Self {
             Self(Arc::new(RwLock::new(val)))
         }
 
         #[inline(always)]
-        pub fn read(&self) -> HawRef<'_, T> {
+        pub fn read(&self) -> HawRef<'_, T, K> {
             parking_lot::RwLockReadGuard::map(self.0.read(), |v| v)
         }
 
         #[inline(always)]
-        pub fn write(&self) -> HawRefMut<'_, T> {
+        pub fn write(&self) -> HawRefMut<'_, T, K> {
             parking_lot::RwLockWriteGuard::map(self.0.write(), |v| v)
         }
     }
@@ -156,7 +209,7 @@ mod inner_impl {
 
 #[cfg(not(feature = "sync"))]
 mod inner_impl {
-    use super::{hierarchical::Haw, Aggregator};
+    use super::{hierarchical::Haw, Aggregator, Kind};
     #[cfg(not(feature = "std"))]
     use alloc::rc::Rc;
     use core::cell::RefCell;
@@ -164,30 +217,30 @@ mod inner_impl {
     use std::rc::Rc;
 
     /// An immutably borrowed Haw from [`RefCell::borrow´]
-    pub type HawRef<'a, T> = core::cell::Ref<'a, Haw<T>>;
+    pub type HawRef<'a, T, K> = core::cell::Ref<'a, Haw<T, K>>;
     /// A mutably borrowed Haw from [`RefCell::borrow_mut´]
-    pub type HawRefMut<'a, T> = core::cell::RefMut<'a, Haw<T>>;
+    pub type HawRefMut<'a, T, K> = core::cell::RefMut<'a, Haw<T, K>>;
 
     /// An inner read wheel impl for single-threaded executions
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     #[cfg_attr(feature = "serde", serde(bound = "T: Default"))]
     #[derive(Debug, Clone)]
     #[doc(hidden)]
-    pub struct Inner<T: Aggregator>(Rc<RefCell<Haw<T>>>);
+    pub struct Inner<T: Aggregator, K: Kind>(Rc<RefCell<Haw<T, K>>>);
 
-    impl<T: Aggregator> Inner<T> {
+    impl<T: Aggregator, K: Kind> Inner<T, K> {
         #[inline(always)]
-        pub fn new(val: Haw<T>) -> Self {
+        pub fn new(val: Haw<T, K>) -> Self {
             Self(Rc::new(RefCell::new(val)))
         }
 
         #[inline(always)]
-        pub fn read(&self) -> HawRef<'_, T> {
+        pub fn read(&self) -> HawRef<'_, T, K> {
             self.0.borrow()
         }
 
         #[inline(always)]
-        pub fn write(&self) -> HawRefMut<'_, T> {
+        pub fn write(&self) -> HawRefMut<'_, T, K> {
             self.0.borrow_mut()
         }
     }

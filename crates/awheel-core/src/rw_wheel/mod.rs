@@ -24,9 +24,12 @@ use write::{WriteAheadWheel, DEFAULT_WRITE_AHEAD_SLOTS};
 pub use read::{aggregation::DrillCut, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 pub use wheel_ext::WheelExt;
 
-use self::timer::RawTimerWheel;
 #[cfg(not(feature = "serde"))]
 use self::timer::{timer_wheel::TimerWheel, TimerAction};
+use self::{
+    read::{Kind, Lazy},
+    timer::RawTimerWheel,
+};
 
 #[cfg(feature = "profiler")]
 use awheel_stats::profile_scope;
@@ -52,16 +55,24 @@ use awheel_stats::profile_scope;
 /// across time.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
-pub struct RwWheel<A: Aggregator> {
+pub struct RwWheel<A, K = Lazy>
+where
+    A: Aggregator,
+    K: Kind,
+{
     overflow: RawTimerWheel<Entry<A::Input>>,
     write: WriteAheadWheel<A>,
-    read: ReadWheel<A>,
+    read: ReadWheel<A, K>,
     #[cfg(not(feature = "serde"))]
-    timer: TimerWheel<A>,
+    timer: TimerWheel<A, K>,
     #[cfg(feature = "profiler")]
     stats: stats::Stats,
 }
-impl<A: Aggregator> RwWheel<A> {
+impl<A, K> RwWheel<A, K>
+where
+    A: Aggregator,
+    K: Kind,
+{
     /// Creates a new Wheel starting from the given time
     ///
     /// Time is represented as milliseconds
@@ -94,7 +105,7 @@ impl<A: Aggregator> RwWheel<A> {
     pub fn with_options(time: u64, opts: Options) -> Self {
         let write: WriteAheadWheel<A> =
             WriteAheadWheel::with_capacity_and_watermark(opts.write_ahead_capacity, time);
-        let read: ReadWheel<A> = if opts.drill_down {
+        let read: ReadWheel<A, K> = if opts.drill_down {
             ReadWheel::with_drill_down(time)
         } else {
             ReadWheel::new(time)
@@ -136,16 +147,16 @@ impl<A: Aggregator> RwWheel<A> {
         &self.write
     }
     /// Returns a reference to the underlying ReadWheel
-    pub fn read(&self) -> &ReadWheel<A> {
+    pub fn read(&self) -> &ReadWheel<A, K> {
         &self.read
     }
     /// Returns a reference to the TimerWheel
     #[cfg(not(feature = "serde"))]
-    pub fn timer(&self) -> &TimerWheel<A> {
+    pub fn timer(&self) -> &TimerWheel<A, K> {
         &self.timer
     }
     /// Merges another read wheel with same size into this one
-    pub fn merge_read_wheel(&self, other: &ReadWheel<A>) {
+    pub fn merge_read_wheel(&self, other: &ReadWheel<A, K>) {
         self.read().merge(other);
     }
     /// Returns the current watermark of this wheel
@@ -242,7 +253,11 @@ impl<A: Aggregator> RwWheel<A> {
     }
 }
 
-impl<A: Aggregator> Drop for RwWheel<A> {
+impl<A, K> Drop for RwWheel<A, K>
+where
+    A: Aggregator,
+    K: Kind,
+{
     fn drop(&mut self) {
         #[cfg(feature = "profiler")]
         self.print_stats();
