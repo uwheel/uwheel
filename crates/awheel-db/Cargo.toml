@@ -1,0 +1,21 @@
+[package]
+name = "awheel-db"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+categories.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[dependencies]
+awheel-core = { workspace = true, features = ["serde", "sum"] }
+postcard.workspace = true
+lz4_flex.workspace = true
+libsql = "0.1.6"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "insert"
+harness = false
