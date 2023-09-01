@@ -9,10 +9,16 @@ use alloc::vec::Vec;
     feature = "serde",
     serde(bound = "A: serde::Serialize + for<'a> serde::Deserialize<'a>")
 )]
-#[derive(Default)]
+#[derive(Clone)]
 pub struct RawTimerWheel<A: Bounds> {
     timer: QuadWheelWithOverflow<A>,
     time: u64,
+}
+
+impl<A: Bounds> Default for RawTimerWheel<A> {
+    fn default() -> Self {
+        Self::new(0)
+    }
 }
 
 impl<A: Bounds> RawTimerWheel<A> {

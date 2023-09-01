@@ -27,6 +27,10 @@ pub mod rw_wheel;
 /// Heavily borrowed from the [time](https://docs.rs/time/latest/time/) crate
 pub mod time;
 
+#[macro_use]
+#[doc(hidden)]
+pub mod macros;
+
 pub use aggregator::Aggregator;
 pub use rw_wheel::{
     read::{ReadWheel, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS},

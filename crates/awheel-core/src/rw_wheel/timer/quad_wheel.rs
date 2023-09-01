@@ -21,6 +21,7 @@ use core::{fmt::Debug, time::Duration};
 use alloc::{boxed::Box, vec::Vec};
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone)]
 struct OverflowEntry<EntryType> {
     entry: EntryType,
     remaining_delay: Duration,
@@ -38,7 +39,7 @@ impl<EntryType> OverflowEntry<EntryType> {
 ///
 /// Use this for implementing logic for cancellable timers.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Clone, Eq, Debug)]
 pub enum PruneDecision {
     /// Move the entry into the next wheel
     Keep,
@@ -80,6 +81,7 @@ pub fn no_prune<E>(_e: &E) -> PruneDecision {
     feature = "serde",
     serde(bound = "EntryType: serde::Serialize + for<'a> serde::Deserialize<'a>")
 )]
+#[derive(Clone)]
 pub struct QuadWheelWithOverflow<EntryType>
 where
     EntryType: Bounds,

@@ -129,7 +129,7 @@ mod inner_impl {
     pub type TreeRefMut<'a, K, T> = MappedRwLockWriteGuard<'a, BTreeMap<K, ReadWheel<T>>>;
 
     /// An inner read wheel impl for multi-reader setups
-    #[derive(Clone, Debug)]
+    #[derive(Clone)]
     pub struct InnerTree<K: Key, T: Aggregator + Clone>(Arc<RwLock<BTreeMap<K, ReadWheel<T>>>>);
 
     impl<K: Key, T: Aggregator + Clone> InnerTree<K, T> {
@@ -170,7 +170,7 @@ mod inner_impl {
     pub type TreeRefMut<'a, K, T> = core::cell::RefMut<'a, BTreeMap<K, ReadWheel<T>>>;
 
     /// An inner read wheel impl for single-threaded executions
-    #[derive(Debug, Clone)]
+    #[derive(Clone)]
     pub struct InnerTree<K: Key, T: Aggregator + Clone>(RefCell<BTreeMap<K, ReadWheel<T>>>);
 
     impl<K: Key, T: Aggregator + Clone> InnerTree<K, T> {

@@ -1,6 +1,5 @@
 use core::{
     cmp,
-    fmt::Debug,
     iter::IntoIterator,
     marker::PhantomData,
     option::{
@@ -21,6 +20,15 @@ use crate::{aggregator::Aggregator, rw_wheel::read::Mode, time};
 use super::stats::Stats;
 #[cfg(feature = "profiler")]
 use awheel_stats::profile_scope;
+
+crate::cfg_timer! {
+    #[cfg(not(feature = "std"))]
+    use alloc::{boxed::Box, rc::Rc};
+    #[cfg(feature = "std")]
+    use std::rc::Rc;
+    use crate::rw_wheel::timer::{RawTimerWheel, TimerError, TimerAction};
+    use core::cell::RefCell;
+}
 
 /// Default capacity of second slots
 pub const SECONDS: usize = 60;
@@ -64,7 +72,7 @@ struct Granularities {
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Haw<A, K = Lazy>
 where
     A: Aggregator,
@@ -77,6 +85,8 @@ where
     days_wheel: MaybeWheel<A>,
     weeks_wheel: MaybeWheel<A>,
     years_wheel: MaybeWheel<A>,
+    #[cfg(all(feature = "timer", not(feature = "serde")))]
+    timer: Rc<RefCell<RawTimerWheel<TimerAction<A, K>>>>,
     _marker: PhantomData<K>,
     #[cfg(feature = "profiler")]
     stats: Stats,
@@ -125,6 +135,8 @@ where
             days_wheel: MaybeWheel::with_capacity(DAYS),
             weeks_wheel: MaybeWheel::with_capacity(WEEKS),
             years_wheel: MaybeWheel::with_capacity(YEARS),
+            #[cfg(all(feature = "timer", not(feature = "serde")))]
+            timer: Rc::new(RefCell::new(RawTimerWheel::default())),
             _marker: PhantomData,
             #[cfg(feature = "profiler")]
             stats: Stats::default(),
@@ -139,6 +151,8 @@ where
             days_wheel: MaybeWheel::with_capacity_and_drill_down(DAYS),
             weeks_wheel: MaybeWheel::with_capacity_and_drill_down(WEEKS),
             years_wheel: MaybeWheel::with_capacity_and_drill_down(YEARS),
+            #[cfg(all(feature = "timer", not(feature = "serde")))]
+            timer: Rc::new(RefCell::new(RawTimerWheel::default())),
             _marker: PhantomData,
             #[cfg(feature = "profiler")]
             stats: Stats::default(),
@@ -286,6 +300,30 @@ where
             week: to_option(dur.whole_weeks() % WEEKS as i64),
             year: to_option((dur.whole_weeks() / WEEKS as i64) % YEARS as i64),
         }
+    }
+
+    /// Schedules a timer to fire once the given time has been reached
+    #[cfg(all(feature = "timer", not(feature = "serde")))]
+    pub(crate) fn schedule_once(
+        &self,
+        time: u64,
+        f: impl Fn(&Haw<A, K>) + 'static,
+    ) -> Result<(), TimerError<TimerAction<A, K>>> {
+        self.timer
+            .borrow_mut()
+            .schedule_at(time, TimerAction::Oneshot(Box::new(f)))
+    }
+    /// Schedules a timer to fire repeatedly
+    #[cfg(all(feature = "timer", not(feature = "serde")))]
+    pub(crate) fn schedule_repeat(
+        &self,
+        at: u64,
+        interval: time::Duration,
+        f: impl Fn(&Haw<A, K>) + 'static,
+    ) -> Result<(), TimerError<TimerAction<A, K>>> {
+        self.timer
+            .borrow_mut()
+            .schedule_at(at, TimerAction::Repeat((at, interval, Box::new(f))))
     }
 
     /// Returns the partial aggregate in the given time interval
@@ -568,6 +606,26 @@ where
                             // tick but ignore full rotations as this is the last hierarchy
                             let _ = years.tick();
                         }
+                    }
+                }
+            }
+        }
+
+        // Fire any outgoing timers
+        #[cfg(all(feature = "timer", not(feature = "serde")))]
+        {
+            let mut timer = self.timer.borrow_mut();
+
+            for action in timer.advance_to(self.watermark) {
+                match action {
+                    TimerAction::Oneshot(udf) => {
+                        udf(self);
+                    }
+                    TimerAction::Repeat((at, interval, udf)) => {
+                        udf(self);
+                        let new_at = at + interval.whole_milliseconds() as u64;
+                        let _ =
+                            timer.schedule_at(new_at, TimerAction::Repeat((new_at, interval, udf)));
                     }
                 }
             }

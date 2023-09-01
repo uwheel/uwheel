@@ -23,6 +23,7 @@ max = []
 top_n = ["dep:hashbrown"]
 serde = ["dep:serde", "dep:serde-big-array", "parking_lot?/serde", "hashbrown?/serde", "awheel-stats?/serde"]
 sync = ["dep:parking_lot", "std"]
+timer = []
 profiler = ["dep:awheel-stats", "prettytable-rs", "std"]
 
 

@@ -21,6 +21,7 @@ use serde_big_array::BigArray;
 
 /// A single entry in a slot
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone)]
 pub struct WheelEntry<EntryType, RestType> {
     /// The actual entry
     pub entry: EntryType,
@@ -50,6 +51,7 @@ impl<T> Bounds for T where T: serde::Serialize + for<'a> serde::Deserialize<'a> 
 /// The `RestType` us used to store an array of bytes that are the rest of the delay.
 /// This way the same wheel structure can be used at different hierarchical levels.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone)]
 pub struct ByteWheel<EntryType, RestType>
 where
     EntryType: Bounds,

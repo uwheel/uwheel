@@ -66,14 +66,15 @@ The Aggregation Interface is inspired by the work of [Tangwongsan et al.](http:/
 - `window`
     - Enables wheels for streaming window aggregation
 - `sync` (_implicitly enables `std`_)
-    - Enables a sync version of ``ReadWheel`` that can be queried across threads
+    - Enables a sync version of ``ReadWheel`` that can be shared and queried across threads
 - `stats` (_implicitly enables `std`_)
     - Enables recording of latencies for various operations
 - `serde`
     - Enables serde support
 - `tree`
     - Enables the multi-key ``RwTreeWheel``
-
+- `timer`
+    - Enables scheduling user-defined functions
 
 ## Usage
 
