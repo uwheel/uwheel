@@ -29,7 +29,7 @@ pub mod time;
 
 #[macro_use]
 #[doc(hidden)]
-pub mod macros;
+mod macros;
 
 pub use aggregator::Aggregator;
 pub use rw_wheel::{

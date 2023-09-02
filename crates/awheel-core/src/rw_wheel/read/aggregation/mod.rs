@@ -496,6 +496,7 @@ impl<A: Aggregator> AggregationWheel<A> {
         }
 
         // Merge regular wheel slots
+        // NOTE: this assumes both wheels where started with same watermark
         for (self_slot, other_slot) in self.slots.iter_mut().zip(other.slots.iter()) {
             if let Some(other_agg) = other_slot {
                 combine_or_insert::<A>(self_slot, *other_agg);

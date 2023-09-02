@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 use ahash::AHashMap;
 use awheel::{
     aggregator::sum::U64SumAggregator,
-    rw_wheel::read::Haw,
+    rw_wheel::read::{Haw, Lazy},
     time::NumericalDuration,
     Entry,
     RwWheel,
@@ -855,14 +855,14 @@ impl eframe::App for TemplateApp {
             ui.label(
                 RichText::new(format!(
                     "Total Wheel Slots: {}",
-                    Haw::<DemoAggregator>::TOTAL_WHEEL_SLOTS
+                    Haw::<DemoAggregator, Lazy>::TOTAL_WHEEL_SLOTS
                 ))
                 .strong(),
             );
             ui.label(
                 RichText::new(format!(
                     "Cycle Length: {}",
-                    Haw::<DemoAggregator>::CYCLE_LENGTH
+                    Haw::<DemoAggregator, Lazy>::CYCLE_LENGTH
                 ))
                 .strong(),
             );

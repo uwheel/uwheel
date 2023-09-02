@@ -37,7 +37,7 @@ use awheel_stats::profile_scope;
 /// ## Indexing
 ///
 /// The wheel adopts a low watermark clock which is used for indexing. The watermark
-/// is used to the decouple write and read paths. Ag
+/// is used to the decouple write and read paths.
 ///
 /// ## Writes
 ///
@@ -271,7 +271,7 @@ mod tests {
     #[cfg(all(feature = "timer", not(feature = "serde")))]
     use std::rc::Rc;
 
-    use super::{WheelExt, *};
+    use super::{read::Eager, WheelExt, *};
     use crate::{aggregator::sum::U32SumAggregator, time::*, *};
 
     #[test]
@@ -436,6 +436,29 @@ mod tests {
                 .combine_and_lower_range(0..5),
             Some(6u32)
         );
+    }
+
+    #[test]
+    fn eager_wheel_test() {
+        let mut wheel = RwWheel::<U32SumAggregator, Eager>::new(0);
+
+        wheel.advance(60.seconds());
+        let watermark = wheel.watermark();
+
+        wheel.insert(Entry::new(100, watermark));
+        wheel.insert(Entry::new(10, watermark + 1000));
+
+        wheel.advance(1.seconds());
+
+        // both last 1 second and 1 minute should have a sum of 100
+        // as aggregation is done eagerly across both wheels
+        assert_eq!(wheel.read().interval(1.seconds()), Some(100));
+        assert_eq!(wheel.read().interval(1.minutes()), Some(100));
+
+        wheel.insert(Entry::new(10, watermark + 1000));
+
+        wheel.advance(60.seconds());
+        assert_eq!(wheel.read().interval(2.minutes()), Some(120));
     }
 
     #[test]
@@ -654,6 +677,27 @@ mod tests {
             fresh_wheel.read().remaining_ticks(),
             wheel.read().remaining_ticks()
         );
+    }
+
+    #[test]
+    fn merge_test_low_to_high() {
+        let time = 0;
+        let mut wheel = RwWheel::<U32SumAggregator>::new(time);
+
+        let entry = Entry::new(1u32, 5000);
+        wheel.insert(entry);
+
+        wheel.advance(10.seconds());
+
+        let mut fresh_wheel = RwWheel::<U32SumAggregator>::new(time);
+        fresh_wheel.insert(Entry::new(5u32, 8000));
+        fresh_wheel.advance(9.seconds());
+
+        wheel.read().merge(fresh_wheel.read());
+
+        assert_eq!(wheel.read().landmark(), Some(6));
+        assert_eq!(wheel.read().interval(2.seconds()), Some(5));
+        assert_eq!(wheel.read().interval(10.seconds()), Some(6));
     }
 
     #[test]

@@ -1,4 +1,5 @@
 #[macro_export]
+#[doc(hidden)]
 macro_rules! cfg_timer {
     ($($item:item)*) => {
         $(
@@ -9,6 +10,7 @@ macro_rules! cfg_timer {
 }
 
 #[macro_export]
+#[doc(hidden)]
 macro_rules! cfg_sync {
     ($($item:item)*) => {
         $(
@@ -17,7 +19,9 @@ macro_rules! cfg_sync {
         )*
     }
 }
+
 #[macro_export]
+#[doc(hidden)]
 macro_rules! cfg_not_sync {
     ($($item:item)*) => {
         $(

@@ -134,7 +134,8 @@ where
     pub fn landmark(&self) -> Option<A::PartialAggregate> {
         self.inner.read().landmark()
     }
-    pub(crate) fn merge(&self, other: &Self) {
+    /// Merges another [ReadWheel] into this one
+    pub fn merge(&self, other: &Self) {
         self.inner.write().merge(&mut other.inner.write());
     }
     /// Returns a reference to the internal [Haw] data structure
@@ -219,7 +220,7 @@ cfg_sync! {
 }
 
 /// Aggregate Mode
-#[derive(Clone, Debug, Copy, Default)]
+#[derive(Clone, Debug, PartialEq, Copy, Default)]
 pub enum Mode {
     /// Lazy aggregation
     #[default]

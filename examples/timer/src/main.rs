@@ -2,9 +2,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use awheel::{
     aggregator::sum::U32SumAggregator,
+    rw_wheel::read::Haw,
     time::NumericalDuration,
     Entry,
-    ReadWheel,
     RwWheel,
 };
 
@@ -15,8 +15,8 @@ fn main() {
 
     // schedule a repeat action
     let _ = wheel
-        .timer()
-        .schdule_repeat(5000, 5.seconds(), move |read: &ReadWheel<_>| {
+        .read()
+        .schedule_repeat(5000, 5.seconds(), move |read: &Haw<_>| {
             if let Some(last_five) = read.interval(5.seconds()) {
                 println!("Last five {}", last_five);
                 *inner_sum.borrow_mut() += last_five;
