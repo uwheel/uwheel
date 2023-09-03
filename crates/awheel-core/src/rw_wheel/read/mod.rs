@@ -7,7 +7,7 @@ pub mod hierarchical;
 
 #[cfg(feature = "profiler")]
 pub(crate) mod stats;
-#[cfg(all(feature = "timer", not(feature = "serde")))]
+#[cfg(feature = "timer")]
 use crate::rw_wheel::timer::{TimerAction, TimerError};
 
 use crate::{cfg_not_sync, cfg_sync, time::Duration, WriteAheadWheel};
@@ -76,7 +76,7 @@ where
         self.inner.read().current_time_in_cycle()
     }
     /// Schedules a timer to fire once the given time has been reached
-    #[cfg(all(feature = "timer", not(feature = "serde")))]
+    #[cfg(feature = "timer")]
     pub fn schedule_once(
         &self,
         at: u64,
@@ -85,7 +85,7 @@ where
         self.inner.write().schedule_once(at, f)
     }
     /// Schedules a timer to fire repeatedly
-    #[cfg(all(feature = "timer", not(feature = "serde")))]
+    #[cfg(feature = "timer")]
     pub fn schedule_repeat(
         &self,
         at: u64,

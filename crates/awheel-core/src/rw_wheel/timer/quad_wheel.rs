@@ -14,13 +14,11 @@
 //! there should be no large issues even if this assumption is not correct.
 
 use super::{byte_wheel::*, *};
-use byte_wheel::Bounds;
 use core::{fmt::Debug, time::Duration};
 
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, vec::Vec};
 
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone)]
 struct OverflowEntry<EntryType> {
     entry: EntryType,
@@ -38,7 +36,6 @@ impl<EntryType> OverflowEntry<EntryType> {
 /// Indicates whether an entry should be moved into the next wheel, or dropped
 ///
 /// Use this for implementing logic for cancellable timers.
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(PartialEq, Clone, Eq, Debug)]
 pub enum PruneDecision {
     /// Move the entry into the next wheel
@@ -76,16 +73,8 @@ pub fn no_prune<E>(_e: &E) -> PruneDecision {
 /// that it actually fits.
 /// In this design the maximum schedule duration for the wheel itself is [`u32::MAX`](std::u32::MAX) units (typically ms),
 /// everything else goes into the overflow `Vec`.
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(
-    feature = "serde",
-    serde(bound = "EntryType: serde::Serialize + for<'a> serde::Deserialize<'a>")
-)]
 #[derive(Clone)]
-pub struct QuadWheelWithOverflow<EntryType>
-where
-    EntryType: Bounds,
-{
+pub struct QuadWheelWithOverflow<EntryType> {
     primary: Box<ByteWheel<EntryType, [u8; 0]>>,
     secondary: Box<ByteWheel<EntryType, [u8; 1]>>,
     tertiary: Box<ByteWheel<EntryType, [u8; 2]>>,
@@ -100,7 +89,7 @@ const PRIMARY_LENGTH: u32 = 1 << 8; // 2^8
 const SECONDARY_LENGTH: u32 = 1 << 16; // 2^16
 const TERTIARY_LENGTH: u32 = 1 << 24; // 2^24
 
-impl<EntryType: Bounds> Default for QuadWheelWithOverflow<EntryType> {
+impl<EntryType> Default for QuadWheelWithOverflow<EntryType> {
     fn default() -> Self {
         QuadWheelWithOverflow::new(PruneDecision::Keep)
     }
@@ -108,7 +97,7 @@ impl<EntryType: Bounds> Default for QuadWheelWithOverflow<EntryType> {
 
 impl<EntryType> QuadWheelWithOverflow<EntryType>
 where
-    EntryType: TimerEntryWithDelay + Bounds,
+    EntryType: TimerEntryWithDelay,
 {
     /// Insert a new timeout into the wheel
     pub fn insert(&mut self, e: EntryType) -> Result<(), TimerError<EntryType>> {
@@ -117,7 +106,7 @@ where
     }
 }
 
-impl<EntryType: Bounds> QuadWheelWithOverflow<EntryType> {
+impl<EntryType> QuadWheelWithOverflow<EntryType> {
     /// Create a new wheel
     pub fn new(pruner: PruneDecision) -> Self {
         QuadWheelWithOverflow {

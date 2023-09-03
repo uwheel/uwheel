@@ -1094,7 +1094,7 @@ impl eframe::App for TemplateApp {
             );
             if ui.button("Run").clicked() {
                 let wheel = plot_wheel.borrow();
-                let bytes = to_allocvec(&*wheel).unwrap();
+                let bytes = to_allocvec(wheel.read()).unwrap();
                 let lz4_compressed = lz4_flex::compress_prepend_size(&bytes);
                 *encoded_bytes_len = bytes.len();
                 *compressed_bytes_len = lz4_compressed.len();

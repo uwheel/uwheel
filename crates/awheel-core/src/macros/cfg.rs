@@ -3,7 +3,7 @@
 macro_rules! cfg_timer {
     ($($item:item)*) => {
         $(
-            #[cfg(all(feature = "timer", not(feature = "serde")))]
+            #[cfg(feature = "timer")]
             $item
         )*
     }

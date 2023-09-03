@@ -85,7 +85,8 @@ where
     days_wheel: MaybeWheel<A>,
     weeks_wheel: MaybeWheel<A>,
     years_wheel: MaybeWheel<A>,
-    #[cfg(all(feature = "timer", not(feature = "serde")))]
+    #[cfg_attr(feature = "serde", serde(skip))]
+    #[cfg(feature = "timer")]
     timer: Rc<RefCell<RawTimerWheel<TimerAction<A, K>>>>,
     _marker: PhantomData<K>,
     #[cfg(feature = "profiler")]
@@ -135,7 +136,7 @@ where
             days_wheel: MaybeWheel::with_capacity(DAYS),
             weeks_wheel: MaybeWheel::with_capacity(WEEKS),
             years_wheel: MaybeWheel::with_capacity(YEARS),
-            #[cfg(all(feature = "timer", not(feature = "serde")))]
+            #[cfg(feature = "timer")]
             timer: Rc::new(RefCell::new(RawTimerWheel::default())),
             _marker: PhantomData,
             #[cfg(feature = "profiler")]
@@ -151,7 +152,7 @@ where
             days_wheel: MaybeWheel::with_capacity_and_drill_down(DAYS),
             weeks_wheel: MaybeWheel::with_capacity_and_drill_down(WEEKS),
             years_wheel: MaybeWheel::with_capacity_and_drill_down(YEARS),
-            #[cfg(all(feature = "timer", not(feature = "serde")))]
+            #[cfg(feature = "timer")]
             timer: Rc::new(RefCell::new(RawTimerWheel::default())),
             _marker: PhantomData,
             #[cfg(feature = "profiler")]
@@ -303,7 +304,7 @@ where
     }
 
     /// Schedules a timer to fire once the given time has been reached
-    #[cfg(all(feature = "timer", not(feature = "serde")))]
+    #[cfg(feature = "timer")]
     pub(crate) fn schedule_once(
         &self,
         time: u64,
@@ -314,7 +315,7 @@ where
             .schedule_at(time, TimerAction::Oneshot(Box::new(f)))
     }
     /// Schedules a timer to fire repeatedly
-    #[cfg(all(feature = "timer", not(feature = "serde")))]
+    #[cfg(feature = "timer")]
     pub(crate) fn schedule_repeat(
         &self,
         at: u64,
@@ -636,7 +637,7 @@ where
         }
 
         // Fire any outgoing timers
-        #[cfg(all(feature = "timer", not(feature = "serde")))]
+        #[cfg(feature = "timer")]
         {
             let mut timer = self.timer.borrow_mut();
 

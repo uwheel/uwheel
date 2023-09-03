@@ -1,27 +1,22 @@
-use super::{byte_wheel::Bounds, quad_wheel::QuadWheelWithOverflow, Skip, TimerError};
+use super::{quad_wheel::QuadWheelWithOverflow, Skip, TimerError};
 use core::time::Duration;
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(
-    feature = "serde",
-    serde(bound = "A: serde::Serialize + for<'a> serde::Deserialize<'a>")
-)]
 #[derive(Clone)]
-pub struct RawTimerWheel<A: Bounds> {
+pub struct RawTimerWheel<A> {
     timer: QuadWheelWithOverflow<A>,
     time: u64,
 }
 
-impl<A: Bounds> Default for RawTimerWheel<A> {
+impl<A> Default for RawTimerWheel<A> {
     fn default() -> Self {
         Self::new(0)
     }
 }
 
-impl<A: Bounds> RawTimerWheel<A> {
+impl<A> RawTimerWheel<A> {
     pub fn new(time: u64) -> Self {
         Self {
             timer: QuadWheelWithOverflow::default(),

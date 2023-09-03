@@ -25,8 +25,6 @@ use awheel_stats::profile_scope;
 
 #[doc(hidden)]
 #[repr(C)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Debug, Clone)]
 pub struct PairsWheel<A: Aggregator> {
     num_slots: usize,
@@ -158,8 +156,6 @@ impl Builder {
 /// A window wheel that uses the Pairs technique to store partial aggregates
 /// for a RANGE r and SLIDE s. It utilises a regular HAW for insertions and populating
 /// window slices.
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 pub struct LazyWindowWheel<A: Aggregator> {
     range: usize,
     slide: usize,

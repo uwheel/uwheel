@@ -15,8 +15,6 @@ use awheel_core::{
     Options,
     RwWheel,
 };
-#[cfg(feature = "rkyv")]
-use rkyv::{Archive, Deserialize, Serialize};
 
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, vec::Vec};
@@ -27,8 +25,6 @@ use awheel_stats::profile_scope;
 /// A fixed-sized wheel used to maintain partial aggregates for slides that can later
 /// be used to inverse windows.
 #[repr(C)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 #[derive(Debug, Clone)]
 pub struct InverseWheel<A: Aggregator> {
     num_slots: usize,
@@ -158,7 +154,6 @@ impl Builder {
 /// Wrapper on top of HAW to implement Sliding Window Aggregation
 ///
 /// Requires an aggregation function that supports invertibility
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
     range: usize,
     slide: usize,
