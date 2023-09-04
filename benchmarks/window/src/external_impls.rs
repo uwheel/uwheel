@@ -181,7 +181,7 @@ pub struct PairsTree<T: Tree<U64SumAggregator>> {
     slide: Duration,
     watermark: u64,
     state: State,
-    pairs_tree: T,
+    agg_store: T,
     tree: T,
     stats: Stats,
 }
@@ -195,7 +195,7 @@ impl<T: Tree<U64SumAggregator>> PairsTree<T> {
             slide,
             watermark,
             state,
-            pairs_tree: T::default(),
+            agg_store: T::default(),
             tree: T::default(),
             stats: Default::default(),
         }
@@ -203,7 +203,7 @@ impl<T: Tree<U64SumAggregator>> PairsTree<T> {
     #[inline]
     fn compute_window(&self) -> Option<u64> {
         profile_scope!(&self.stats.window_computation_ns);
-        self.pairs_tree.query()
+        self.agg_store.query()
     }
 }
 impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
@@ -226,8 +226,8 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
                 let to = self.watermark;
                 let partial = self.tree.range_query(from, to);
 
-                // insert pair into tree
-                self.pairs_tree
+                // insert pair into the agg store
+                self.agg_store
                     .insert(self.watermark, partial.unwrap_or_default());
 
                 // Update pair metadata
@@ -250,7 +250,7 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
                     };
 
                     for _i in 0..removals {
-                        self.pairs_tree.evict();
+                        self.agg_store.evict();
                     }
 
                     let evict_point = (self.watermark - self.range.whole_milliseconds() as u64)
@@ -295,6 +295,8 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
         unimplemented!();
     }
     fn stats(&self) -> &Stats {
+        let agg_store_size = self.agg_store.size_bytes();
+        self.stats.size_bytes.set(agg_store_size);
         &self.stats
     }
 }

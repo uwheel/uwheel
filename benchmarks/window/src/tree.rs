@@ -13,6 +13,7 @@ pub trait Tree<A: Aggregator>: Default {
     fn range_query(&self, from: u64, to: u64) -> Option<A::PartialAggregate>;
     fn evict_range(&mut self, to: u64);
     fn evict(&mut self);
+    fn size_bytes(&self) -> usize;
 }
 
 impl<A: Aggregator> Tree<A> for BTreeMap<u64, A::PartialAggregate> {
@@ -48,6 +49,17 @@ impl<A: Aggregator> Tree<A> for BTreeMap<u64, A::PartialAggregate> {
     fn evict(&mut self) {
         let _ = self.pop_first();
     }
+    fn size_bytes(&self) -> usize {
+        use std::mem::size_of;
+        // Estimate the memory usage of the BTreeMap itself
+        let btree_map_size = size_of::<Self>();
+
+        // Estimate the memory usage of each key-value pair
+        let key_value_size = size_of::<u64>() + size_of::<u64>();
+
+        // Calculate the total memory usage estimation
+        btree_map_size + key_value_size * self.len()
+    }
 }
 pub struct FiBA4 {
     fiba: UniquePtr<crate::bfinger_four::FiBA_SUM_4>,
@@ -79,6 +91,9 @@ impl Tree<U64SumAggregator> for FiBA4 {
     }
     fn evict(&mut self) {
         self.fiba.pin_mut().evict();
+    }
+    fn size_bytes(&self) -> usize {
+        self.fiba.size()
     }
 }
 
@@ -112,5 +127,8 @@ impl Tree<U64SumAggregator> for FiBA8 {
     }
     fn evict(&mut self) {
         self.fiba.pin_mut().evict();
+    }
+    fn size_bytes(&self) -> usize {
+        self.fiba.size()
     }
 }
