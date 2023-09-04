@@ -36,7 +36,7 @@ fn merge_large_to_fresh_wheel(bencher: &mut Bencher) {
     let wheel = large_wheel();
     bencher.iter(|| {
         let fresh_wheel = RwWheel::new(0);
-        fresh_wheel.merge_read_wheel(wheel.read());
+        fresh_wheel.read().merge(wheel.read());
         fresh_wheel
     });
 }

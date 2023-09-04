@@ -7,65 +7,20 @@ pub mod hierarchical;
 
 #[cfg(feature = "profiler")]
 pub(crate) mod stats;
+#[cfg(feature = "timer")]
+use crate::rw_wheel::timer::{TimerAction, TimerError};
 
-use crate::{time::Duration, WriteAheadWheel};
+use crate::{cfg_not_sync, cfg_sync, time::Duration, WriteAheadWheel};
 pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 
 use crate::aggregator::Aggregator;
-
-pub use inner_impl::{HawRef, HawRefMut, Inner};
-
-/// Aggregate Mode
-#[derive(Clone, Debug, Copy, Default)]
-pub enum Mode {
-    /// Lazy aggregation
-    #[default]
-    Lazy,
-    /// Eager aggregation
-    Eager,
-}
-
-/// A Lazy aggregate scheme
-#[derive(Clone, Debug, Copy, Default)]
-pub struct Lazy;
-
-/// An Eager aggregate scheme
-#[derive(Clone, Debug, Copy, Default)]
-pub struct Eager;
-
-/// A trait for defining the type of aggregation scheme
-pub trait Kind: private::Sealed {
-    #[doc(hidden)]
-    fn mode() -> Mode;
-}
-
-impl Kind for Lazy {
-    fn mode() -> Mode {
-        Mode::Lazy
-    }
-}
-impl Kind for Eager {
-    fn mode() -> Mode {
-        Mode::Eager
-    }
-}
-
-/// Sealed traits
-mod private {
-    use core::fmt::Debug;
-
-    pub trait Sealed: Clone + Copy + Debug + Default + Send + 'static {}
-}
-
-impl private::Sealed for Lazy {}
-impl private::Sealed for Eager {}
 
 /// A read wheel with hierarchical aggregation wheels backed by interior mutability.
 ///
 /// By default allows a single reader using `RefCell`, and multiple-readers with the `sync` flag enabled using `parking_lot`
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ReadWheel<A, K = Lazy>
 where
     A: Aggregator,
@@ -120,6 +75,25 @@ where
     pub fn current_time_in_cycle(&self) -> Duration {
         self.inner.read().current_time_in_cycle()
     }
+    /// Schedules a timer to fire once the given time has been reached
+    #[cfg(feature = "timer")]
+    pub fn schedule_once(
+        &self,
+        at: u64,
+        f: impl Fn(&Haw<A, K>) + 'static,
+    ) -> Result<(), TimerError<TimerAction<A, K>>> {
+        self.inner.write().schedule_once(at, f)
+    }
+    /// Schedules a timer to fire repeatedly
+    #[cfg(feature = "timer")]
+    pub fn schedule_repeat(
+        &self,
+        at: u64,
+        interval: Duration,
+        f: impl Fn(&Haw<A, K>) + 'static,
+    ) -> Result<(), TimerError<TimerAction<A, K>>> {
+        self.inner.write().schedule_repeat(at, interval, f)
+    }
 
     /// Advance the watermark of the wheel by the given [time::Duration]
     #[inline]
@@ -160,7 +134,8 @@ where
     pub fn landmark(&self) -> Option<A::PartialAggregate> {
         self.inner.read().landmark()
     }
-    pub(crate) fn merge(&self, other: &Self) {
+    /// Merges another [ReadWheel] into this one
+    pub fn merge(&self, other: &Self) {
         self.inner.write().merge(&mut other.inner.write());
     }
     /// Returns a reference to the internal [Haw] data structure
@@ -171,45 +146,7 @@ where
 
 // Two different Inner Read Wheel implementations below:
 
-#[cfg(feature = "sync")]
-mod inner_impl {
-    use super::{hierarchical::Haw, Aggregator, Kind};
-    use parking_lot::{MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock};
-    use std::sync::Arc;
-
-    /// The lock you get from [`RwLock::read`].
-    pub type HawRef<'a, T, K> = MappedRwLockReadGuard<'a, Haw<T, K>>;
-    /// The lock you get from [`RwLock::write`].
-    pub type HawRefMut<'a, T, K> = MappedRwLockWriteGuard<'a, Haw<T, K>>;
-
-    /// An inner read wheel impl for multi-reader setups
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-    #[cfg_attr(feature = "serde", serde(bound = "T: Default"))]
-    #[derive(Clone, Debug)]
-    #[doc(hidden)]
-    pub struct Inner<T: Aggregator, K: Kind>(Arc<RwLock<Haw<T, K>>>);
-
-    impl<T: Aggregator, K: Kind> Inner<T, K> {
-        #[inline(always)]
-        pub fn new(val: Haw<T, K>) -> Self {
-            Self(Arc::new(RwLock::new(val)))
-        }
-
-        #[inline(always)]
-        pub fn read(&self) -> HawRef<'_, T, K> {
-            parking_lot::RwLockReadGuard::map(self.0.read(), |v| v)
-        }
-
-        #[inline(always)]
-        pub fn write(&self) -> HawRefMut<'_, T, K> {
-            parking_lot::RwLockWriteGuard::map(self.0.write(), |v| v)
-        }
-    }
-}
-
-#[cfg(not(feature = "sync"))]
-mod inner_impl {
-    use super::{hierarchical::Haw, Aggregator, Kind};
+cfg_not_sync! {
     #[cfg(not(feature = "std"))]
     use alloc::rc::Rc;
     use core::cell::RefCell;
@@ -224,7 +161,7 @@ mod inner_impl {
     /// An inner read wheel impl for single-threaded executions
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     #[cfg_attr(feature = "serde", serde(bound = "T: Default"))]
-    #[derive(Debug, Clone)]
+    #[derive(Clone)]
     #[doc(hidden)]
     pub struct Inner<T: Aggregator, K: Kind>(Rc<RefCell<Haw<T, K>>>);
 
@@ -244,4 +181,85 @@ mod inner_impl {
             self.0.borrow_mut()
         }
     }
+
 }
+
+cfg_sync! {
+    use parking_lot::{MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock};
+    use std::sync::Arc;
+
+    /// The lock you get from [`RwLock::read`].
+    pub type HawRef<'a, T, K> = MappedRwLockReadGuard<'a, Haw<T, K>>;
+    /// The lock you get from [`RwLock::write`].
+    pub type HawRefMut<'a, T, K> = MappedRwLockWriteGuard<'a, Haw<T, K>>;
+
+    /// An inner read wheel impl for multi-reader setups
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+    #[cfg_attr(feature = "serde", serde(bound = "T: Default"))]
+    #[derive(Clone)]
+    #[doc(hidden)]
+    pub struct Inner<T: Aggregator, K: Kind>(Arc<RwLock<Haw<T, K>>>);
+
+    impl<T: Aggregator, K: Kind> Inner<T, K> {
+        #[inline(always)]
+        pub fn new(val: Haw<T, K>) -> Self {
+            Self(Arc::new(RwLock::new(val)))
+        }
+
+        #[inline(always)]
+        pub fn read(&self) -> HawRef<'_, T, K> {
+            parking_lot::RwLockReadGuard::map(self.0.read(), |v| v)
+        }
+
+        #[inline(always)]
+        pub fn write(&self) -> HawRefMut<'_, T, K> {
+            parking_lot::RwLockWriteGuard::map(self.0.write(), |v| v)
+        }
+    }
+
+}
+
+/// Aggregate Mode
+#[derive(Clone, Debug, PartialEq, Copy, Default)]
+pub enum Mode {
+    /// Lazy aggregation
+    #[default]
+    Lazy,
+    /// Eager aggregation
+    Eager,
+}
+
+/// A Lazy aggregate scheme
+#[derive(Clone, Debug, Copy, Default)]
+pub struct Lazy;
+
+/// An Eager aggregate scheme
+#[derive(Clone, Debug, Copy, Default)]
+pub struct Eager;
+
+/// A trait for defining the type of aggregation scheme
+pub trait Kind: private::Sealed {
+    #[doc(hidden)]
+    fn mode() -> Mode;
+}
+
+impl Kind for Lazy {
+    fn mode() -> Mode {
+        Mode::Lazy
+    }
+}
+impl Kind for Eager {
+    fn mode() -> Mode {
+        Mode::Eager
+    }
+}
+
+/// Sealed traits
+mod private {
+    use core::fmt::Debug;
+
+    pub trait Sealed: Clone + Copy + Debug + Default + Send + 'static {}
+}
+
+impl private::Sealed for Lazy {}
+impl private::Sealed for Eager {}

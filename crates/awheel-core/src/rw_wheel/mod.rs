@@ -24,8 +24,6 @@ use write::{WriteAheadWheel, DEFAULT_WRITE_AHEAD_SLOTS};
 pub use read::{aggregation::DrillCut, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 pub use wheel_ext::WheelExt;
 
-#[cfg(not(feature = "serde"))]
-use self::timer::{timer_wheel::TimerWheel, TimerAction};
 use self::{
     read::{Kind, Lazy},
     timer::RawTimerWheel,
@@ -39,7 +37,7 @@ use awheel_stats::profile_scope;
 /// ## Indexing
 ///
 /// The wheel adopts a low watermark clock which is used for indexing. The watermark
-/// is used to the decouple write and read paths. Ag
+/// is used to the decouple write and read paths.
 ///
 /// ## Writes
 ///
@@ -53,8 +51,6 @@ use awheel_stats::profile_scope;
 /// Aggregates once moved to below the watermark become immutable and are inserted into
 /// a hierarchical aggregation wheel [ReadWheel]. A data structure which materializes aggregates
 /// across time.
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 pub struct RwWheel<A, K = Lazy>
 where
     A: Aggregator,
@@ -63,8 +59,6 @@ where
     overflow: RawTimerWheel<Entry<A::Input>>,
     write: WriteAheadWheel<A>,
     read: ReadWheel<A, K>,
-    #[cfg(not(feature = "serde"))]
-    timer: TimerWheel<A, K>,
     #[cfg(feature = "profiler")]
     stats: stats::Stats,
 }
@@ -81,8 +75,6 @@ where
             overflow: RawTimerWheel::new(time),
             write: WriteAheadWheel::with_watermark(time),
             read: ReadWheel::new(time),
-            #[cfg(not(feature = "serde"))]
-            timer: TimerWheel::new(time),
             #[cfg(feature = "profiler")]
             stats: stats::Stats::default(),
         }
@@ -95,8 +87,6 @@ where
             overflow: RawTimerWheel::new(time),
             write: WriteAheadWheel::with_watermark(time),
             read: ReadWheel::with_drill_down(time),
-            #[cfg(not(feature = "serde"))]
-            timer: TimerWheel::new(time),
             #[cfg(feature = "profiler")]
             stats: stats::Stats::default(),
         }
@@ -114,8 +104,6 @@ where
             overflow: RawTimerWheel::new(time),
             write,
             read,
-            #[cfg(not(feature = "serde"))]
-            timer: TimerWheel::new(time),
             #[cfg(feature = "profiler")]
             stats: stats::Stats::default(),
         }
@@ -150,11 +138,6 @@ where
     pub fn read(&self) -> &ReadWheel<A, K> {
         &self.read
     }
-    /// Returns a reference to the TimerWheel
-    #[cfg(not(feature = "serde"))]
-    pub fn timer(&self) -> &TimerWheel<A, K> {
-        &self.timer
-    }
     /// Merges another read wheel with same size into this one
     pub fn merge_read_wheel(&self, other: &ReadWheel<A, K>) {
         self.read().merge(other);
@@ -183,22 +166,6 @@ where
         // Check if there are entries that can be inserted into the write-ahead wheel
         for entry in self.overflow.advance_to(watermark) {
             self.write.insert(entry).unwrap(); // this is assumed to be safe if it was scheduled correctly
-        }
-        #[cfg(not(feature = "serde"))]
-        {
-            // Fire any outstanding timers
-            for action in self.timer.advance_to(watermark) {
-                match action {
-                    TimerAction::Oneshot(udf) => {
-                        udf(&self.read);
-                    }
-                    TimerAction::Repeat((at, interval, udf)) => {
-                        udf(&self.read);
-                        let new_at = at + interval.whole_milliseconds() as u64;
-                        let _ = self.timer.schdule_repeat(new_at, interval, udf);
-                    }
-                }
-            }
         }
     }
     /// Returns an estimation of bytes used by the wheel
@@ -297,12 +264,12 @@ impl Options {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(not(feature = "serde"))]
+    #[cfg(all(feature = "timer", not(feature = "serde")))]
     use core::cell::RefCell;
-    #[cfg(not(feature = "serde"))]
+    #[cfg(all(feature = "timer", not(feature = "serde")))]
     use std::rc::Rc;
 
-    use super::{WheelExt, *};
+    use super::{read::Eager, WheelExt, *};
     use crate::{aggregator::sum::U32SumAggregator, time::*, *};
 
     #[test]
@@ -322,14 +289,14 @@ mod tests {
         rw_wheel.advance_to(86000);
     }
 
-    #[cfg(not(feature = "serde"))]
+    #[cfg(all(feature = "timer", not(feature = "serde")))]
     #[test]
     fn timer_once_test() {
         let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
         let gate = Rc::new(RefCell::new(false));
         let inner_gate = gate.clone();
 
-        let _ = rw_wheel.timer().schdule_once(5000, move |read| {
+        let _ = rw_wheel.read().schdule_once(5000, move |read| {
             if let Some(last_five) = read.interval(5.seconds()) {
                 *inner_gate.borrow_mut() = true;
                 assert_eq!(last_five, 1000);
@@ -346,7 +313,7 @@ mod tests {
         assert!(*gate.borrow());
     }
 
-    #[cfg(not(feature = "serde"))]
+    #[cfg(all(feature = "timer", not(feature = "serde")))]
     #[test]
     fn timer_repeat_test() {
         let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
@@ -355,7 +322,7 @@ mod tests {
 
         // schedule a repeat action
         let _ = rw_wheel
-            .timer()
+            .read()
             .schdule_repeat(5000, 5.seconds(), move |read| {
                 if let Some(last_five) = read.interval(5.seconds()) {
                     *inner_sum.borrow_mut() += last_five;
@@ -467,6 +434,29 @@ mod tests {
                 .combine_and_lower_range(0..5),
             Some(6u32)
         );
+    }
+
+    #[test]
+    fn eager_wheel_test() {
+        let mut wheel = RwWheel::<U32SumAggregator, Eager>::new(0);
+
+        wheel.advance(60.seconds());
+        let watermark = wheel.watermark();
+
+        wheel.insert(Entry::new(100, watermark));
+        wheel.insert(Entry::new(10, watermark + 1000));
+
+        wheel.advance(1.seconds());
+
+        // both last 1 second and 1 minute should have a sum of 100
+        // as aggregation is done eagerly across both wheels
+        assert_eq!(wheel.read().interval(1.seconds()), Some(100));
+        assert_eq!(wheel.read().interval(1.minutes()), Some(100));
+
+        wheel.insert(Entry::new(10, watermark + 1000));
+
+        wheel.advance(60.seconds());
+        assert_eq!(wheel.read().interval(2.minutes()), Some(120));
     }
 
     #[test]
@@ -685,6 +675,27 @@ mod tests {
             fresh_wheel.read().remaining_ticks(),
             wheel.read().remaining_ticks()
         );
+    }
+
+    #[test]
+    fn merge_test_low_to_high() {
+        let time = 0;
+        let mut wheel = RwWheel::<U32SumAggregator>::new(time);
+
+        let entry = Entry::new(1u32, 5000);
+        wheel.insert(entry);
+
+        wheel.advance(10.seconds());
+
+        let mut fresh_wheel = RwWheel::<U32SumAggregator>::new(time);
+        fresh_wheel.insert(Entry::new(5u32, 8000));
+        fresh_wheel.advance(9.seconds());
+
+        wheel.read().merge(fresh_wheel.read());
+
+        assert_eq!(wheel.read().landmark(), Some(6));
+        assert_eq!(wheel.read().interval(2.seconds()), Some(5));
+        assert_eq!(wheel.read().interval(10.seconds()), Some(6));
     }
 
     #[test]

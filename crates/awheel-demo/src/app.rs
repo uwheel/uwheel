@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 use ahash::AHashMap;
 use awheel::{
     aggregator::sum::U64SumAggregator,
-    rw_wheel::read::Haw,
+    rw_wheel::read::{Haw, Lazy},
     time::NumericalDuration,
     Entry,
     RwWheel,
@@ -855,14 +855,14 @@ impl eframe::App for TemplateApp {
             ui.label(
                 RichText::new(format!(
                     "Total Wheel Slots: {}",
-                    Haw::<DemoAggregator>::TOTAL_WHEEL_SLOTS
+                    Haw::<DemoAggregator, Lazy>::TOTAL_WHEEL_SLOTS
                 ))
                 .strong(),
             );
             ui.label(
                 RichText::new(format!(
                     "Cycle Length: {}",
-                    Haw::<DemoAggregator>::CYCLE_LENGTH
+                    Haw::<DemoAggregator, Lazy>::CYCLE_LENGTH
                 ))
                 .strong(),
             );
@@ -1094,7 +1094,7 @@ impl eframe::App for TemplateApp {
             );
             if ui.button("Run").clicked() {
                 let wheel = plot_wheel.borrow();
-                let bytes = to_allocvec(&*wheel).unwrap();
+                let bytes = to_allocvec(wheel.read()).unwrap();
                 let lz4_compressed = lz4_flex::compress_prepend_size(&bytes);
                 *encoded_bytes_len = bytes.len();
                 *compressed_bytes_len = lz4_compressed.len();

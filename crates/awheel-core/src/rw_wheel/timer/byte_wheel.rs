@@ -16,11 +16,9 @@
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-#[cfg(feature = "serde")]
-use serde_big_array::BigArray;
 
 /// A single entry in a slot
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone)]
 pub struct WheelEntry<EntryType, RestType> {
     /// The actual entry
     pub entry: EntryType,
@@ -34,38 +32,18 @@ pub type WheelEntryList<EntryType, RestType> = Vec<WheelEntry<EntryType, RestTyp
 /// Number of slots for each ByteWheel
 const NUM_SLOTS: usize = 256;
 
-#[cfg(not(feature = "serde"))]
-pub trait Bounds {}
-#[cfg(feature = "serde")]
-pub trait Bounds: serde::Serialize + for<'a> serde::Deserialize<'a> + 'static {}
-
-#[cfg(not(feature = "serde"))]
-impl<T> Bounds for T {}
-
-#[cfg(feature = "serde")]
-impl<T> Bounds for T where T: serde::Serialize + for<'a> serde::Deserialize<'a> + 'static {}
-
 /// A single wheel with 256 slots of for elements of `EntryType`
 ///
 /// The `RestType` us used to store an array of bytes that are the rest of the delay.
 /// This way the same wheel structure can be used at different hierarchical levels.
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub struct ByteWheel<EntryType, RestType>
-where
-    EntryType: Bounds,
-    RestType: Bounds,
-{
-    #[cfg_attr(feature = "serde", serde(with = "BigArray"))]
+#[derive(Clone)]
+pub struct ByteWheel<EntryType, RestType> {
     slots: [Option<WheelEntryList<EntryType, RestType>>; NUM_SLOTS],
     count: u64,
     current: u8,
 }
 
-impl<EntryType, RestType> ByteWheel<EntryType, RestType>
-where
-    EntryType: Bounds,
-    RestType: Bounds,
-{
+impl<EntryType, RestType> ByteWheel<EntryType, RestType> {
     const INIT_VALUE: Option<WheelEntryList<EntryType, RestType>> = None;
 
     /// Create a new empty ByteWheel
@@ -124,11 +102,7 @@ where
     }
 }
 
-impl<EntryType, RestType> Default for ByteWheel<EntryType, RestType>
-where
-    EntryType: Bounds,
-    RestType: Bounds,
-{
+impl<EntryType, RestType> Default for ByteWheel<EntryType, RestType> {
     fn default() -> Self {
         Self::new()
     }

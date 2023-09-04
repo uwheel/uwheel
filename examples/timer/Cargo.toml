@@ -8,4 +8,4 @@ license.workspace = true
 readme.workspace = true
 
 [dependencies]
-awheel.workspace = true
+awheel = { workspace = true, features = ["timer"] }

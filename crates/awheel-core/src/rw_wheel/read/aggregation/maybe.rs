@@ -38,6 +38,10 @@ impl<A: Aggregator> MaybeWheel<A> {
         }
     }
     #[inline]
+    pub fn head(&self) -> Option<A::PartialAggregate> {
+        self.inner.as_ref().and_then(|w| w.at(0))
+    }
+    #[inline]
     pub fn interval(&self, interval: usize) -> Option<A::PartialAggregate> {
         if let Some(wheel) = self.inner.as_ref() {
             wheel.interval(interval)
@@ -76,11 +80,9 @@ impl<A: Aggregator> MaybeWheel<A> {
     pub fn len(&self) -> usize {
         self.inner.as_ref().map(|w| w.len()).unwrap_or(0)
     }
-    /*
-    pub(super) fn as_mut(&mut self) -> Option<&mut AggregationWheel<A>> {
+    pub(crate) fn as_mut(&mut self) -> Option<&mut AggregationWheel<A>> {
         self.inner.as_mut()
     }
-    */
     pub fn as_ref(&self) -> Option<&AggregationWheel<A>> {
         self.inner.as_ref()
     }
