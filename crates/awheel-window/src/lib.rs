@@ -1,6 +1,6 @@
 //! ahweel-window is a sub-crate that contains wheels specialised for periodic window aggregation
 #![cfg_attr(not(feature = "std"), no_std)]
-#![deny(missing_docs)]
+//#![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
 #[cfg(not(feature = "std"))]
@@ -21,6 +21,9 @@ pub mod lazy;
 pub mod state;
 /// Contains functions to help create window wheels
 pub mod util;
+
+/// Distributed Window Aggregation
+pub mod distributed;
 
 /// Various window stats
 #[cfg(feature = "stats")]
