@@ -7,7 +7,7 @@ edition = "2021"
 profiler = ["awheel/profiler"]
 
 [dependencies]
-awheel = { workspace = true, features = ["serde"] }
+awheel = { workspace = true, features = ["serde", "sum"] }
 postcard.workspace = true
 lz4_flex.workspace = true
 zstd = "0.12.4"

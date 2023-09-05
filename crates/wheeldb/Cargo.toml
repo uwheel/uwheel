@@ -1,5 +1,5 @@
 [package]
-name = "awheel-db"
+name = "wheeldb"
 version = "0.1.0"
 authors.workspace = true
 edition.workspace = true
@@ -7,11 +7,15 @@ categories.workspace = true
 license.workspace = true
 readme.workspace = true
 
+[features]
+default = ["std"]
+std = []
+
 [dependencies]
-awheel-core = { workspace = true, features = ["serde", "sum"] }
+awheel = { workspace = true, default-features = false, features = ["serde", "timer", "sum"] }
 postcard.workspace = true
 lz4_flex.workspace = true
-libsql = "0.1.6"
+sqlite3-sys = { version = "0.15.2", features = ["bundled"] }
 
 [dev-dependencies]
 criterion = "0.5"

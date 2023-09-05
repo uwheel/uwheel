@@ -14,7 +14,7 @@ eframe = { version = "0.22.0", default-features = false, features = [
     "glow",          # Use the glow rendering backend. Alternative: "wgpu".
     "persistence",   # Enable restoring app state when restarting the app.
 ] }
-awheel = { workspace = true, features = ["serde"] }
+awheel = { workspace = true, features = ["serde", "sum"] }
 fastrand.workspace = true
 hdrhistogram.workspace = true
 lz4_flex.workspace = true

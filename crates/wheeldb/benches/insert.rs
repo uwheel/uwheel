@@ -1,6 +1,5 @@
-use awheel_core::aggregator::sum::I32SumAggregator;
-use awheel_db::WheelDB;
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use wheeldb::{aggregator::sum::I32SumAggregator, WheelDB};
 
 fn insert(c: &mut Criterion) {
     let mut group = c.benchmark_group("wheeldb");

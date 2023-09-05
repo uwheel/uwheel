@@ -5,6 +5,8 @@ use hashbrown::HashMap;
 
 #[cfg(not(feature = "std"))]
 use alloc::collections::BinaryHeap;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 #[cfg(feature = "std")]
 use std::collections::BinaryHeap;
 
