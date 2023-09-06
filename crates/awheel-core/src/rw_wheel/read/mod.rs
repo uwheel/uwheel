@@ -108,6 +108,12 @@ where
         self.inner.write().advance_to(watermark, waw);
     }
 
+    /// Advances the wheel by applying a set of deltas, each representing the lowest unit.
+    #[inline]
+    pub fn delta_advance(&self, deltas: impl IntoIterator<Item = Option<A::PartialAggregate>>) {
+        self.inner.write().delta_advance(deltas);
+    }
+
     /// Clears the state of all wheels
     pub fn clear(&self) {
         self.inner.write().clear();

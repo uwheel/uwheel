@@ -10,7 +10,11 @@ use crate::{
 
 pub trait DistributedWindowExt<A: Aggregator> {
     fn wheel_advance(&mut self, id: u64, wheel: ReadWheel<A>) -> Vec<(u64, Option<A::Aggregate>)>;
-    fn delta_advance(&mut self, id: u64, deltas: &[Option<A::PartialAggregate>]);
+    fn delta_advance(
+        &mut self,
+        id: u64,
+        deltas: impl IntoIterator<Item = Option<A::PartialAggregate>>,
+    ) -> Vec<(u64, Option<A::Aggregate>)>;
     fn advance(&mut self, duration: Duration) -> Vec<(u64, Option<A::Aggregate>)>;
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)>;
 }
@@ -65,8 +69,17 @@ impl<A: Aggregator> DistributedWindowExt<A> for DistributedWindow<A> {
         self.wheels.insert(id, wheel);
         self.handle_watermark()
     }
-    fn delta_advance(&mut self, _id: u64, _deltas: &[Option<A::PartialAggregate>]) {
-        unimplemented!();
+    fn delta_advance(
+        &mut self,
+        id: u64,
+        deltas: impl IntoIterator<Item = Option<A::PartialAggregate>>,
+    ) -> Vec<(u64, Option<A::Aggregate>)> {
+        // Assumes wheel already exists..
+        let wheel = self.wheels.get(&id).unwrap();
+        wheel.delta_advance(deltas);
+        // update watermark and handle it
+        self.watermarks.insert(id, wheel.watermark());
+        self.handle_watermark()
     }
     fn advance(&mut self, duration: Duration) -> Vec<(u64, Option<A::Aggregate>)> {
         let ticks = duration.whole_seconds();
