@@ -10,11 +10,13 @@ readme.workspace = true
 [features]
 default = ["std"]
 std = []
+sync = ["awheel/sync", "parking_lot", "std"]
 
 [dependencies]
 awheel = { workspace = true, default-features = false, features = ["serde", "timer", "sum"] }
 postcard.workspace = true
 lz4_flex.workspace = true
+parking_lot = { workspace = true, optional = true }
 sqlite3-sys = { version = "0.15.2", features = ["bundled"] }
 
 [dev-dependencies]

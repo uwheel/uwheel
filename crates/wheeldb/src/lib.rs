@@ -7,11 +7,12 @@ extern crate sqlite3_sys as ffi;
 
 extern crate alloc;
 
+mod storage;
+
+use alloc::string::String;
 pub use awheel::{self, aggregator::sum::U64SumAggregator, *};
 use awheel::{rw_wheel::read::Lazy, time::Duration};
 use postcard::to_allocvec;
-
-mod connection;
 
 #[macro_export]
 macro_rules! c_str_to_str(
@@ -45,26 +46,22 @@ macro_rules! c_str_to_string(
 // self.conn
 //     .execute("INSERT INTO wheels (wheel) VALUES (?1)", vec![value])
 //     .unwrap();
+use storage::{memory::MemoryStorage, Storage};
 
 /// A tiny embeddable temporal database
 #[allow(dead_code)]
-pub struct WheelDB<A: Aggregator> {
+pub struct WheelDB<A: Aggregator, S = MemoryStorage<u64, A>> {
+    id: String,
     wheel: RwWheel<A, Lazy>,
-    conn: connection::Connection,
+    storage: S,
 }
 impl<A: Aggregator> WheelDB<A> {
-    pub fn open_in_memory() -> Self {
-        let conn = connection::Connection::open(":memory:");
+    pub fn new(id: impl Into<String>) -> Self {
+        let id = id.into();
         Self {
+            id,
             wheel: RwWheel::new(0),
-            conn,
-        }
-    }
-    pub fn new(name: &str) -> Self {
-        let conn = connection::Connection::open(name);
-        Self {
-            wheel: RwWheel::new(0),
-            conn,
+            storage: Default::default(),
         }
     }
     pub fn watermark(&self) -> u64 {
@@ -94,6 +91,7 @@ impl<A: Aggregator> WheelDB<A> {
         self.wheel.advance_to(watermark);
     }
     pub fn checkpoint(&self) {
+        self.storage.insert(0, self.wheel.read());
         let bytes = to_allocvec(&self.wheel.read()).unwrap();
         let _compressed = lz4_flex::compress_prepend_size(&bytes);
         // core::writeln!("Storing BLOB as compressed bytes", "{}", compressed.len());
@@ -108,7 +106,7 @@ mod tests {
 
     #[test]
     fn basic_db_test() {
-        let mut db: WheelDB<I32SumAggregator> = WheelDB::open_in_memory();
+        let mut db: WheelDB<I32SumAggregator> = WheelDB::new("test");
         db.insert(Entry::new(10, 1000));
         db.advance(1.seconds());
         db.checkpoint();
