@@ -10,7 +10,7 @@ pub(crate) mod stats;
 #[cfg(feature = "timer")]
 use crate::rw_wheel::timer::{TimerAction, TimerError};
 
-use crate::{cfg_not_sync, cfg_sync, time::Duration, WriteAheadWheel};
+use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, time::Duration, WriteAheadWheel};
 pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 
 use crate::aggregator::Aggregator;
@@ -49,6 +49,14 @@ where
         Self {
             inner: Inner::new(Haw::new(time)),
         }
+    }
+    /// Creates a new Wheel from a set of deltas
+    ///
+    /// Time is represented as milliseconds
+    pub fn from_delta_state(state: DeltaState<A::PartialAggregate>) -> Self {
+        let rw = ReadWheel::new(state.oldest_ts);
+        rw.delta_advance(state.deltas);
+        rw
     }
     /// Returns the number of wheel slots used
     pub fn len(&self) -> usize {
@@ -100,6 +108,17 @@ where
     #[doc(hidden)]
     pub fn advance(&self, duration: Duration, waw: &mut WriteAheadWheel<A>) {
         self.inner.write().advance(duration, waw);
+    }
+    #[inline]
+    #[doc(hidden)]
+    pub fn advance_and_emit_deltas(
+        &self,
+        duration: Duration,
+        waw: &mut WriteAheadWheel<A>,
+    ) -> DeltaState<A::PartialAggregate> {
+        let current_wm = self.watermark();
+        let deltas = self.inner.write().advance_and_emit_deltas(duration, waw);
+        DeltaState::new(current_wm, deltas)
     }
 
     /// Advances the time of the wheel aligned by the lowest unit (Second)

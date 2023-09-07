@@ -7,14 +7,15 @@ use crate::{
     state::State,
     util::{pairs_capacity, pairs_space, PairType},
 };
+use awheel_core::delta::DeltaState;
 
 pub trait DistributedWindowExt<A: Aggregator> {
-    fn wheel_advance(&mut self, id: u64, wheel: ReadWheel<A>) -> Vec<(u64, Option<A::Aggregate>)>;
-    fn delta_advance(
+    fn merge_deltas(
         &mut self,
         id: u64,
-        deltas: impl IntoIterator<Item = Option<A::PartialAggregate>>,
+        delta: DeltaState<A::PartialAggregate>,
     ) -> Vec<(u64, Option<A::Aggregate>)>;
+
     fn advance(&mut self, duration: Duration) -> Vec<(u64, Option<A::Aggregate>)>;
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)>;
 }
@@ -64,21 +65,22 @@ impl<A: Aggregator> DistributedWindow<A> {
 }
 
 impl<A: Aggregator> DistributedWindowExt<A> for DistributedWindow<A> {
-    fn wheel_advance(&mut self, id: u64, wheel: ReadWheel<A>) -> Vec<(u64, Option<A::Aggregate>)> {
-        self.watermarks.insert(id, wheel.watermark());
-        self.wheels.insert(id, wheel);
-        self.handle_watermark()
-    }
-    fn delta_advance(
+    fn merge_deltas(
         &mut self,
         id: u64,
-        deltas: impl IntoIterator<Item = Option<A::PartialAggregate>>,
+        state: DeltaState<A::PartialAggregate>,
     ) -> Vec<(u64, Option<A::Aggregate>)> {
-        // Assumes wheel already exists..
-        let wheel = self.wheels.get(&id).unwrap();
-        wheel.delta_advance(deltas);
-        // update watermark and handle it
-        self.watermarks.insert(id, wheel.watermark());
+        let watermark = if let Some(wheel) = self.wheels.get(&id) {
+            wheel.delta_advance(state.deltas);
+            wheel.watermark()
+        } else {
+            let wheel = ReadWheel::from_delta_state(state);
+            let watermark = wheel.watermark();
+            self.wheels.insert(id, wheel);
+            watermark
+        };
+
+        self.watermarks.insert(id, watermark);
         self.handle_watermark()
     }
     fn advance(&mut self, duration: Duration) -> Vec<(u64, Option<A::Aggregate>)> {
@@ -176,18 +178,16 @@ mod tests {
         workers[0].insert(Entry::new(1417, 1533081678095));
         workers[1].insert(Entry::new(195, 1533081679609));
 
+        // simulate distributed scenario
         for i in 0..3 {
             use awheel_core::time::NumericalDuration;
-            for w in &mut workers {
-                w.advance(10.seconds());
-            }
-            dw.wheel_advance(0, workers[0].read().clone());
-            dw.wheel_advance(1, workers[1].read().clone());
-            dw.wheel_advance(2, workers[2].read().clone());
-            // this last worker wheel will trigger the distributed window
-            let results = dw.wheel_advance(3, workers[3].read().clone());
-            if i == 2 {
-                assert_eq!(results, [(1533081630000, Some(2845))])
+            for (id, w) in &mut workers.iter_mut().enumerate() {
+                let delta = w.advance_and_emit_deltas(10.seconds());
+                // "send" deltas to the distributed window and merge
+                let results = dw.merge_deltas(id as u64, delta);
+                if i == 2 && id == 3 {
+                    assert_eq!(results, [(1533081630000, Some(2845))])
+                }
             }
         }
     }

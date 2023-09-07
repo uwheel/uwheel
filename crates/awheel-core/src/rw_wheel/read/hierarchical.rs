@@ -16,6 +16,9 @@ use super::{
 };
 use crate::{aggregator::Aggregator, rw_wheel::read::Mode, time};
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 #[cfg(feature = "profiler")]
 use super::stats::Stats;
 #[cfg(feature = "profiler")]
@@ -254,6 +257,27 @@ where
             // Exceeds full cycle length, clear all!
             self.clear();
         }
+    }
+
+    /// Advances the watermark by the given duration and returns deltas that were applied
+    #[inline(always)]
+    pub fn advance_and_emit_deltas(
+        &mut self,
+        duration: time::Duration,
+        waw: &mut WriteAheadWheel<A>,
+    ) -> Vec<Option<A::PartialAggregate>> {
+        let ticks: usize = duration.whole_seconds() as usize;
+
+        let mut deltas = Vec::with_capacity(ticks);
+        // Naivé way, no fast ticking..
+        for _ in 0..ticks {
+            let delta = waw.tick().map(|m| A::freeze(m));
+            // tick wheel first in case any timer has to fire
+            self.tick(delta);
+            // insert delta to our vec
+            deltas.push(delta);
+        }
+        deltas
     }
 
     /// Advances the time of the wheel aligned by the lowest unit (Second)
