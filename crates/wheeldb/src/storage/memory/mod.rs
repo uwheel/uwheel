@@ -2,6 +2,7 @@ use awheel::{
     rw_wheel::read::aggregation::combine_or_insert,
     time::Duration,
     Aggregator,
+    Entry,
     ReadWheel,
 };
 use core::{borrow::Borrow, ops::RangeBounds};
@@ -24,7 +25,11 @@ impl<K: Ord + PartialEq, A: Aggregator> Default for MemoryStorage<K, A> {
 
 impl<K: Ord + PartialEq, A: Aggregator> Storage<K, A> for MemoryStorage<K, A> {
     #[inline]
-    fn insert(&self, key: K, wheel: &ReadWheel<A>) {
+    fn insert_wal(&self, _entry: &Entry<A::Input>) {
+        // ignore as this is memory only storage
+    }
+    #[inline]
+    fn add_wheel(&self, key: K, wheel: &ReadWheel<A>) {
         self.inner.write().insert(key, wheel.clone());
     }
     fn get<Q>(&self, key: &Q) -> Option<ReadWheel<A>>

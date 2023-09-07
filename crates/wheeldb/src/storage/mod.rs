@@ -1,13 +1,16 @@
 use core::{borrow::Borrow, ops::RangeBounds};
 
-use awheel::{time::Duration, Aggregator, ReadWheel};
+use awheel::{time::Duration, Aggregator, Entry, ReadWheel};
 
 pub mod memory;
 #[allow(dead_code)]
+#[cfg(feature = "sqlite")]
 pub mod sqlite;
 
 pub trait Storage<K, A: Aggregator> {
-    fn insert(&self, key: K, wheel: &ReadWheel<A>);
+    fn insert_wal(&self, entry: &Entry<A::Input>);
+
+    fn add_wheel(&self, key: K, wheel: &ReadWheel<A>);
 
     fn get<Q>(&self, key: &Q) -> Option<ReadWheel<A>>
     where

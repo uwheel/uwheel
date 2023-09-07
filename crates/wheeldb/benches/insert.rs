@@ -7,7 +7,7 @@ fn insert(c: &mut Criterion) {
 
     let mut db: WheelDB<I32SumAggregator> = WheelDB::new("bench");
 
-    group.bench_function("insert 1", |b| {
+    group.bench_function("insert 1 (memory)", |b| {
         b.iter(|| db.insert((10, 1000)));
     });
 }
