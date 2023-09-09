@@ -48,6 +48,9 @@ The Aggregation Interface is inspired by the work of [Tangwongsan et al.](http:/
 | ALL |  Pre-computed SUM, AVG, MIN, MAX, COUNT | f64 |
 | TOP N  |  Top N of all inputs | ``Aggregator`` with aggregate data that implements ``Ord`` |
 
+
+See a user-defined aggregator example [here](examples/aggregator/).
+
 ## Feature Flags
 - `std` (_enabled by default_)
     - Enables features that rely on the standard library
