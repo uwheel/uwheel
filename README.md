@@ -35,7 +35,20 @@ Features:
 
 ## Aggregation Framework
 
-The Aggregation Interface is inspired by the work of [Tangwongsan et al.](http://www.vldb.org/pvldb/vol8/p702-tangwongsan.pdf). 
+The Aggregation Interface is inspired by the work of [Tangwongsan et al.](http://www.vldb.org/pvldb/vol8/p702-tangwongsan.pdf). Some additional functions have been added as aggregation wheels are designed around the notion of Low Watermarking. Aggregates above the watermark are considered mutable whereas the ones below are immutable.
+
+
+* ``lift(input) -> MutablePartialAggregate``
+    * Lifts input data into a mutable aggregate
+* ``combine_mutable(mutable, input)``
+    * Combines the input data into the mutable aggregate
+* ``freeze(mutable) -> PartialAggregate``
+    * Freezes the mutable aggregate into a immutable one
+* ``combine(a, b) -> c``
+    * Combines ⊕ two partial aggregates into a new one
+* ``lower(a) -> Aggregate``
+    * Lowers a partial aggregate to a final aggregate (e.g., sum/count -> avg)
+
 
 **Pre-defined Aggregators:**
 
