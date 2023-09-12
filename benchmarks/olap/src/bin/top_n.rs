@@ -2,7 +2,9 @@ use minstant::Instant;
 
 use awheel::{
     aggregator::{sum::U64SumAggregator, top_n::TopNAggregator},
+    rw_wheel::read::Eager,
     time,
+    time::NumericalDuration,
     Entry,
     ReadWheel,
     RwWheel,
@@ -16,6 +18,7 @@ use std::time::Duration;
 struct BenchResult {
     total_queries: usize,
     total_entries: usize,
+    events_per_sec: usize,
     duckdb_low: (Duration, Histogram<u64>),
     duckdb_high: (Duration, Histogram<u64>),
     wheel_low: (Duration, Histogram<u64>),
@@ -25,6 +28,7 @@ impl BenchResult {
     pub fn new(
         total_queries: usize,
         total_entries: usize,
+        events_per_sec: usize,
         duckdb_low: (Duration, Histogram<u64>),
         duckdb_high: (Duration, Histogram<u64>),
         wheel_low: (Duration, Histogram<u64>),
@@ -33,6 +37,7 @@ impl BenchResult {
         Self {
             total_queries,
             total_entries,
+            events_per_sec,
             duckdb_low,
             duckdb_high,
             wheel_low,
@@ -77,7 +82,7 @@ impl BenchResult {
     }
 }
 
-const EVENTS_PER_MINS: [usize; 4] = [10, 100, 1000, 10000];
+const EVENTS_PER_SEC: [usize; 4] = [1, 10, 100, 1000];
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -88,8 +93,8 @@ struct Args {
     num_batches: usize,
     #[clap(short, long, value_parser, default_value_t = 10_000)]
     batch_size: usize,
-    #[clap(short, long, value_parser, default_value_t = 100)]
-    events_per_min: usize,
+    #[clap(short, long, value_parser, default_value_t = 1)]
+    events_per_sec: usize,
     #[clap(short, long, value_parser, default_value_t = 1000)]
     queries: usize,
     #[clap(short, long, action)]
@@ -101,8 +106,8 @@ fn main() -> Result<()> {
 
     println!("Running with {:#?}", args);
     let mut results = Vec::new();
-    for events_per_min in EVENTS_PER_MINS {
-        args.events_per_min = events_per_min;
+    for events_per_sec in EVENTS_PER_SEC {
+        args.events_per_sec = events_per_sec;
         let result = run(&args);
         result.print();
         results.push(result);
@@ -119,17 +124,17 @@ fn main() -> Result<()> {
 
 fn run(args: &Args) -> BenchResult {
     let total_queries = args.queries;
-    let events_per_min = args.events_per_min;
+    let events_per_sec = args.events_per_sec;
 
     println!("Running with {:#?}", args);
 
-    let (watermark, batches) = DataGenerator::generate_query_data(events_per_min);
+    let (watermark, batches) = DataGenerator::generate_query_data(events_per_sec);
     let duckdb_batches = batches.clone();
 
     let topn_queries_low_interval = QueryGenerator::generate_low_interval_olap(total_queries);
     let topn_queries_high_interval = QueryGenerator::generate_high_interval_olap(total_queries);
 
-    let total_entries = batches.len() * events_per_min;
+    let total_entries = batches.len() * events_per_sec;
     println!("Running with total entries {}", total_entries);
 
     // Prepare DuckDB
@@ -152,7 +157,7 @@ fn run(args: &Args) -> BenchResult {
         topn_queries_high_interval.clone(),
     );
 
-    let mut rw_wheel: RwWheel<TopNAggregator<u64, 10, U64SumAggregator>> = RwWheel::new(0);
+    let mut rw_wheel: RwWheel<TopNAggregator<u64, 10, U64SumAggregator>, Eager> = RwWheel::new(0);
     for batch in batches {
         for record in batch {
             rw_wheel.insert(Entry::new(
@@ -160,8 +165,7 @@ fn run(args: &Args) -> BenchResult {
                 record.do_time,
             ));
         }
-        use awheel::time::NumericalDuration;
-        rw_wheel.advance(60.seconds());
+        rw_wheel.advance(1.seconds());
     }
     println!("Finished preparing RwWheel");
     let wheel_low = awheel_run(
@@ -180,6 +184,7 @@ fn run(args: &Args) -> BenchResult {
     BenchResult::new(
         total_queries,
         total_entries,
+        events_per_sec,
         duckdb_low,
         duckdb_high,
         wheel_low,
@@ -190,7 +195,7 @@ fn run(args: &Args) -> BenchResult {
 fn awheel_run(
     _id: &str,
     _watermark: u64,
-    wheel: &ReadWheel<TopNAggregator<u64, 10, U64SumAggregator>>,
+    wheel: &ReadWheel<TopNAggregator<u64, 10, U64SumAggregator>, Eager>,
     queries: Vec<Query>,
 ) -> (Duration, Histogram<u64>) {
     let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
@@ -326,7 +331,7 @@ fn plot_top_n_throughput(results: &Vec<BenchResult>) {
     use std::path::Path;
     std::fs::create_dir_all("../results").unwrap();
 
-    let x: Vec<f64> = results.iter().map(|e| e.total_entries as f64).collect();
+    let x: Vec<f64> = results.iter().map(|e| e.events_per_sec as f64).collect();
     let mut duckdb_low_y = Vec::new();
     let mut duckdb_high_y = Vec::new();
     let mut wheel_low_y = Vec::new();
@@ -380,7 +385,7 @@ fn plot_top_n_throughput(results: &Vec<BenchResult>) {
     plot.set_label_y("Throughput (queries/s)");
     plot.set_log_y(true);
     plot.set_log_x(true);
-    plot.set_label_x("Total insert records");
+    plot.set_label_x("Events per second");
 
     plot.add(&duckdb_low_curve)
         .add(&duckdb_high_curve)
@@ -450,7 +455,7 @@ fn plot_top_n_latency(results: Vec<BenchResult>) {
     plot.set_label_y("p99 latency (nanoseconds)");
     plot.set_log_y(true);
     plot.set_log_x(true);
-    plot.set_label_x("Total insert records");
+    plot.set_label_x("Events per second");
 
     plot.add(&duckdb_low_curve)
         .add(&duckdb_high_curve)
