@@ -169,11 +169,14 @@ pub struct LazyWindowWheel<A: Aggregator> {
 impl<A: Aggregator> LazyWindowWheel<A> {
     fn new(time: u64, write_ahead: usize, range: usize, slide: usize) -> Self {
         let state = State::new(time, range, slide);
+        let options = Options::default()
+            .with_watermark(time)
+            .with_write_ahead(write_ahead);
         Self {
             range,
             slide,
             pairs_wheel: PairsWheel::with_capacity(pairs_capacity(range, slide)),
-            wheel: RwWheel::with_options(time, Options::default().with_write_ahead(write_ahead)),
+            wheel: RwWheel::with_options(options),
             state,
             #[cfg(feature = "stats")]
             stats: Default::default(),

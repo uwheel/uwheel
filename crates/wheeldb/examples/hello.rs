@@ -3,7 +3,7 @@ use wheeldb::WheelDB;
 
 // a tiny streaming database
 fn main() {
-    let mut db: WheelDB<I32SumAggregator> = WheelDB::new("hello");
+    let mut db: WheelDB<I32SumAggregator> = WheelDB::open_default("hello");
 
     let _ = db.read().schedule_once(10000, |haw| {
         println!(

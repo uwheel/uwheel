@@ -1,10 +1,6 @@
-use core::marker::PhantomData;
-
-use awheel::{time::Duration, Aggregator, Entry, ReadWheel};
-use core::{borrow::Borrow, ops::RangeBounds};
+use awheel::{Aggregator, Entry, ReadWheel};
 use postcard::to_allocvec;
 use sqlite::Connection;
-use std::string::String;
 
 use super::Storage;
 
@@ -28,21 +24,15 @@ use super::Storage;
 //     .execute("INSERT INTO wheels (wheel) VALUES (?1)", vec![value])
 //     .unwrap();#[allow(dead_code)]
 
-pub struct SQLite<K: Ord + PartialEq, A: Aggregator> {
-    id: String,
+pub struct SQLite<'a> {
+    id: &'a str,
     connection: Connection,
-    _marker: PhantomData<(K, A)>,
 }
-impl<K: Ord + PartialEq, A: Aggregator> SQLite<K, A> {
-    pub fn new(id: impl Into<String>) -> Self {
-        let id = id.into();
+impl<'a> SQLite<'a> {
+    pub fn new(id: &'a str) -> Self {
         let connection = sqlite::open(&id).unwrap();
         Self::setup(&connection);
-        Self {
-            id: id.clone(),
-            connection,
-            _marker: PhantomData,
-        }
+        Self { id, connection }
     }
 
     fn setup(conn: &Connection) {
@@ -58,45 +48,26 @@ impl<K: Ord + PartialEq, A: Aggregator> SQLite<K, A> {
     }
 }
 
-impl<K: Ord + PartialEq, A: Aggregator> Storage<K, A> for SQLite<K, A> {
+impl<'a> Storage for SQLite<'a> {
     #[inline]
-    fn insert_wal(&self, _entry: &Entry<A::Input>) {
+    fn insert_wal<A>(&self, _entry: &Entry<A::Input>)
+    where
+        A: Aggregator,
+    {
         // TODO
     }
     #[inline]
-    fn add_wheel(&self, _key: K, _wheel: &ReadWheel<A>) {
-        let bytes = to_allocvec(_wheel).unwrap();
+    fn sync<A>(&self, wheel: &ReadWheel<A>)
+    where
+        A: Aggregator,
+    {
+        let bytes = to_allocvec(wheel).unwrap();
         let compressed_blob = lz4_flex::compress_prepend_size(&bytes);
         let query = "INSERT INTO wheels (id, wheel) VALUES (?, ?)";
         std::println!("Adding compressed wheel of {} bytes", compressed_blob.len());
         let mut statement = self.connection.prepare(query).unwrap();
-        statement.bind((1, "test")).unwrap();
+        statement.bind((1, self.id)).unwrap();
         statement.bind((2, &compressed_blob[..])).unwrap();
         statement.next().unwrap();
-    }
-    fn get<Q>(&self, _key: &Q) -> Option<ReadWheel<A>>
-    where
-        K: Borrow<Q>,
-        Q: ?Sized + Ord + PartialEq,
-    {
-        unimplemented!();
-    }
-
-    fn landmark_range<Q, R>(&self, _range: R) -> Option<<A as Aggregator>::PartialAggregate>
-    where
-        R: RangeBounds<Q>,
-        K: Borrow<Q>,
-        Q: ?Sized + Ord + PartialEq,
-    {
-        unimplemented!();
-    }
-
-    fn interval_range<Q, R>(&self, _interval: Duration, _range: R) -> Option<A::PartialAggregate>
-    where
-        R: RangeBounds<Q>,
-        K: Borrow<Q>,
-        Q: ?Sized + Ord + PartialEq,
-    {
-        unimplemented!();
     }
 }

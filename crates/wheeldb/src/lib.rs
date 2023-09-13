@@ -7,37 +7,50 @@ extern crate std;
 
 pub mod storage;
 
-pub use awheel::{self, aggregator::sum::U64SumAggregator, *};
-
-use awheel::{rw_wheel::read::Lazy, time::Duration};
+pub use awheel::{self, aggregator, aggregator::sum::U64SumAggregator};
+use awheel::{
+    rw_wheel::{read::Lazy, Options},
+    time::Duration,
+    Aggregator,
+    Entry,
+    ReadWheel,
+    RwWheel,
+};
 use storage::{memory::MemoryStorage, Storage};
 
 /// A tiny embeddable temporal database
 #[allow(dead_code)]
-pub struct WheelDB<A: Aggregator, S = MemoryStorage<&'static str, A>> {
-    id: &'static str,
+pub struct WheelDB<'a, A: Aggregator, S = MemoryStorage> {
+    id: &'a str,
     wheel: RwWheel<A, Lazy>,
     storage: S,
 }
-impl<A: Aggregator, S> WheelDB<A, S> {
-    pub fn with_storage(id: &'static str, storage: S) -> Self {
+impl<'a, A: Aggregator, S> WheelDB<'a, A, S> {
+    pub fn open_default_with_storage(id: &'static str, storage: S) -> Self {
+        Self::open_with_storage(id, Default::default(), storage)
+    }
+    pub fn open_with_storage(id: &'static str, opts: Options, storage: S) -> Self {
         Self {
             id,
-            wheel: RwWheel::new(0),
+            wheel: RwWheel::with_options(opts),
             storage,
         }
     }
 }
-impl<A: Aggregator> WheelDB<A, MemoryStorage<&'static str, A>> {
-    pub fn new(id: &'static str) -> Self {
+impl<'a, A: Aggregator> WheelDB<'a, A, MemoryStorage> {
+    pub fn open(id: &'static str, opts: Options) -> Self {
         Self {
             id,
-            wheel: RwWheel::new(0),
+            wheel: RwWheel::with_options(opts),
             storage: Default::default(),
         }
     }
+    pub fn open_default(id: &'static str) -> Self {
+        Self::open(id, Default::default())
+    }
 }
-impl<A: Aggregator, S: Storage<&'static str, A>> WheelDB<A, S> {
+
+impl<'a, A: Aggregator, S: Storage> WheelDB<'a, A, S> {
     #[inline]
     pub fn watermark(&self) -> u64 {
         self.wheel.watermark()
@@ -46,12 +59,15 @@ impl<A: Aggregator, S: Storage<&'static str, A>> WheelDB<A, S> {
     pub fn now(&self) -> Duration {
         Duration::milliseconds(self.watermark() as i64)
     }
+    pub fn id(&self) -> &'a str {
+        self.id
+    }
 
     #[inline]
     pub fn insert(&mut self, entry: impl Into<Entry<A::Input>>) {
         let entry = entry.into();
         // 1. Insert to WAL table
-        self.storage.insert_wal(&entry);
+        self.storage.insert_wal::<A>(&entry);
 
         // 2. insert into wheel
         self.wheel.insert(entry);
@@ -72,30 +88,29 @@ impl<A: Aggregator, S: Storage<&'static str, A>> WheelDB<A, S> {
         self.wheel.advance_to(watermark);
     }
     pub fn checkpoint(&self) {
-        self.storage.add_wheel(self.id, self.wheel.read());
+        self.storage.sync(self.wheel.read());
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::storage::sqlite::SQLite;
     use awheel::{aggregator::sum::I32SumAggregator, time::NumericalDuration};
 
     use super::*;
 
     #[test]
     fn basic_db_test() {
-        let mut db: WheelDB<I32SumAggregator> = WheelDB::new("test");
+        let mut db: WheelDB<I32SumAggregator> = WheelDB::open_default("test");
         db.insert(Entry::new(10, 1000));
         db.advance(1.seconds());
         db.checkpoint();
     }
+    #[cfg(feature = "sqlite")]
     #[test]
     fn sqlite_storage_test() {
-        let mut db: WheelDB<I32SumAggregator, _> = WheelDB::with_storage(
-            "test",
-            SQLite::<&'static str, I32SumAggregator>::new(":memory:"),
-        );
+        use crate::storage::sqlite::SQLite;
+        let mut db: WheelDB<I32SumAggregator, _> =
+            WheelDB::open_default_with_storage("test", SQLite::new(":memory:"));
         db.insert(Entry::new(10, 1000));
         db.advance(1.seconds());
         db.checkpoint();

@@ -92,16 +92,16 @@ where
         }
     }
     /// Creates a new wheel starting from the given time and the specified [Options]
-    pub fn with_options(time: u64, opts: Options) -> Self {
+    pub fn with_options(opts: Options) -> Self {
         let write: WriteAheadWheel<A> =
-            WriteAheadWheel::with_capacity_and_watermark(opts.write_ahead_capacity, time);
+            WriteAheadWheel::with_capacity_and_watermark(opts.write_ahead_capacity, opts.watermark);
         let read: ReadWheel<A, K> = if opts.drill_down {
-            ReadWheel::with_drill_down(time)
+            ReadWheel::with_drill_down(opts.watermark)
         } else {
-            ReadWheel::new(time)
+            ReadWheel::new(opts.watermark)
         };
         Self {
-            overflow: RawTimerWheel::new(time),
+            overflow: RawTimerWheel::new(opts.watermark),
             write,
             read,
             #[cfg(feature = "profiler")]
@@ -234,6 +234,8 @@ where
 /// Options to customise a [RwWheel]
 #[derive(Debug, Copy, Clone)]
 pub struct Options {
+    /// Starting time of the wheel
+    watermark: u64,
     /// Enables drill-down capabilities
     drill_down: bool,
     /// Defines the capacity of write-ahead slots
@@ -242,12 +244,20 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            watermark: 0,
             drill_down: false,
             write_ahead_capacity: DEFAULT_WRITE_AHEAD_SLOTS,
         }
     }
 }
 impl Options {
+    /// Configure the starting watermark
+    ///
+    /// The default value is `0`
+    pub fn with_watermark(mut self, watermark: u64) -> Self {
+        self.watermark = watermark;
+        self
+    }
     /// Enable drill-down capabilities at the cost of more storage
     pub fn with_drill_down(mut self) -> Self {
         self.drill_down = true;

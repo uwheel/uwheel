@@ -175,11 +175,14 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
     fn new(time: u64, write_ahead: usize, range: usize, slide: usize) -> Self {
         let state = State::new(time, range, slide);
         let pair_slots = pairs_capacity(range, slide);
+        let options = Options::default()
+            .with_watermark(time)
+            .with_write_ahead(write_ahead);
         Self {
             range,
             slide,
             inverse_wheel: InverseWheel::with_capacity(pair_slots),
-            wheel: RwWheel::with_options(time, Options::default().with_write_ahead(write_ahead)),
+            wheel: RwWheel::with_options(options),
             state,
             next_full_rotation: time + range as u64,
             current_secs_rotation: 0,

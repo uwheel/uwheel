@@ -8,9 +8,9 @@ license.workspace = true
 readme.workspace = true
 
 [features]
-default = ["std", "sqlite"]
+default = ["std"]
 std = []
-sync = ["awheel/sync", "parking_lot", "std"]
+sync = ["awheel/sync", "std"]
 avg = ["awheel/avg"]
 max = ["awheel/max"]
 min = ["awheel/min"]
@@ -18,14 +18,15 @@ sum = ["awheel/sum"]
 all = ["awheel/all"]
 top_n = ["awheel/top_n"]
 timer = ["awheel/timer"]
-sqlite = ["dep:sqlite", "std"]
+serde = ["awheel/serde"]
+sqlite = ["dep:sqlite", "awheel/serde", "postcard", "lz4_flex", "std"]
 
 [dependencies]
-awheel = { workspace = true, default-features = false, features = ["serde", "timer", "sum"] }
-postcard.workspace = true
-lz4_flex.workspace = true
-parking_lot = { workspace = true, optional = true }
+awheel = { workspace = true, default-features = false, features = ["sum"] }
+
 sqlite = { version = "0.31.1", features = ["bundled"], optional = true }
+postcard = { workspace = true, optional = true }
+lz4_flex = { workspace = true, optional = true }
 
 # for no_std later
 # sqlite3-sys = { version = "0.15.2", features = ["bundled"] }
@@ -36,3 +37,7 @@ criterion = "0.5"
 [[bench]]
 name = "insert"
 harness = false
+
+[[example]]
+name = "hello"
+required-features = ["timer"]
