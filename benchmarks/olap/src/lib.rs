@@ -57,6 +57,15 @@ impl RideData {
             fare_amount: get_random_fare_amount(),
         }
     }
+    pub fn with_timestamp(timestamp: u64) -> Self {
+        Self {
+            pu_location_id: pu_location_id(),
+            rate_code_id: rate_code_id(),
+            pu_time: 1000,
+            do_time: timestamp,
+            fare_amount: get_random_fare_amount(),
+        }
+    }
 }
 
 pub struct DataGenerator;
@@ -72,16 +81,19 @@ impl DataGenerator {
         batches
     }
 
-    pub fn generate_query_data(events_per_min: usize) -> (u64, Vec<Vec<RideData>>) {
-        //let seven_days_as_mins = 10080;
-        let fifty_two_days_as_mins = awheel::time::Duration::days(52).whole_minutes();
+    pub fn generate_query_data(events_per_sec: usize) -> (u64, Vec<Vec<RideData>>) {
+        let fifty_two_days_as_seconds = awheel::time::Duration::days(52).whole_seconds();
 
         let mut watermark = 1000u64;
         let mut batches = Vec::new();
-        for _min in 0..fifty_two_days_as_mins {
-            let batch = generate_ride_data(watermark, events_per_min);
+        for _sec in 0..fifty_two_days_as_seconds {
+            let mut batch = Vec::with_capacity(events_per_sec);
+            for _ in 0..events_per_sec {
+                let ride = RideData::with_timestamp(watermark);
+                batch.push(ride);
+            }
             batches.push(batch);
-            watermark += 60000u64; // bump by 1 min
+            watermark += 1000;
         }
         (watermark, batches)
     }

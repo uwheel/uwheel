@@ -1,6 +1,12 @@
 use minstant::Instant;
 
-use awheel::{aggregator::all::AllAggregator, time, tree::RwTreeWheel, Entry};
+use awheel::{
+    aggregator::all::AllAggregator,
+    time,
+    time::NumericalDuration,
+    tree::RwTreeWheel,
+    Entry,
+};
 use clap::{ArgEnum, Parser};
 use duckdb::Result;
 use olap::*;
@@ -32,18 +38,18 @@ struct Args {
     num_batches: usize,
     #[clap(short, long, value_parser, default_value_t = 10_000)]
     batch_size: usize,
-    #[clap(short, long, value_parser, default_value_t = 1000)]
-    events_per_min: usize,
+    #[clap(short, long, value_parser, default_value_t = 1)]
+    events_per_sec: usize,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let events_per_min = args.events_per_min;
+    let events_per_sec = args.events_per_sec;
 
     println!("Running with {:#?}", args);
 
-    let (_watermark, batches) = DataGenerator::generate_query_data(events_per_min);
-    let total_entries = batches.len() * events_per_min;
+    let (_watermark, batches) = DataGenerator::generate_query_data(events_per_sec);
+    let total_entries = batches.len() * events_per_sec;
     println!("Running with total entries {}", total_entries);
 
     let mut rw_tree: RwTreeWheel<u64, AllAggregator> = RwTreeWheel::new(0);
@@ -56,8 +62,7 @@ fn main() -> Result<()> {
                 )
                 .unwrap();
         }
-        use awheel::time::NumericalDuration;
-        rw_tree.advance(60.seconds());
+        rw_tree.advance(1.seconds());
     }
     let read_wheel = rw_tree.read().clone();
     let star_wheel = rw_tree.star_wheel().clone();

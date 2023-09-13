@@ -20,8 +20,7 @@ pub enum Workload {
     Sum,
 }
 
-//const EVENTS_PER_MINS: [usize; 4] = [10, 100, 1000, 10000];
-const EVENTS_PER_MINS: [usize; 3] = [10, 100, 1000];
+const EVENTS_PER_SEC: [usize; 3] = [1, 10, 100];
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -32,8 +31,8 @@ struct Args {
     num_batches: usize,
     #[clap(short, long, value_parser, default_value_t = 10_000)]
     batch_size: usize,
-    #[clap(short, long, value_parser, default_value_t = 10_000_0)]
-    events_per_min: usize,
+    #[clap(short, long, value_parser, default_value_t = 1)]
+    events_per_sec: usize,
     #[clap(short, long, value_parser, default_value_t = 50000)]
     queries: usize,
     #[clap(short, long, action)]
@@ -48,8 +47,8 @@ fn main() -> Result<()> {
     println!("Running with {:#?}", args);
 
     let mut results = Vec::new();
-    for events_per_min in EVENTS_PER_MINS {
-        args.events_per_min = events_per_min;
+    for events_per_sec in EVENTS_PER_SEC {
+        args.events_per_sec = events_per_sec;
         let result = run(&args);
         result.print();
         results.push(result);
@@ -202,12 +201,12 @@ impl BenchResult {
 
 fn run(args: &Args) -> BenchResult {
     let total_queries = args.queries;
-    let events_per_min = args.events_per_min;
+    let events_per_sec = args.events_per_sec;
     let workload = args.workload;
 
     println!("Running with {:#?}", args);
 
-    let (watermark, batches) = DataGenerator::generate_query_data(events_per_min);
+    let (watermark, batches) = DataGenerator::generate_query_data(events_per_sec);
     let duckdb_batches = batches.clone();
 
     let point_queries_low_interval =
@@ -230,7 +229,7 @@ fn run(args: &Args) -> BenchResult {
     let awheel_olap_queries_low_interval = olap_queries_low_interval.clone();
     let awheel_olap_queries_high_interval = olap_queries_high_interval.clone();
 
-    let total_entries = batches.len() * events_per_min;
+    let total_entries = batches.len() * events_per_sec;
     println!("Running with total entries {}", total_entries);
 
     // Prepare DuckDB
@@ -772,7 +771,7 @@ fn plot_queries(results: &Vec<BenchResult>) {
     plot.set_label_y("Throughput (queries/s)");
     plot.set_log_y(true);
     plot.set_log_x(true);
-    plot.set_label_x("Total insert records");
+    plot.set_label_x("Insert Events");
 
     plot.add(&duckdb_low_all_curve)
         .add(&duckdb_high_all_curve)
