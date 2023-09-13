@@ -23,6 +23,9 @@ use hashbrown::HashMap;
 
 mod read;
 
+#[cfg(feature = "concurrent")]
+pub mod wheel_tree;
+
 pub use read::ReadTreeWheel;
 
 pub trait Key: PartialEq + Ord + Hash + Eq + Send + Sync + Clone + 'static {}
@@ -127,7 +130,7 @@ mod tests {
         // verify star wheel result
         assert_eq!(rw_tree.interval(1.seconds()), Some(18u32));
     }
-    #[cfg(feature = "sync")]
+    #[cfg(feature = "concurrent")]
     #[test]
     fn rw_tree_test_across_thread() {
         let mut rw_tree: RwTreeWheel<&'static str, U32SumAggregator> = RwTreeWheel::new(0);

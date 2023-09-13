@@ -11,6 +11,7 @@ plot = ["dep:plotpy"]
 
 [dependencies]
 cxx = "1.0"
+flume = "0.11.0"
 awheel = { workspace = true, features = ["window", "stats"] }
 plotpy = { workspace = true, optional = true }
 csv = "1.2.2"

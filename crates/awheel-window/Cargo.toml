@@ -19,6 +19,7 @@ stats = ["awheel-stats"]
 [dependencies]
 awheel-core.workspace = true
 awheel-stats = { workspace = true, optional = true }
+awheel-tree.workspace = true
 
 [dev-dependencies]
 awheel-core = { workspace = true, features = ["sum"] }
