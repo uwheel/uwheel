@@ -15,6 +15,8 @@ pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 
 use crate::aggregator::Aggregator;
 
+use self::hierarchical::HawConf;
+
 /// A read wheel with hierarchical aggregation wheels backed by interior mutability.
 ///
 /// By default allows a single reader using `RefCell`, and multiple-readers with the `sync` flag enabled using `parking_lot`
@@ -33,21 +35,12 @@ where
     A: Aggregator,
     K: Kind,
 {
-    /// Creates a new Wheel starting from the given time and with drill down enabled
-    ///
-    /// Time is represented as milliseconds
-    pub fn with_drill_down(time: u64) -> Self {
-        Self {
-            inner: Inner::new(Haw::with_drill_down(time)),
-        }
-    }
-
     /// Creates a new Wheel starting from the given time
     ///
     /// Time is represented as milliseconds
-    pub fn new(time: u64) -> Self {
+    pub fn new(time: u64, conf: HawConf) -> Self {
         Self {
-            inner: Inner::new(Haw::new(time)),
+            inner: Inner::new(Haw::new(time, conf)),
         }
     }
     /// Returns the number of wheel slots used

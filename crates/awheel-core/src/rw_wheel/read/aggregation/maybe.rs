@@ -1,4 +1,4 @@
-use super::AggregationWheel;
+use super::{conf::WheelConf, AggregationWheel};
 use crate::{aggregator::Aggregator, rw_wheel::WheelExt};
 
 // An internal wrapper Struct that containing a possible AggregationWheel
@@ -7,24 +7,12 @@ use crate::{aggregator::Aggregator, rw_wheel::WheelExt};
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Debug, Clone)]
 pub(crate) struct MaybeWheel<A: Aggregator> {
-    slots: usize,
-    drill_down: bool,
+    conf: WheelConf,
     inner: Option<AggregationWheel<A>>,
 }
 impl<A: Aggregator> MaybeWheel<A> {
-    pub fn with_capacity_and_drill_down(slots: usize) -> Self {
-        Self {
-            slots,
-            drill_down: true,
-            inner: None,
-        }
-    }
-    pub fn with_capacity(slots: usize) -> Self {
-        Self {
-            slots,
-            drill_down: false,
-            inner: None,
-        }
+    pub fn new(conf: WheelConf) -> Self {
+        Self { conf, inner: None }
     }
     pub fn clear(&mut self) {
         if let Some(wheel) = self.inner.as_mut() {
@@ -89,13 +77,7 @@ impl<A: Aggregator> MaybeWheel<A> {
     #[inline]
     pub fn get_or_insert(&mut self) -> &mut AggregationWheel<A> {
         if self.inner.is_none() {
-            let agg_wheel = {
-                if self.drill_down {
-                    AggregationWheel::with_capacity_and_drill_down(self.slots)
-                } else {
-                    AggregationWheel::with_capacity(self.slots)
-                }
-            };
+            let agg_wheel = AggregationWheel::new(self.conf);
             self.inner = Some(agg_wheel);
         }
         self.inner.as_mut().unwrap()

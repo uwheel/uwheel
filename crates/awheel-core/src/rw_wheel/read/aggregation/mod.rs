@@ -1,4 +1,9 @@
 use crate::aggregator::Aggregator;
+#[cfg(feature = "std")]
+use std::collections::VecDeque;
+
+#[cfg(not(feature = "std"))]
+use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 use core::{
     assert,
     fmt::Debug,
@@ -10,12 +15,11 @@ use core::{
     },
 };
 
-#[cfg(not(feature = "std"))]
-use alloc::{boxed::Box, vec::Vec};
-
 #[cfg(feature = "profiler")]
 pub(crate) mod stats;
 
+/// Configuration for [AggregationWheel]
+pub mod conf;
 /// Iterator implementations for [AggregationWheel]
 pub mod iter;
 /// A maybe initialized [AggregationWheel]
@@ -26,6 +30,8 @@ use iter::{DrillIter, Iter};
 use stats::Stats;
 
 use crate::rw_wheel::WheelExt;
+
+use self::conf::{RetentionPolicy, WheelConf};
 
 /// Combine partial aggregates or insert new entry
 #[inline]
@@ -115,10 +121,12 @@ pub struct AggregationWheel<A: Aggregator> {
     /// The slots hold entries from a different granularity.
     /// Example: Drill down slots for a day would hold 24 hour slots
     drill_down_slots: DrillDownSlots<A::PartialAggregate>,
-    /// A flag indicating whether drill down is enabled
-    drill_down: bool,
     /// Partial aggregate for a full rotation
     total: Option<A::PartialAggregate>,
+    /// Configuration for this wheel
+    conf: WheelConf,
+    /// Overflow deque which can be used to retain old slots
+    overflow: VecDeque<Option<A::PartialAggregate>>,
     /// Keeps track whether we have done a full rotation (rotation_count == num_slots)
     rotation_count: usize,
     /// Tracks the head (write slot)
@@ -136,15 +144,9 @@ pub struct AggregationWheel<A: Aggregator> {
 }
 
 impl<A: Aggregator> AggregationWheel<A> {
-    /// Creates a new AggregationWheel with drill-down enabled
-    pub fn with_capacity_and_drill_down(capacity: usize) -> Self {
-        let mut agg_wheel = Self::with_capacity(capacity);
-        agg_wheel.drill_down = true;
-        agg_wheel
-    }
-
-    /// Creates a new AggregationWheel using `capacity`
-    pub fn with_capacity(capacity: usize) -> Self {
+    /// Creates a new AggregationWheel using the given [WheelConf]
+    pub fn new(conf: WheelConf) -> Self {
+        let capacity = conf.capacity;
         let num_slots = crate::capacity_to_slots!(capacity);
 
         Self {
@@ -152,8 +154,9 @@ impl<A: Aggregator> AggregationWheel<A> {
             num_slots,
             slots: Self::init_slots(num_slots),
             drill_down_slots: None,
-            drill_down: false,
             total: None,
+            overflow: Default::default(),
+            conf,
             rotation_count: 0,
             head: 0,
             tail: 0,
@@ -163,7 +166,12 @@ impl<A: Aggregator> AggregationWheel<A> {
             stats: Stats::default(),
         }
     }
-
+    /// Returns the total number of queryable interval slots
+    ///
+    /// This includes both the regular wheel and overflow slots
+    pub fn interval_slots(&self) -> usize {
+        self.len() + self.overflow.len()
+    }
     /// Combines partial aggregates of the last `subtrahend` slots
     ///
     /// - If given a interval, returns the combined partial aggregate based on that interval,
@@ -415,9 +423,24 @@ impl<A: Aggregator> AggregationWheel<A> {
     #[inline]
     fn clear_tail(&mut self) {
         if !self.is_empty() {
+            // update new tail
             let tail = self.tail;
             self.tail = self.wrap_add(self.tail, 1);
-            self.slots[tail] = None;
+
+            // take the partial out
+            let partial = self.slots[tail].take();
+
+            // check if wheel is configured to keep partials
+            if self.conf.retention.should_keep() {
+                self.overflow.push_front(partial);
+                // if there is a configured limit then check it
+                if let RetentionPolicy::KeepWithLimit(limit) = self.conf.retention {
+                    if self.overflow.len() == limit {
+                        self.overflow.pop_back();
+                    }
+                }
+            }
+
             if let Some(ref mut drill_down_slots) = &mut self.drill_down_slots {
                 drill_down_slots[tail] = None;
             }
@@ -436,11 +459,7 @@ impl<A: Aggregator> AggregationWheel<A> {
 
     /// Clears the wheel
     pub fn clear(&mut self) {
-        let mut new = if self.drill_down {
-            Self::with_capacity_and_drill_down(self.capacity)
-        } else {
-            Self::with_capacity(self.capacity)
-        };
+        let mut new = Self::new(self.conf);
         core::mem::swap(self, &mut new);
     }
 
@@ -480,7 +499,7 @@ impl<A: Aggregator> AggregationWheel<A> {
         if let Some(partial_agg) = data.total {
             self.insert_head(partial_agg);
         }
-        if self.drill_down {
+        if self.conf.drill_down {
             self.insert_drill_down_slots(data.drill_down_slots);
         }
     }
@@ -591,7 +610,7 @@ impl<A: Aggregator> AggregationWheel<A> {
             // reset count
             self.rotation_count = 0;
 
-            if self.drill_down {
+            if self.conf.drill_down {
                 let drill_down_slots = self
                     .range(..)
                     .copied()

@@ -29,6 +29,70 @@ crate::cfg_timer! {
     use crate::rw_wheel::timer::{RawTimerWheel, TimerError, TimerAction};
     use core::cell::RefCell;
 }
+use super::aggregation::conf::WheelConf;
+
+/// Configuration for a Hierarchical Aggregation Wheel
+#[derive(Clone, Copy, Debug)]
+pub struct HawConf {
+    /// Config for the seconds wheel
+    pub seconds: WheelConf,
+    /// Config for the minutes wheel
+    pub minutes: WheelConf,
+    /// Config for the hours wheel
+    pub hours: WheelConf,
+    /// Config for the days wheel
+    pub days: WheelConf,
+    /// Config for the weeks wheel
+    pub weeks: WheelConf,
+    /// Config for the years wheel
+    pub years: WheelConf,
+}
+
+impl Default for HawConf {
+    fn default() -> Self {
+        Self {
+            seconds: WheelConf::new(SECONDS),
+            minutes: WheelConf::new(MINUTES),
+            hours: WheelConf::new(HOURS),
+            days: WheelConf::new(DAYS),
+            weeks: WheelConf::new(WEEKS),
+            years: WheelConf::new(YEARS),
+        }
+    }
+}
+
+impl HawConf {
+    /// Configures the seconds granularity
+    pub fn with_seconds(mut self, seconds: WheelConf) -> Self {
+        self.seconds = seconds;
+        self
+    }
+    /// Configures the minutes granularity
+    pub fn with_minutes(mut self, minutes: WheelConf) -> Self {
+        self.minutes = minutes;
+        self
+    }
+    /// Configures the hours granularity
+    pub fn with_hours(mut self, hours: WheelConf) -> Self {
+        self.hours = hours;
+        self
+    }
+    /// Configures the days granularity
+    pub fn with_days(mut self, days: WheelConf) -> Self {
+        self.days = days;
+        self
+    }
+    /// Configures the minutes granularity
+    pub fn with_weeks(mut self, weeks: WheelConf) -> Self {
+        self.weeks = weeks;
+        self
+    }
+    /// Configures the years granularity
+    pub fn with_years(mut self, years: WheelConf) -> Self {
+        self.years = years;
+        self
+    }
+}
 
 /// Default capacity of second slots
 pub const SECONDS: usize = 60;
@@ -113,45 +177,18 @@ where
     /// Total number of wheel slots across all granularities
     pub const TOTAL_WHEEL_SLOTS: usize = SECONDS + MINUTES + HOURS + DAYS + WEEKS + YEARS;
 
-    /// Creates a new Wheel starting from the given time with drill-down capabilities
+    /// Creates a new Wheel starting from the given time and configuration
     ///
     /// Time is represented as milliseconds
-    pub fn with_drill_down(time: u64) -> Self {
-        Self::base_drill_down(time)
-    }
-
-    /// Creates a new Wheel starting from the given time
-    ///
-    /// Time is represented as milliseconds
-    pub fn new(time: u64) -> Self {
-        Self::base(time)
-    }
-
-    fn base(time: u64) -> Self {
+    pub fn new(time: u64, conf: HawConf) -> Self {
         Self {
             watermark: time,
-            seconds_wheel: MaybeWheel::with_capacity(SECONDS),
-            minutes_wheel: MaybeWheel::with_capacity(MINUTES),
-            hours_wheel: MaybeWheel::with_capacity(HOURS),
-            days_wheel: MaybeWheel::with_capacity(DAYS),
-            weeks_wheel: MaybeWheel::with_capacity(WEEKS),
-            years_wheel: MaybeWheel::with_capacity(YEARS),
-            #[cfg(feature = "timer")]
-            timer: Rc::new(RefCell::new(RawTimerWheel::default())),
-            _marker: PhantomData,
-            #[cfg(feature = "profiler")]
-            stats: Stats::default(),
-        }
-    }
-    fn base_drill_down(time: u64) -> Self {
-        Self {
-            watermark: time,
-            seconds_wheel: MaybeWheel::with_capacity_and_drill_down(SECONDS),
-            minutes_wheel: MaybeWheel::with_capacity_and_drill_down(MINUTES),
-            hours_wheel: MaybeWheel::with_capacity_and_drill_down(HOURS),
-            days_wheel: MaybeWheel::with_capacity_and_drill_down(DAYS),
-            weeks_wheel: MaybeWheel::with_capacity_and_drill_down(WEEKS),
-            years_wheel: MaybeWheel::with_capacity_and_drill_down(YEARS),
+            seconds_wheel: MaybeWheel::new(conf.seconds),
+            minutes_wheel: MaybeWheel::new(conf.minutes),
+            hours_wheel: MaybeWheel::new(conf.hours),
+            days_wheel: MaybeWheel::new(conf.days),
+            weeks_wheel: MaybeWheel::new(conf.weeks),
+            years_wheel: MaybeWheel::new(conf.years),
             #[cfg(feature = "timer")]
             timer: Rc::new(RefCell::new(RawTimerWheel::default())),
             _marker: PhantomData,

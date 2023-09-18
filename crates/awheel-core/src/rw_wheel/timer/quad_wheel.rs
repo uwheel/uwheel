@@ -14,7 +14,7 @@
 //! there should be no large issues even if this assumption is not correct.
 
 use super::{byte_wheel::*, *};
-use core::{fmt::Debug, time::Duration};
+use core::time::Duration;
 
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, vec::Vec};
@@ -36,7 +36,8 @@ impl<EntryType> OverflowEntry<EntryType> {
 /// Indicates whether an entry should be moved into the next wheel, or dropped
 ///
 /// Use this for implementing logic for cancellable timers.
-#[derive(PartialEq, Clone, Eq, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(PartialEq, Copy, Clone, Eq, Debug)]
 pub enum PruneDecision {
     /// Move the entry into the next wheel
     Keep,

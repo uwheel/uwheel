@@ -25,7 +25,7 @@ pub use read::{aggregation::DrillCut, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEAR
 pub use wheel_ext::WheelExt;
 
 use self::{
-    read::{Kind, Lazy},
+    read::{hierarchical::HawConf, Kind, Lazy},
     timer::RawTimerWheel,
 };
 
@@ -67,6 +67,28 @@ where
     A: Aggregator,
     K: Kind,
 {
+    /// Creates a new Wheel starting from the given time and enables drill-down on all granularities
+    ///
+    /// Time is represented as milliseconds
+    pub fn with_drill_down(time: u64) -> Self {
+        let mut haw_conf = HawConf::default();
+        haw_conf.seconds.set_drill_down(true);
+        haw_conf.minutes.set_drill_down(true);
+        haw_conf.hours.set_drill_down(true);
+        haw_conf.days.set_drill_down(true);
+        haw_conf.weeks.set_drill_down(true);
+        haw_conf.years.set_drill_down(true);
+
+        let options = Options::default().with_haw_conf(haw_conf);
+
+        Self {
+            overflow: RawTimerWheel::new(time),
+            write: WriteAheadWheel::with_watermark(time),
+            read: ReadWheel::new(time, options.haw_conf),
+            #[cfg(feature = "profiler")]
+            stats: stats::Stats::default(),
+        }
+    }
     /// Creates a new Wheel starting from the given time
     ///
     /// Time is represented as milliseconds
@@ -74,19 +96,7 @@ where
         Self {
             overflow: RawTimerWheel::new(time),
             write: WriteAheadWheel::with_watermark(time),
-            read: ReadWheel::new(time),
-            #[cfg(feature = "profiler")]
-            stats: stats::Stats::default(),
-        }
-    }
-    /// Creates a new Wheel starting from the given time with drill down enabled
-    ///
-    /// Time is represented as milliseconds
-    pub fn with_drill_down(time: u64) -> Self {
-        Self {
-            overflow: RawTimerWheel::new(time),
-            write: WriteAheadWheel::with_watermark(time),
-            read: ReadWheel::with_drill_down(time),
+            read: ReadWheel::new(time, Options::default().haw_conf),
             #[cfg(feature = "profiler")]
             stats: stats::Stats::default(),
         }
@@ -95,11 +105,7 @@ where
     pub fn with_options(time: u64, opts: Options) -> Self {
         let write: WriteAheadWheel<A> =
             WriteAheadWheel::with_capacity_and_watermark(opts.write_ahead_capacity, time);
-        let read: ReadWheel<A, K> = if opts.drill_down {
-            ReadWheel::with_drill_down(time)
-        } else {
-            ReadWheel::new(time)
-        };
+        let read = ReadWheel::new(time, opts.haw_conf);
         Self {
             overflow: RawTimerWheel::new(time),
             write,
@@ -234,30 +240,30 @@ where
 /// Options to customise a [RwWheel]
 #[derive(Debug, Copy, Clone)]
 pub struct Options {
-    /// Enables drill-down capabilities
-    drill_down: bool,
     /// Defines the capacity of write-ahead slots
     write_ahead_capacity: usize,
+    /// Hierarchical Aggregation Wheel scheme
+    haw_conf: HawConf,
 }
 impl Default for Options {
     fn default() -> Self {
         Self {
-            drill_down: false,
             write_ahead_capacity: DEFAULT_WRITE_AHEAD_SLOTS,
+            haw_conf: Default::default(),
         }
     }
 }
 impl Options {
-    /// Enable drill-down capabilities at the cost of more storage
-    pub fn with_drill_down(mut self) -> Self {
-        self.drill_down = true;
-        self
-    }
     /// Configure the number of write-ahead slots
     ///
     /// The default value is [DEFAULT_WRITE_AHEAD_SLOTS]
     pub fn with_write_ahead(mut self, capacity: usize) -> Self {
         self.write_ahead_capacity = capacity;
+        self
+    }
+    /// Configures the wheel to use the given [HawConf]
+    pub fn with_haw_conf(mut self, conf: HawConf) -> Self {
+        self.haw_conf = conf;
         self
     }
 }
@@ -525,9 +531,15 @@ mod tests {
     #[test]
     fn drill_down_test() {
         use crate::aggregator::sum::U64SumAggregator;
-
         let mut time = 0;
-        let mut wheel = RwWheel::<U64SumAggregator>::with_drill_down(time);
+        let mut haw_conf = HawConf::default();
+        haw_conf.seconds.set_drill_down(true);
+        haw_conf.minutes.set_drill_down(true);
+        haw_conf.hours.set_drill_down(true);
+        haw_conf.days.set_drill_down(true);
+        let options = Options::default().with_haw_conf(haw_conf);
+
+        let mut wheel = RwWheel::<U64SumAggregator>::with_options(time, options);
 
         let days_as_secs = time::Duration::days((DAYS + 1) as i64).whole_seconds();
 
@@ -627,7 +639,12 @@ mod tests {
     #[test]
     fn drill_down_holes_test() {
         let mut time = 0;
-        let mut wheel = RwWheel::<U32SumAggregator>::with_drill_down(time);
+        let mut haw_conf = HawConf::default();
+        haw_conf.seconds.set_drill_down(true);
+        haw_conf.minutes.set_drill_down(true);
+        let options = Options::default().with_haw_conf(haw_conf);
+
+        let mut wheel = RwWheel::<U32SumAggregator>::with_options(time, options);
 
         for _ in 0..30 {
             let entry = Entry::new(1u32, time);
@@ -701,8 +718,13 @@ mod tests {
     #[test]
     fn merge_drill_down_test() {
         let mut time = 0;
-        let mut wheel = RwWheel::<U32SumAggregator>::with_drill_down(time);
+        let mut haw_conf = HawConf::default();
+        haw_conf.seconds.set_drill_down(true);
+        haw_conf.minutes.set_drill_down(true);
 
+        let options = Options::default().with_haw_conf(haw_conf);
+
+        let mut wheel = RwWheel::<U32SumAggregator>::with_options(time, options);
         for _ in 0..30 {
             let entry = Entry::new(1u32, time);
             wheel.insert(entry);
@@ -713,7 +735,7 @@ mod tests {
         wheel.advance_to(time);
 
         let mut time = 0;
-        let mut other_wheel = RwWheel::<U32SumAggregator>::with_drill_down(time);
+        let mut other_wheel = RwWheel::<U32SumAggregator>::with_options(time, options);
 
         for _ in 0..30 {
             let entry = Entry::new(1u32, time);
