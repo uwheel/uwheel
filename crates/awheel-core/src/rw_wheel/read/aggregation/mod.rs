@@ -81,16 +81,18 @@ fn into_range(range: &impl RangeBounds<usize>, len: usize) -> Range<usize> {
     start..end
 }
 
-/// Struct holding data for a complete wheel rotation
-pub struct RotationData<A: Aggregator> {
-    /// A possible partial aggregate that is being rolled up into another wheel
+/// Data contained in a wheel slot
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug)]
+pub struct WheelSlot<A: Aggregator> {
+    /// A possible partial aggregate
     pub total: Option<A::PartialAggregate>,
     /// An array of partial aggregate slots
     ///
     /// The combined aggregate of these slots equal to the `total` field
     pub drill_down_slots: Option<Vec<A::PartialAggregate>>,
 }
-impl<A: Aggregator> RotationData<A> {
+impl<A: Aggregator> WheelSlot<A> {
     fn new(
         total: Option<A::PartialAggregate>,
         drill_down_slots: Option<Vec<A::PartialAggregate>>,
@@ -108,6 +110,7 @@ impl<A: Aggregator> RotationData<A> {
 /// The total aggregate is returned once a full rotation occurs. This way the same wheel structure can be used between different hierarchical levels (e.g., seconds, minutes, hours, days)
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone, Debug)]
 pub struct AggregationWheel<A: Aggregator> {
     /// Number of slots (60 seconds => 60 slots)
@@ -126,7 +129,7 @@ pub struct AggregationWheel<A: Aggregator> {
     /// Configuration for this wheel
     conf: WheelConf,
     /// Overflow deque which can be used to retain old slots
-    overflow: VecDeque<Option<A::PartialAggregate>>,
+    overflow: VecDeque<WheelSlot<A>>,
     /// Keeps track whether we have done a full rotation (rotation_count == num_slots)
     rotation_count: usize,
     /// Tracks the head (write slot)
@@ -172,6 +175,7 @@ impl<A: Aggregator> AggregationWheel<A> {
     pub fn interval_slots(&self) -> usize {
         self.len() + self.overflow.len()
     }
+
     /// Combines partial aggregates of the last `subtrahend` slots
     ///
     /// - If given a interval, returns the combined partial aggregate based on that interval,
@@ -430,9 +434,17 @@ impl<A: Aggregator> AggregationWheel<A> {
             // take the partial out
             let partial = self.slots[tail].take();
 
+            // maybe take drill-down slots out
+            let drill_down = self
+                .drill_down_slots
+                .as_mut()
+                .and_then(|inner| inner[tail].take());
+
             // check if wheel is configured to keep partials
             if self.conf.retention.should_keep() {
-                self.overflow.push_front(partial);
+                self.overflow
+                    .push_front(WheelSlot::new(partial, drill_down));
+
                 // if there is a configured limit then check it
                 if let RetentionPolicy::KeepWithLimit(limit) = self.conf.retention {
                     if self.overflow.len() == limit {
@@ -495,7 +507,7 @@ impl<A: Aggregator> AggregationWheel<A> {
     }
 
     #[inline]
-    pub(crate) fn insert_rotation_data(&mut self, data: RotationData<A>) {
+    pub(crate) fn insert_rotation_data(&mut self, data: WheelSlot<A>) {
         if let Some(partial_agg) = data.total {
             self.insert_head(partial_agg);
         }
@@ -581,7 +593,7 @@ impl<A: Aggregator> AggregationWheel<A> {
 
     /// Tick the wheel by 1 slot
     #[inline]
-    pub fn tick(&mut self) -> Option<RotationData<A>> {
+    pub fn tick(&mut self) -> Option<WheelSlot<A>> {
         // Possibly update the partial aggregate for the current rotation
         if let Some(curr) = &self.slots[self.head] {
             combine_or_insert::<A>(&mut self.total, *curr);
@@ -602,7 +614,7 @@ impl<A: Aggregator> AggregationWheel<A> {
             self.total_ticks += 1;
         }
 
-        // Return RotationData if wheel has doen a full rotation
+        // Return rotation data if wheel has doen a full rotation
         if self.rotation_count == self.capacity {
             // our total partial aggregate to be rolled up
             let total = self.total.take();
@@ -617,9 +629,9 @@ impl<A: Aggregator> AggregationWheel<A> {
                     .map(|m| m.unwrap_or_default())
                     .collect();
 
-                Some(RotationData::new(total, Some(drill_down_slots)))
+                Some(WheelSlot::new(total, Some(drill_down_slots)))
             } else {
-                Some(RotationData::new(total, None))
+                Some(WheelSlot::new(total, None))
             }
         } else {
             None
