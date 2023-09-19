@@ -2,6 +2,7 @@ use core::{
     cmp,
     iter::IntoIterator,
     marker::PhantomData,
+    ops::RangeBounds,
     option::{
         Option,
         Option::{None, Some},
@@ -14,7 +15,14 @@ use super::{
     Kind,
     Lazy,
 };
-use crate::{aggregator::Aggregator, rw_wheel::read::Mode, time};
+use crate::{
+    aggregator::Aggregator,
+    rw_wheel::read::Mode,
+    time::{self, Duration},
+};
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 
 #[cfg(feature = "profiler")]
 use super::stats::Stats;
@@ -362,6 +370,33 @@ where
         self.timer
             .borrow_mut()
             .schedule_at(at, TimerAction::Repeat((at, interval, Box::new(f))))
+    }
+
+    /// Returns the a set of partial aggregates based on the downsampling function
+    pub fn downsample<R>(
+        &self,
+        _range: R,
+        _interval: Duration,
+        _slide: Duration,
+    ) -> Option<Vec<A::PartialAggregate>>
+    where
+        R: RangeBounds<u64>,
+    {
+        // # Issue: https://github.com/Max-Meldrum/awheel/issues/87
+        unimplemented!();
+    }
+
+    /// Returns the partial aggregate in the given time range
+    pub fn time_range<R>(&self, _range: R) -> Option<A::PartialAggregate>
+    where
+        R: RangeBounds<u64>,
+    {
+        // # Issue: https://github.com/Max-Meldrum/awheel/issues/88
+
+        // assert_eq!(start > end, "start must be larger than end");
+        // 1. Have to check whether this HAW is configured to support the specified range
+        // 2. Next locate the wheel which can be used to answer this query (e.g., is the query in sec,min, hour granularity)
+        unimplemented!();
     }
 
     /// Returns the partial aggregate in the given time interval

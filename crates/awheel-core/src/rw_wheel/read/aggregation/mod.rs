@@ -49,6 +49,24 @@ pub fn combine_or_insert<A: Aggregator>(
         }
     }
 }
+/// Combine partial aggregates or insert new entry
+#[inline]
+pub fn combine_or_insert_v2<A: Aggregator>(
+    dest: &mut Option<A::PartialAggregate>,
+    entry: Option<A::PartialAggregate>,
+) {
+    match dest {
+        Some(curr) => {
+            if let Some(e) = entry {
+                let new_curr = A::combine(*curr, e);
+                *curr = new_curr;
+            }
+        }
+        None => {
+            *dest = entry;
+        }
+    }
+}
 
 /// Type alias for drill down slots
 type DrillDownSlots<A> = Option<Box<[Option<Vec<A>>]>>;
@@ -174,6 +192,38 @@ impl<A: Aggregator> AggregationWheel<A> {
     /// This includes both the regular wheel and overflow slots
     pub fn interval_slots(&self) -> usize {
         self.len() + self.overflow.len()
+    }
+
+    /// Returns combined partial aggregate based on a given range
+    #[inline]
+    pub fn range_query<R>(&self, range: R) -> Option<A::PartialAggregate>
+    where
+        R: RangeBounds<usize>,
+    {
+        let start = match range.start_bound() {
+            core::ops::Bound::Included(&n) => n,
+            core::ops::Bound::Excluded(&n) => n + 1,
+            core::ops::Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            core::ops::Bound::Included(&n) => n + 1,
+            core::ops::Bound::Excluded(&n) => n,
+            core::ops::Bound::Unbounded => self.overflow.len(),
+        };
+
+        let slots = end - start;
+
+        // Locate which slots we are to combine together
+        // TODO: support both regular slots + overflow
+        let relevant_range = self.overflow.iter().skip(start).take(slots);
+
+        let mut accumulator: Option<A::PartialAggregate> = None;
+
+        for slot in relevant_range {
+            combine_or_insert_v2::<A>(&mut accumulator, slot.total);
+        }
+
+        accumulator
     }
 
     /// Combines partial aggregates of the last `subtrahend` slots
@@ -447,7 +497,7 @@ impl<A: Aggregator> AggregationWheel<A> {
 
                 // if there is a configured limit then check it
                 if let RetentionPolicy::KeepWithLimit(limit) = self.conf.retention {
-                    if self.overflow.len() == limit {
+                    if self.overflow.len() > limit {
                         self.overflow.pop_back();
                     }
                 }
@@ -715,5 +765,57 @@ impl<A: Aggregator> WheelExt for AggregationWheel<A> {
         let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.num_slots;
 
         Some(mem::size_of::<Self>() + inner_slots)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::aggregator::sum::U64SumAggregator;
+
+    use super::*;
+
+    #[test]
+    fn range_query_hours_test() {
+        let conf = WheelConf::new(24).with_retention_policy(RetentionPolicy::Keep);
+        let mut wheel = AggregationWheel::<U64SumAggregator>::new(conf);
+
+        for i in 0..30 {
+            wheel.insert_head(i);
+            wheel.tick();
+        }
+        // with a 24 hour wheel, 6 slots should have been moved over to the overflow list
+        assert_eq!(wheel.len(), 24);
+        assert_eq!(wheel.interval_slots(), 30);
+
+        assert_eq!(wheel.range_query(0..5), Some(15));
+        assert_eq!(wheel.range_query(..), Some(15));
+
+        assert_eq!(wheel.range_query(2..=4), Some(6));
+        assert_eq!(wheel.range_query(3..5), Some(3));
+    }
+
+    #[test]
+    fn overflow_keep_test() {
+        let conf = WheelConf::new(24).with_retention_policy(RetentionPolicy::Keep);
+        let mut wheel = AggregationWheel::<U64SumAggregator>::new(conf);
+
+        for i in 0..60 {
+            wheel.insert_head(i);
+            wheel.tick();
+        }
+        assert_eq!(wheel.len(), 24);
+        assert_eq!(wheel.interval_slots(), 60);
+    }
+    #[test]
+    fn overflow_keep_with_limit_test() {
+        let conf = WheelConf::new(24).with_retention_policy(RetentionPolicy::KeepWithLimit(10));
+        let mut wheel = AggregationWheel::<U64SumAggregator>::new(conf);
+
+        for i in 0..60 {
+            wheel.insert_head(i);
+            wheel.tick();
+        }
+        assert_eq!(wheel.len(), 24);
+        assert_eq!(wheel.interval_slots(), 24 + 10);
     }
 }
