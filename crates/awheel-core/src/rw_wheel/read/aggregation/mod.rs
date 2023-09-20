@@ -49,24 +49,6 @@ pub fn combine_or_insert<A: Aggregator>(
         }
     }
 }
-/// Combine partial aggregates or insert new entry
-#[inline]
-pub fn combine_or_insert_v2<A: Aggregator>(
-    dest: &mut Option<A::PartialAggregate>,
-    entry: Option<A::PartialAggregate>,
-) {
-    match dest {
-        Some(curr) => {
-            if let Some(e) = entry {
-                let new_curr = A::combine(*curr, e);
-                *curr = new_curr;
-            }
-        }
-        None => {
-            *dest = entry;
-        }
-    }
-}
 
 /// Type alias for drill down slots
 type DrillDownSlots<A> = Option<Box<[Option<Vec<A>>]>>;
@@ -193,10 +175,23 @@ impl<A: Aggregator> AggregationWheel<A> {
     pub fn interval_slots(&self) -> usize {
         self.len() + self.overflow.len()
     }
-
     /// Returns combined partial aggregate based on a given range
     #[inline]
     pub fn range_query<R>(&self, range: R) -> Option<A::PartialAggregate>
+    where
+        R: RangeBounds<usize>,
+    {
+        // runs with a predicate that always returns true
+        self.range_query_with_filter(range, |_| true)
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn range_query_with_filter<R>(
+        &self,
+        range: R,
+        filter: impl Fn(&A::PartialAggregate) -> bool,
+    ) -> Option<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
     {
@@ -220,7 +215,11 @@ impl<A: Aggregator> AggregationWheel<A> {
         let mut accumulator: Option<A::PartialAggregate> = None;
 
         for slot in relevant_range {
-            combine_or_insert_v2::<A>(&mut accumulator, slot.total);
+            if let Some(partial) = slot.total {
+                if filter(&partial) {
+                    combine_or_insert::<A>(&mut accumulator, partial);
+                }
+            }
         }
 
         accumulator
@@ -792,6 +791,11 @@ mod tests {
 
         assert_eq!(wheel.range_query(2..=4), Some(6));
         assert_eq!(wheel.range_query(3..5), Some(3));
+
+        // slots: 1,2,3,4,5
+        // filter out hours where sum is below 3:
+        // filters out 1,2,3 and returns 4+5
+        assert_eq!(wheel.range_query_with_filter(.., |agg| *agg > 3), Some(9));
     }
 
     #[test]
