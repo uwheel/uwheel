@@ -36,7 +36,7 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     type PartialAggregate: PartialAggregateType;
 
     /// Final Aggregate type
-    type Aggregate: Send;
+    type Aggregate: Debug + Send;
 
     /// Lifts input into a MutablePartialAggregate
     fn lift(input: Self::Input) -> Self::MutablePartialAggregate;

@@ -24,8 +24,9 @@ pub struct AggState {
     sum: f64,
 }
 impl AggState {
+    /// Creates a new partial aggregate with the given value
     #[inline]
-    fn new(value: f64) -> Self {
+    pub fn new(value: f64) -> Self {
         Self {
             min: value,
             max: value,

@@ -16,6 +16,9 @@ use super::{
 };
 use crate::{aggregator::Aggregator, rw_wheel::read::Mode, time};
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 #[cfg(feature = "profiler")]
 use super::stats::Stats;
 #[cfg(feature = "profiler")]
@@ -217,7 +220,8 @@ where
         // helper fn to tick N times
         let tick_n = |ticks: usize, haw: &mut Self, waw: &mut WriteAheadWheel<A>| {
             for _ in 0..ticks {
-                haw.tick(waw);
+                // tick the write wheel and freeze mutable aggregate
+                haw.tick(waw.tick().map(|m| A::freeze(m)));
             }
         };
 
@@ -243,7 +247,7 @@ where
                     self.seconds_wheel.get_or_insert().fast_skip_tick();
                     self.watermark += fast_tick_ms;
                     *waw.watermark_mut() += fast_tick_ms;
-                    self.tick(waw);
+                    self.tick(waw.tick().map(|m| A::freeze(m)));
                     ticks -= SECONDS;
                 }
                 // tick any remaining ticks
@@ -255,11 +259,43 @@ where
         }
     }
 
+    /// Advances the watermark by the given duration and returns deltas that were applied
+    #[inline(always)]
+    pub fn advance_and_emit_deltas(
+        &mut self,
+        duration: time::Duration,
+        waw: &mut WriteAheadWheel<A>,
+    ) -> Vec<Option<A::PartialAggregate>> {
+        let ticks: usize = duration.whole_seconds() as usize;
+
+        let mut deltas = Vec::with_capacity(ticks);
+        // Naivé way, no fast ticking..
+        for _ in 0..ticks {
+            let delta = waw.tick().map(|m| A::freeze(m));
+            // tick wheel first in case any timer has to fire
+            self.tick(delta);
+            // insert delta to our vec
+            deltas.push(delta);
+        }
+        deltas
+    }
+
     /// Advances the time of the wheel aligned by the lowest unit (Second)
     #[inline]
     pub(crate) fn advance_to(&mut self, watermark: u64, waw: &mut WriteAheadWheel<A>) {
         let diff = watermark.saturating_sub(self.watermark());
         self.advance(time::Duration::milliseconds(diff as i64), waw);
+    }
+
+    /// Advances the wheel by applying a set of deltas where each delta represents the lowest unit of time
+    ///
+    /// Note that deltas are processed in the order of the iterator. If you have the following deltas
+    /// [Some(10),  Some(20)], it will first insert Some(10) into the wheel and then Some(20).
+    #[inline]
+    pub fn delta_advance(&mut self, deltas: impl IntoIterator<Item = Option<A::PartialAggregate>>) {
+        for delta in deltas {
+            self.tick(delta);
+        }
     }
 
     /// Clears the state of all wheels
@@ -600,29 +636,28 @@ where
     ///
     /// In the worst case, a tick may cause a rotation of all the wheels in the hierarchy.
     #[inline]
-    fn tick(&mut self, waw: &mut WriteAheadWheel<A>) {
+    fn tick(&mut self, partial_opt: Option<A::PartialAggregate>) {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.tick);
 
         self.watermark += Self::SECOND_AS_MS;
 
-        // Tick the Write-ahead wheel, if new entry insert into head of seconds wheel
-        if let Some(window) = waw.tick() {
-            let partial_agg = A::freeze(window);
-            self.seconds_wheel.get_or_insert().insert_head(partial_agg);
+        // if the partial has some value then update the wheel(s)
+        if let Some(partial) = partial_opt {
+            self.seconds_wheel.get_or_insert().insert_head(partial);
 
             // pre-aggregate all wheel heads if Eager aggregation is used
             if let Mode::Eager = K::mode() {
                 if let Some(ref mut minutes) = self.minutes_wheel.as_mut() {
-                    minutes.insert_head(partial_agg);
+                    minutes.insert_head(partial);
                     if let Some(ref mut hours) = self.hours_wheel.as_mut() {
-                        hours.insert_head(partial_agg);
+                        hours.insert_head(partial);
                         if let Some(ref mut days) = self.days_wheel.as_mut() {
-                            days.insert_head(partial_agg);
+                            days.insert_head(partial);
                             if let Some(ref mut weeks) = self.weeks_wheel.as_mut() {
-                                weeks.insert_head(partial_agg);
+                                weeks.insert_head(partial);
                                 if let Some(ref mut years) = self.years_wheel.as_mut() {
-                                    years.insert_head(partial_agg);
+                                    years.insert_head(partial);
                                 }
                             }
                         }
@@ -819,5 +854,26 @@ where
     /// Returns a reference to the stats of the [HAW]
     pub fn stats(&self) -> &Stats {
         &self.stats
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{aggregator::sum::U64SumAggregator, time::NumericalDuration};
+
+    use super::*;
+
+    #[test]
+    fn delta_advance_test() {
+        let mut haw: Haw<U64SumAggregator> = Haw::new(0);
+        // oldest to newest
+        let deltas = vec![Some(10), None, Some(50), None];
+
+        haw.delta_advance(deltas);
+
+        assert_eq!(haw.interval(1.seconds()), None);
+        assert_eq!(haw.interval(2.seconds()), Some(50));
+        assert_eq!(haw.interval(3.seconds()), Some(50));
+        assert_eq!(haw.interval(4.seconds()), Some(60));
     }
 }

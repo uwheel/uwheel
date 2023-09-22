@@ -14,9 +14,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 default = ["std"]
 std = []
-sync = ["std", "parking_lot"]
+concurrent = ["std", "awheel-core/sync", "parking_lot", "concurrent-map"]
+
 
 [dependencies]
+concurrent-map = { version = "5.0.31", optional = true }
 awheel-core.workspace = true
 hashbrown.workspace = true
 parking_lot = { workspace = true, optional = true }

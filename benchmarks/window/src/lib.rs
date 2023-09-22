@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 pub mod btreemap_wheel;
 pub mod external_impls;
 pub mod timestamp_generator;

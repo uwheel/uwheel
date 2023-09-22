@@ -118,7 +118,7 @@ impl<K: Key, A: Aggregator + Clone + 'static> ReadTreeWheel<K, A> {
 
 // Two different Inner Read Wheel implementations below:
 
-#[cfg(feature = "sync")]
+#[cfg(feature = "concurrent")]
 mod inner_impl {
     use super::{Aggregator, Key};
     use crate::ReadWheel;
@@ -154,7 +154,7 @@ mod inner_impl {
     unsafe impl<K: Key, T: Aggregator + Clone> Sync for InnerTree<K, T> {}
 }
 
-#[cfg(not(feature = "sync"))]
+#[cfg(not(feature = "concurrent"))]
 mod inner_impl {
     use super::{Aggregator, Key};
     use crate::ReadWheel;

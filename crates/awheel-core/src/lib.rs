@@ -20,6 +20,8 @@ use core::{
 ///
 /// This module also contains a number of pre-defined aggregators (e.g., SUM, ALL, TopK)
 pub mod aggregator;
+/// Wheel deltas that can be used to update or build a wheel
+pub mod delta;
 /// Reader-Writer Wheel
 pub mod rw_wheel;
 /// Time utilities

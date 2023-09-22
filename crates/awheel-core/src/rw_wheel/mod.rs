@@ -16,7 +16,7 @@ mod stats;
 #[allow(dead_code)]
 mod timer;
 
-use crate::{aggregator::Aggregator, time, Entry, Error};
+use crate::{aggregator::Aggregator, delta::DeltaState, time, Entry, Error};
 use core::fmt::Debug;
 use read::ReadWheel;
 use write::{WriteAheadWheel, DEFAULT_WRITE_AHEAD_SLOTS};
@@ -152,6 +152,15 @@ where
         let to = self.watermark() + duration.whole_milliseconds() as u64;
         self.advance_to(to);
     }
+    /// Advance the watermark of the wheel by the given [time::Duration] and returns deltas
+    #[inline]
+    pub fn advance_and_emit_deltas(
+        &mut self,
+        duration: time::Duration,
+    ) -> DeltaState<A::PartialAggregate> {
+        let to = self.watermark() + duration.whole_milliseconds() as u64;
+        self.advance_to_and_emit_deltas(to)
+    }
 
     /// Advances the time of the wheel aligned by the lowest unit (Second)
     #[inline]
@@ -167,6 +176,28 @@ where
         for entry in self.overflow.advance_to(watermark) {
             self.write.insert(entry).unwrap(); // this is assumed to be safe if it was scheduled correctly
         }
+    }
+    /// Advances the time of the wheel aligned by the lowest unit (Second) and emits deltas
+    #[inline]
+    pub fn advance_to_and_emit_deltas(
+        &mut self,
+        watermark: u64,
+    ) -> DeltaState<A::PartialAggregate> {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.advance);
+
+        // Advance the read wheel
+        let delta_state = self.read.advance_and_emit_deltas(
+            time::Duration::milliseconds((watermark - self.watermark()) as i64),
+            &mut self.write,
+        );
+        debug_assert_eq!(self.write.watermark(), self.read.watermark());
+
+        // Check if there are entries that can be inserted into the write-ahead wheel
+        for entry in self.overflow.advance_to(watermark) {
+            self.write.insert(entry).unwrap(); // this is assumed to be safe if it was scheduled correctly
+        }
+        delta_state
     }
     /// Returns an estimation of bytes used by the wheel
     pub fn size_bytes(&self) -> usize {
@@ -271,6 +302,31 @@ mod tests {
 
     use super::{read::Eager, WheelExt, *};
     use crate::{aggregator::sum::U32SumAggregator, time::*, *};
+
+    #[test]
+    fn delta_emit_test() {
+        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
+        rw_wheel.insert(Entry::new(250, 1000));
+        rw_wheel.insert(Entry::new(250, 2000));
+        rw_wheel.insert(Entry::new(250, 3000));
+        rw_wheel.insert(Entry::new(250, 4000));
+
+        let delta_state = rw_wheel.advance_to_and_emit_deltas(5000);
+        assert_eq!(delta_state.oldest_ts, 0);
+        assert_eq!(
+            delta_state.deltas,
+            vec![None, Some(250), Some(250), Some(250), Some(250)]
+        );
+
+        assert_eq!(rw_wheel.read().interval(4.seconds()), Some(1000));
+
+        // create a new read wheel from deltas
+        let read: ReadWheel<U32SumAggregator> = ReadWheel::from_delta_state(delta_state);
+        // verify the watermark
+        assert_eq!(read.watermark(), 5000);
+        // verify the the results
+        assert_eq!(read.interval(4.seconds()), Some(1000));
+    }
 
     #[test]
     fn insert_test() {
