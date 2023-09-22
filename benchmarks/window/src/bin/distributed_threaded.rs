@@ -105,12 +105,12 @@ impl Worker {
     }
 
     pub fn run(mut self) {
-        // TODO: run loop to insert into the RwWheel and advance time and send deltas on sender channel.
         for _i in 0..self.seconds {
             let watermark = self.wheel.watermark();
             for _ in 0..self.events_per_sec {
                 // TODO: fastrand value
-                self.wheel.insert(Entry::new(10, watermark));
+                self.wheel
+                    .insert(Entry::new(fastrand::u64(1..10000), watermark));
             }
             let delta = self.wheel.advance_and_emit_deltas(1.seconds());
             self.sender.send((self.id, delta)).unwrap();
