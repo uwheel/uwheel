@@ -128,8 +128,8 @@ pub struct AggregationWheel<A: Aggregator> {
     total: Option<A::PartialAggregate>,
     /// Configuration for this wheel
     conf: WheelConf,
-    /// Overflow deque which can be used to retain old slots
-    overflow: VecDeque<WheelSlot<A>>,
+    /// Stores  old slots if the wheel has been configured with Retention
+    retention_list: VecDeque<WheelSlot<A>>,
     /// Keeps track whether we have done a full rotation (rotation_count == num_slots)
     rotation_count: usize,
     /// Tracks the head (write slot)
@@ -158,7 +158,7 @@ impl<A: Aggregator> AggregationWheel<A> {
             slots: Self::init_slots(num_slots),
             drill_down_slots: None,
             total: None,
-            overflow: Default::default(),
+            retention_list: Default::default(),
             conf,
             rotation_count: 0,
             head: 0,
@@ -171,9 +171,58 @@ impl<A: Aggregator> AggregationWheel<A> {
     }
     /// Returns the total number of queryable interval slots
     ///
-    /// This includes both the regular wheel and overflow slots
+    /// This includes both the regular wheel and retention slots
     pub fn interval_slots(&self) -> usize {
-        self.len() + self.overflow.len()
+        self.len() + self.retention_list.len()
+    }
+
+    // TODO: improve
+    #[doc(hidden)]
+    pub fn downsample<R>(&self, range: R, inner: R) -> Vec<Option<A::PartialAggregate>>
+    where
+        R: RangeBounds<usize>,
+    {
+        let start = match range.start_bound() {
+            core::ops::Bound::Included(&n) => n,
+            core::ops::Bound::Excluded(&n) => n + 1,
+            core::ops::Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            core::ops::Bound::Included(&n) => n + 1,
+            core::ops::Bound::Excluded(&n) => n,
+            core::ops::Bound::Unbounded => self.retention_list.len(),
+        };
+
+        let slots = end - start;
+
+        // Locate which slots we are to combine together
+        // TODO: support both regular slots + retention
+        let relevant_range = self.retention_list.iter().skip(start).take(slots);
+
+        let mut result: Vec<Option<A::PartialAggregate>> = Vec::new();
+
+        for slot in relevant_range {
+            if let Some(slots) = &slot.drill_down_slots {
+                let mut accumulator: Option<A::PartialAggregate> = None;
+                let inner_start = match inner.start_bound() {
+                    core::ops::Bound::Included(&n) => n,
+                    core::ops::Bound::Excluded(&n) => n + 1,
+                    core::ops::Bound::Unbounded => 0,
+                };
+                let inner_end = match inner.end_bound() {
+                    core::ops::Bound::Included(&n) => n + 1,
+                    core::ops::Bound::Excluded(&n) => n,
+                    core::ops::Bound::Unbounded => slots.len(),
+                };
+
+                for partial in slots.iter().skip(inner_start).take(inner_end) {
+                    combine_or_insert::<A>(&mut accumulator, *partial);
+                }
+                result.push(accumulator);
+            }
+        }
+
+        result
     }
     /// Returns combined partial aggregate based on a given range
     #[inline]
@@ -203,14 +252,14 @@ impl<A: Aggregator> AggregationWheel<A> {
         let end = match range.end_bound() {
             core::ops::Bound::Included(&n) => n + 1,
             core::ops::Bound::Excluded(&n) => n,
-            core::ops::Bound::Unbounded => self.overflow.len(),
+            core::ops::Bound::Unbounded => self.retention_list.len(),
         };
 
         let slots = end - start;
 
         // Locate which slots we are to combine together
         // TODO: support both regular slots + overflow
-        let relevant_range = self.overflow.iter().skip(start).take(slots);
+        let relevant_range = self.retention_list.iter().skip(start).take(slots);
 
         let mut accumulator: Option<A::PartialAggregate> = None;
 
@@ -491,19 +540,15 @@ impl<A: Aggregator> AggregationWheel<A> {
 
             // check if wheel is configured to keep partials
             if self.conf.retention.should_keep() {
-                self.overflow
+                self.retention_list
                     .push_front(WheelSlot::new(partial, drill_down));
 
                 // if there is a configured limit then check it
                 if let RetentionPolicy::KeepWithLimit(limit) = self.conf.retention {
-                    if self.overflow.len() > limit {
-                        self.overflow.pop_back();
+                    if self.retention_list.len() > limit {
+                        self.retention_list.pop_back();
                     }
                 }
-            }
-
-            if let Some(ref mut drill_down_slots) = &mut self.drill_down_slots {
-                drill_down_slots[tail] = None;
             }
         }
     }
@@ -769,7 +814,13 @@ impl<A: Aggregator> WheelExt for AggregationWheel<A> {
 
 #[cfg(test)]
 mod tests {
-    use crate::aggregator::sum::U64SumAggregator;
+    use crate::{
+        aggregator::sum::U64SumAggregator,
+        rw_wheel::read::hierarchical::HawConf,
+        Entry,
+        Options,
+        RwWheel,
+    };
 
     use super::*;
 
@@ -821,5 +872,36 @@ mod tests {
         }
         assert_eq!(wheel.len(), 24);
         assert_eq!(wheel.interval_slots(), 24 + 10);
+    }
+
+    #[test]
+    fn downsample_test() {
+        let seconds_conf = WheelConf::new(60)
+            .with_retention_policy(RetentionPolicy::Keep)
+            .with_drill_down(true);
+        let minutes_conf = WheelConf::new(60)
+            .with_retention_policy(RetentionPolicy::Keep)
+            .with_drill_down(true);
+
+        let haw_conf = HawConf::default()
+            .with_seconds(seconds_conf)
+            .with_minutes(minutes_conf);
+
+        let options = Options::default().with_haw_conf(haw_conf);
+        let mut wheel = RwWheel::<U64SumAggregator>::with_options(0, options);
+
+        for _i in 0..10800 {
+            // 3 hours
+            wheel.insert(Entry::new(1, wheel.watermark()));
+            use crate::time::NumericalDuration;
+            wheel.advance(1.seconds());
+        }
+
+        let result = wheel
+            .read()
+            .as_ref()
+            .minutes_unchecked()
+            .downsample(0..2, 0..8);
+        assert_eq!(result, vec![Some(8), Some(8)]);
     }
 }
