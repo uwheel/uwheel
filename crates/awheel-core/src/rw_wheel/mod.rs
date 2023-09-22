@@ -84,7 +84,7 @@ where
         Self {
             overflow: RawTimerWheel::new(time),
             write: WriteAheadWheel::with_watermark(time),
-            read: ReadWheel::new(time, options.haw_conf),
+            read: ReadWheel::with_conf(time, options.haw_conf),
             #[cfg(feature = "profiler")]
             stats: stats::Stats::default(),
         }
@@ -96,7 +96,7 @@ where
         Self {
             overflow: RawTimerWheel::new(time),
             write: WriteAheadWheel::with_watermark(time),
-            read: ReadWheel::new(time, Options::default().haw_conf),
+            read: ReadWheel::new(time),
             #[cfg(feature = "profiler")]
             stats: stats::Stats::default(),
         }
@@ -105,7 +105,7 @@ where
     pub fn with_options(time: u64, opts: Options) -> Self {
         let write: WriteAheadWheel<A> =
             WriteAheadWheel::with_capacity_and_watermark(opts.write_ahead_capacity, time);
-        let read = ReadWheel::new(time, opts.haw_conf);
+        let read = ReadWheel::with_conf(time, opts.haw_conf);
         Self {
             overflow: RawTimerWheel::new(time),
             write,

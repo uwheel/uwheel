@@ -107,7 +107,7 @@ impl<K: Key, A: Aggregator + Clone + 'static> ReadTreeWheel<K, A> {
                     rw.advance(duration, waw);
                 }
                 None => {
-                    let rw = ReadWheel::new(waw.watermark(), Default::default());
+                    let rw = ReadWheel::new(waw.watermark());
                     rw.advance(duration, waw);
                     inner.insert(key.clone(), rw);
                 }

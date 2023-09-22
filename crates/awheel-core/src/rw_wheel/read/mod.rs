@@ -35,10 +35,18 @@ where
     A: Aggregator,
     K: Kind,
 {
-    /// Creates a new Wheel starting from the given time
+    /// Creates a new Wheel starting from the given time with default configuration
     ///
     /// Time is represented as milliseconds
-    pub fn new(time: u64, conf: HawConf) -> Self {
+    pub fn new(time: u64) -> Self {
+        Self {
+            inner: Inner::new(Haw::new(time, Default::default())),
+        }
+    }
+    /// Creates a new Wheel starting from the given time and configuration
+    ///
+    /// Time is represented as milliseconds
+    pub fn with_conf(time: u64, conf: HawConf) -> Self {
         Self {
             inner: Inner::new(Haw::new(time, conf)),
         }
@@ -47,7 +55,7 @@ where
     ///
     /// Time is represented as milliseconds
     pub fn from_delta_state(state: DeltaState<A::PartialAggregate>) -> Self {
-        let rw = ReadWheel::new(state.oldest_ts);
+        let rw = Self::new(state.oldest_ts);
         rw.delta_advance(state.deltas);
         rw
     }

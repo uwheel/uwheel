@@ -24,9 +24,6 @@ use crate::{
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
-
 #[cfg(feature = "profiler")]
 use super::stats::Stats;
 #[cfg(feature = "profiler")]
@@ -937,7 +934,7 @@ mod tests {
 
     #[test]
     fn delta_advance_test() {
-        let mut haw: Haw<U64SumAggregator> = Haw::new(0);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(0, Default::default());
         // oldest to newest
         let deltas = vec![Some(10), None, Some(50), None];
 
