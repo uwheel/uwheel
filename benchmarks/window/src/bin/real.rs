@@ -1,18 +1,20 @@
+use clap::{ArgEnum, Parser};
+use csv::ReaderBuilder;
 use minstant::Instant;
 #[cfg(feature = "sync")]
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use std::{cmp, collections::BTreeMap};
+use std::{cmp, collections::BTreeMap, fs::File};
 
 use awheel::{
-    aggregator::{min::U64MinAggregator, sum::U64SumAggregator},
+    aggregator::sum::U64SumAggregator,
     window::{eager, lazy, stats::Stats, WindowExt},
     Aggregator,
     Entry,
 };
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime};
 use serde::Deserialize;
 use window::{
     align_to_closest_thousand,
@@ -24,10 +26,51 @@ use window::{
 
 use window::EXECUTIONS;
 
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    #[clap(short, long, value_parser, default_value_t = 10)]
+    watermark_frequency: u64,
+    #[clap(arg_enum, value_parser, default_value_t = Dataset::CitiBike)]
+    data: Dataset,
+}
+
+#[derive(Debug, Deserialize)]
+struct CDataPoint {
+    ts: String,
+    _index: u64,
+    mf01: u32,
+}
+
 #[inline]
 pub fn datetime_to_u64(datetime: &str) -> u64 {
     let s = NaiveDateTime::parse_from_str(datetime, "%Y-%m-%d %H:%M:%S%.f").unwrap();
     s.timestamp_millis() as u64
+}
+
+pub fn debs_datetime_to_u64(datetime: &str) -> u64 {
+    // Parse the timestamp string into a Chrono DateTime object
+    let datetime = DateTime::parse_from_rfc3339(datetime).unwrap();
+
+    datetime.naive_local().timestamp_millis() as u64
+}
+
+fn calculate_out_of_order_percentage(watermark: u64, events: &[Event]) -> f64 {
+    let mut out_of_order_count = 0;
+    let mut total_events = 0;
+    let mut current_max = watermark;
+
+    for &event in events.iter() {
+        total_events += 1;
+        if event.timestamp < current_max {
+            out_of_order_count += 1;
+        } else {
+            current_max = event.timestamp;
+        }
+    }
+
+    // Calculate the percentage of out-of-order events
+    (out_of_order_count as f64 / total_events as f64) * 100.0
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,18 +94,24 @@ struct CitiBikeTrip {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct CitiBikeEvent {
-    trip_duration: u64,
-    start_time: u64,
+struct Event {
+    data: u64,
+    timestamp: u64,
 }
 
-impl CitiBikeEvent {
+impl Event {
     pub fn from(trip: CitiBikeTrip) -> Self {
         Self {
-            trip_duration: trip.tripduration as u64,
-            start_time: datetime_to_u64(&trip.starttime),
+            data: trip.tripduration as u64,
+            timestamp: datetime_to_u64(&trip.starttime),
         }
     }
+}
+
+#[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
+pub enum Dataset {
+    CitiBike,
+    DEBS12,
 }
 
 struct WatermarkGenerator {
@@ -87,17 +136,8 @@ impl WatermarkGenerator {
         self.current_max - self.max_ooo - 1
     }
 }
-fn nyc_citi_bike_bench_sum() {
-    let path = "../data/citibike-tripdata.csv";
-    let mut events = Vec::new();
-    let mut rdr = csv::Reader::from_path(path).unwrap();
-    for result in rdr.deserialize() {
-        let record: CitiBikeTrip = result.unwrap();
-        let event = CitiBikeEvent::from(record);
-        events.push(event);
-    }
 
-    let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
+fn sum_aggregation(events: Vec<Event>, watermark: u64) {
     let mut results = Vec::new();
 
     for exec in EXECUTIONS {
@@ -115,7 +155,7 @@ fn nyc_citi_bike_bench_sum() {
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&lazy_wheel_64);
-        let (runtime, stats, lazy_results) = run(lazy_wheel_64, &events);
+        let (runtime, stats, lazy_results) = run(lazy_wheel_64, &events, watermark);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
@@ -143,7 +183,7 @@ fn nyc_citi_bike_bench_sum() {
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&lazy_wheel_256);
-        let (runtime, stats, _lazy_results) = run(lazy_wheel_256, &events);
+        let (runtime, stats, _lazy_results) = run(lazy_wheel_256, &events, watermark);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
@@ -171,7 +211,7 @@ fn nyc_citi_bike_bench_sum() {
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&lazy_wheel_512);
-        let (runtime, stats, _lazy_results) = run(lazy_wheel_512, &events);
+        let (runtime, stats, _lazy_results) = run(lazy_wheel_512, &events, watermark);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
@@ -200,7 +240,7 @@ fn nyc_citi_bike_bench_sum() {
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&eager_wheel_64);
-        let (runtime, stats, eager_results) = run(eager_wheel_64, &events);
+        let (runtime, stats, eager_results) = run(eager_wheel_64, &events, watermark);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
@@ -229,7 +269,7 @@ fn nyc_citi_bike_bench_sum() {
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&eager_wheel_256);
-        let (runtime, stats, _eager_results) = run(eager_wheel_256, &events);
+        let (runtime, stats, _eager_results) = run(eager_wheel_256, &events, watermark);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
@@ -256,7 +296,7 @@ fn nyc_citi_bike_bench_sum() {
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&eager_wheel_512);
-        let (runtime, stats, eager_results) = run(eager_wheel_512, &events);
+        let (runtime, stats, eager_results) = run(eager_wheel_512, &events, watermark);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
@@ -276,7 +316,7 @@ fn nyc_citi_bike_bench_sum() {
 
         let pairs_fiba_4: PairsTree<tree::FiBA4> =
             external_impls::PairsTree::new(watermark, range, slide);
-        let (runtime, stats, _pairs_fiba_results) = run(pairs_fiba_4, &events);
+        let (runtime, stats, _pairs_fiba_results) = run(pairs_fiba_4, &events, watermark);
         println!("Finished Pairs FiBA Bfinger 4 Wheel");
         runs.push(Run {
             id: "Pairs FiBA Bfinger 4".to_string(),
@@ -289,7 +329,7 @@ fn nyc_citi_bike_bench_sum() {
 
         let pairs_fiba8: PairsTree<tree::FiBA8> =
             external_impls::PairsTree::new(watermark, range, slide);
-        let (runtime, stats, _) = run(pairs_fiba8, &events);
+        let (runtime, stats, _) = run(pairs_fiba8, &events, watermark);
         println!("Finished Pairs FiBA Bfinger 8 Wheel");
         runs.push(Run {
             id: "Pairs FiBA Bfinger 8".to_string(),
@@ -301,7 +341,7 @@ fn nyc_citi_bike_bench_sum() {
 
         let pairs_btreemap: PairsTree<BTreeMap<u64, _>> =
             external_impls::PairsTree::new(watermark, range, slide);
-        let (runtime, stats, btreemap_results) = run(pairs_btreemap, &events);
+        let (runtime, stats, btreemap_results) = run(pairs_btreemap, &events, watermark);
         println!("Finished Pairs BTreeMap");
         runs.push(Run {
             id: "Pairs BTreeMap".to_string(),
@@ -336,6 +376,7 @@ fn spawn_query_thread(
     let gate = Arc::new(AtomicBool::new(true));
     let inner_gate = gate.clone();
     let handle = std::thread::spawn(move || {
+        // TODO: this has to be updated to work with other datasets
         let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
         // wait with querying until the wheel has been advanced 24 hours
         loop {
@@ -370,105 +411,148 @@ fn spawn_query_thread(
     (gate, handle)
 }
 
-fn _nyc_citi_bike_bench_min() {
-    let path = "../data/citibike-tripdata.csv";
-    let mut events = Vec::new();
-    let mut rdr = csv::Reader::from_path(path).unwrap();
-    for result in rdr.deserialize() {
-        let record: CitiBikeTrip = result.unwrap();
-        let event = CitiBikeEvent::from(record);
-        events.push(event);
-    }
+// fn _nyc_citi_bike_bench_min() {
+//     let path = "../data/citibike-tripdata.csv";
+//     let mut events = Vec::new();
+//     let mut rdr = csv::Reader::from_path(path).unwrap();
+//     for result in rdr.deserialize() {
+//         let record: CitiBikeTrip = result.unwrap();
+//         let event = Event::from(record);
+//         events.push(event);
+//     }
 
-    let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
-    let mut results = Vec::new();
+//     let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
+//     let mut results = Vec::new();
 
-    for exec in EXECUTIONS {
-        let range = exec.range;
-        let slide = exec.slide;
-        let total_insertions = events.len() as u64;
+//     for exec in EXECUTIONS {
+//         let range = exec.range;
+//         let slide = exec.slide;
+//         let total_insertions = events.len() as u64;
 
-        let mut runs = Vec::new();
-        let lazy_wheel_64: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(64)
-            .with_watermark(watermark)
-            .build();
+//         let mut runs = Vec::new();
+//         let lazy_wheel_64: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
+//             .with_range(range)
+//             .with_slide(slide)
+//             .with_write_ahead(64)
+//             .with_watermark(watermark)
+//             .build();
 
-        let (runtime, stats, _lazy_results) = run(lazy_wheel_64, &events);
-        println!("Finished Lazy Wheel 64");
+//         let (runtime, stats, _lazy_results) = run(lazy_wheel_64, &events);
+//         println!("Finished Lazy Wheel 64");
 
-        runs.push(Run {
-            id: "Lazy Wheel 64".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            qps: None,
-        });
+//         runs.push(Run {
+//             id: "Lazy Wheel 64".to_string(),
+//             total_insertions,
+//             runtime,
+//             stats,
+//             qps: None,
+//         });
 
-        let lazy_wheel_256: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(256)
-            .with_watermark(watermark)
-            .build();
+//         let lazy_wheel_256: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
+//             .with_range(range)
+//             .with_slide(slide)
+//             .with_write_ahead(256)
+//             .with_watermark(watermark)
+//             .build();
 
-        let (runtime, stats, _lazy_results) = run(lazy_wheel_256, &events);
-        println!("Finished Lazy Wheel 256");
+//         let (runtime, stats, _lazy_results) = run(lazy_wheel_256, &events);
+//         println!("Finished Lazy Wheel 256");
 
-        runs.push(Run {
-            id: "Lazy Wheel 256".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            qps: None,
-        });
+//         runs.push(Run {
+//             id: "Lazy Wheel 256".to_string(),
+//             total_insertions,
+//             runtime,
+//             stats,
+//             qps: None,
+//         });
 
-        let lazy_wheel_512: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(512)
-            .with_watermark(watermark)
-            .build();
+//         let lazy_wheel_512: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
+//             .with_range(range)
+//             .with_slide(slide)
+//             .with_write_ahead(512)
+//             .with_watermark(watermark)
+//             .build();
 
-        let (runtime, stats, _lazy_results) = run(lazy_wheel_512, &events);
-        println!("Finished Lazy Wheel 512");
+//         let (runtime, stats, _lazy_results) = run(lazy_wheel_512, &events);
+//         println!("Finished Lazy Wheel 512");
 
-        runs.push(Run {
-            id: "Lazy Wheel 512".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            qps: None,
-        });
+//         runs.push(Run {
+//             id: "Lazy Wheel 512".to_string(),
+//             total_insertions,
+//             runtime,
+//             stats,
+//             qps: None,
+//         });
 
-        let result = BenchResult::new(exec, runs);
-        result.print();
-        results.push(result);
-    }
-}
+//         let result = BenchResult::new(exec, runs);
+//         result.print();
+//         results.push(result);
+//     }
+// }
 
 fn main() {
-    nyc_citi_bike_bench_sum();
-    // TODO: add non-inversible aggregation function
-    // nyc_citi_bike_bench_min();
+    let args = Args::parse();
+    println!("Running with {:#?}", args);
+
+    match args.data {
+        Dataset::CitiBike => {
+            let path = "../data/citibike-tripdata.csv";
+            let mut events = Vec::new();
+            let mut rdr = csv::Reader::from_path(path).unwrap();
+            println!("Preparing NYC Citi Bike Data");
+            for result in rdr.deserialize() {
+                let record: CitiBikeTrip = result.unwrap();
+                let event = Event::from(record);
+                events.push(event);
+            }
+
+            let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
+            let ooo_events = calculate_out_of_order_percentage(watermark, &events);
+            println!("Out-of-order events {:.2}", ooo_events);
+            sum_aggregation(events, watermark);
+        }
+        Dataset::DEBS12 => {
+            let watermark = debs_datetime_to_u64("2012-02-22T16:46:00.0+00:00");
+            let path = "../data/debs12.csv";
+            let mut events: Vec<Event> = Vec::new();
+            let file = File::open(path).unwrap();
+            let mut rdr = ReaderBuilder::new()
+                .delimiter(b'\t')
+                .flexible(true)
+                .has_headers(false)
+                .from_reader(file);
+
+            println!("Preparing DEBS12 Data");
+            for result in rdr.deserialize() {
+                let data_point: CDataPoint = result.unwrap();
+                let event = Event {
+                    timestamp: debs_datetime_to_u64(&data_point.ts),
+                    data: data_point.mf01 as u64,
+                };
+                events.push(event);
+            }
+            let ooo_events = calculate_out_of_order_percentage(watermark, &events);
+            println!("Out-of-order events {:.2}", ooo_events);
+            sum_aggregation(events, watermark);
+        }
+    }
 }
 
 fn run<A: Aggregator<Input = u64, Aggregate = u64>>(
     mut window: impl WindowExt<A>,
-    events: &[CitiBikeEvent],
+    events: &[Event],
+    watermark: u64,
 ) -> (std::time::Duration, Stats, Vec<(u64, Option<u64>)>) {
-    let mut watermark = datetime_to_u64("2018-08-01 00:00:00.0");
     dbg!(watermark);
+    let mut watermark = watermark;
     let mut generator = WatermarkGenerator::new(watermark, 2000);
     let mut counter = 0;
     let mut results = Vec::new();
 
     let full = Instant::now();
     for event in events {
-        generator.on_event(&event.start_time);
-        window.insert(Entry::new(event.trip_duration, event.start_time));
+        generator.on_event(&event.timestamp);
+        window.insert(Entry::new(event.data, event.timestamp));
 
         counter += 1;
 

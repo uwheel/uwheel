@@ -82,6 +82,23 @@ pub struct Run {
     pub stats: Stats,
     pub qps: Option<f64>,
 }
+
+impl Run {
+    pub fn percetanges(&self) -> (f64, f64, f64) {
+        let inserts = self.stats.insert_ns.percentiles().count as f64;
+        let advances = self.stats.advance_ns.percentiles().count as f64;
+        let queries = self.stats.window_computation_ns.percentiles().count as f64;
+
+        let total = inserts + advances + queries;
+
+        let adv_percentage: f64 = (advances / total) * 100.0;
+        let insert_percentage: f64 = (inserts / total) * 100.0;
+        let query_percentage: f64 = (queries / total) * 100.0;
+
+        (adv_percentage, insert_percentage, query_percentage)
+    }
+}
+
 #[derive(Debug)]
 pub struct Execution {
     pub range: Duration,
@@ -121,20 +138,33 @@ impl BenchResult {
             } else {
                 println!("Throughput {} Mops/s", throughput(run));
             }
+
+            let (adv, insert, query) = run.percetanges();
+            println!(
+                "Advance time {:.2}%, Insert time {:.2}%  Query time {:.2}%",
+                adv, insert, query
+            );
             println!("{} (took {:.2}s)", run.id, run.runtime.as_secs_f64(),);
             println!("{:#?}", run.stats);
         }
     }
 }
 
-pub const EXECUTIONS: [Execution; 7] = [
+pub const EXECUTIONS: [Execution; 1] = [
     Execution::new(Duration::seconds(30), Duration::seconds(10)),
-    Execution::new(Duration::seconds(60), Duration::seconds(10)),
-    Execution::new(Duration::minutes(15), Duration::seconds(10)),
-    Execution::new(Duration::minutes(30), Duration::seconds(10)),
-    Execution::new(Duration::hours(1), Duration::seconds(10)),
-    Execution::new(Duration::hours(12), Duration::seconds(10)),
-    Execution::new(Duration::days(1), Duration::seconds(10)),
+    // Execution::new(Duration::seconds(30), Duration::seconds(5)),
+    // Execution::new(Duration::seconds(30), Duration::seconds(10)),
+    // Execution::new(Duration::hours(1), Duration::seconds(10)),
+    // Execution::new(Duration::hours(1), Duration::seconds(30)),
+    // Execution::new(Duration::hours(1), Duration::minutes(1)),
+    // Execution::new(Duration::hours(1), Duration::minutes(30)),
+    // Execution::new(Duration::seconds(30), Duration::seconds(10)),
+    // Execution::new(Duration::seconds(60), Duration::seconds(10)),
+    // Execution::new(Duration::minutes(15), Duration::seconds(10)),
+    // Execution::new(Duration::minutes(30), Duration::seconds(10)),
+    // Execution::new(Duration::hours(1), Duration::seconds(10)),
+    // Execution::new(Duration::hours(12), Duration::seconds(10)),
+    // Execution::new(Duration::days(1), Duration::seconds(10)),
 ];
 
 // TODO: Max refactor this mess...

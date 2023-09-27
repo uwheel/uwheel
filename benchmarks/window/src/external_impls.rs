@@ -296,6 +296,7 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
     }
     fn stats(&self) -> &Stats {
         let agg_store_size = self.agg_store.size_bytes();
+
         self.stats.size_bytes.set(agg_store_size);
         &self.stats
     }
