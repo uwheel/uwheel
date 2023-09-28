@@ -55,6 +55,19 @@ pub fn debs_datetime_to_u64(datetime: &str) -> u64 {
     datetime.naive_local().timestamp_millis() as u64
 }
 
+// more of a estimation
+fn events_per_second(events: &[Event]) -> f64 {
+    let start_time = events.first().map(|event| event.timestamp).unwrap_or(0);
+    let end_time = events
+        .last()
+        .map(|event| event.timestamp)
+        .unwrap_or(start_time);
+
+    let total_events = events.len();
+    let duration_seconds = (end_time - start_time) as f64 / 1000.0; // Convert milliseconds to seconds
+    total_events as f64 / duration_seconds
+}
+
 fn calculate_out_of_order_percentage(watermark: u64, events: &[Event]) -> f64 {
     let mut out_of_order_count = 0;
     let mut total_events = 0;
@@ -137,7 +150,7 @@ impl WatermarkGenerator {
     }
 }
 
-fn sum_aggregation(events: Vec<Event>, watermark: u64) {
+fn sum_aggregation(id: &str, events: Vec<Event>, watermark: u64) {
     let mut results = Vec::new();
 
     for exec in EXECUTIONS {
@@ -364,7 +377,7 @@ fn sum_aggregation(events: Vec<Event>, watermark: u64) {
     }
 
     #[cfg(feature = "plot")]
-    window::plot_window("nyc_citi_bike", &results);
+    window::plot_window(id, &results);
 }
 
 #[cfg(feature = "sync")]
@@ -509,7 +522,8 @@ fn main() {
             let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
             let ooo_events = calculate_out_of_order_percentage(watermark, &events);
             println!("Out-of-order events {:.2}", ooo_events);
-            sum_aggregation(events, watermark);
+            println!("Events/s {}", events_per_second(&events));
+            sum_aggregation("nyc_citi_bike", events, watermark);
         }
         Dataset::DEBS12 => {
             let watermark = debs_datetime_to_u64("2012-02-22T16:46:00.0+00:00");
@@ -533,7 +547,8 @@ fn main() {
             }
             let ooo_events = calculate_out_of_order_percentage(watermark, &events);
             println!("Out-of-order events {:.2}", ooo_events);
-            sum_aggregation(events, watermark);
+            println!("Events/s {}", events_per_second(&events));
+            sum_aggregation("debs12", events, watermark);
         }
     }
 }

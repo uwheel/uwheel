@@ -13,6 +13,13 @@ fi
 if [[ "$OSTYPE" == "darwin"* ]]; then
     export LIBRARY_PATH=$LIBRARY_PATH:$(brew --prefix)/opt/openblas/lib:$(brew --prefix)/opt/lapack/lib
 fi
+
+echo "Starting NYC Citi Bike Window experiment (2/5)"
+touch results/nyc_citi_bike_window.log
+(cd window && cargo run --release --bin real -- citi-bike >> ../results/nyc_citi_bike_window.log )
+echo "Finished NYC Citi Bike Window experiment (2/5)"
+
+
 echo "Starting DEBS12 Window experiment (1/5)"
 touch results/debs12_window.log
 (cd window && cargo run --release --bin real -- debs12 >> ../results/debs12_window.log )

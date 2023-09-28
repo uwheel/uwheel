@@ -150,13 +150,22 @@ impl BenchResult {
     }
 }
 
-pub const EXECUTIONS: [Execution; 1] = [
+pub const EXECUTIONS: [Execution; 3] = [
+    Execution::new(Duration::seconds(30), Duration::seconds(2)),
+    Execution::new(Duration::seconds(30), Duration::seconds(5)),
     Execution::new(Duration::seconds(30), Duration::seconds(10)),
-    // Execution::new(Duration::seconds(30), Duration::seconds(5)),
+    // Execution::new(Duration::seconds(5), Duration::seconds(2)),
     // Execution::new(Duration::seconds(30), Duration::seconds(10)),
-    // Execution::new(Duration::hours(1), Duration::seconds(10)),
-    // Execution::new(Duration::hours(1), Duration::seconds(30)),
-    // Execution::new(Duration::hours(1), Duration::minutes(1)),
+    // Execution::new(Duration::seconds(30), Duration::seconds(2)),
+    // Execution::new(Duration::seconds(5), Duration::seconds(2)),
+    // Execution::new(Duration::minutes(5), Duration::seconds(2)),
+    // Execution::new(Duration::hours(5), Duration::seconds(2)),
+    // Execution::new(Duration::minutes(1), Duration::seconds(10)),
+    // Execution::new(Duration::minutes(1), Duration::seconds(2)),
+    // Execution::new(Duration::minutes(1), Duration::seconds(2)),
+    // Execution::new(Duration::minutes(1), Duration::seconds(10)),
+    // Execution::new(Duration::minutes(1), Duration::seconds(30)),
+    // Execution::new(Duration::minutes(1), Duration::minutes(10)),
     // Execution::new(Duration::hours(1), Duration::minutes(30)),
     // Execution::new(Duration::seconds(30), Duration::seconds(10)),
     // Execution::new(Duration::seconds(60), Duration::seconds(10)),
