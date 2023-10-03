@@ -90,6 +90,92 @@ impl WindowExt<U64SumAggregator> for BFingerFourWheel {
     }
 }
 
+pub struct WindowTree<T: Tree<U64SumAggregator>> {
+    tree: T,
+    range: Duration,
+    slide: Duration,
+    watermark: u64,
+    next_window_end: u64,
+    stats: Stats,
+}
+
+impl<T: Tree<U64SumAggregator>> WindowTree<T> {
+    pub fn new(watermark: u64, range: Duration, slide: Duration) -> Self {
+        Self {
+            range,
+            slide,
+            watermark,
+            next_window_end: watermark + range.whole_milliseconds() as u64,
+            tree: T::default(),
+            stats: Default::default(),
+        }
+    }
+}
+impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for WindowTree<T> {
+    fn advance(
+        &mut self,
+        _duration: awheel::time::Duration,
+    ) -> Vec<(
+        u64,
+        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
+    )> {
+        Vec::new()
+    }
+    fn advance_to(
+        &mut self,
+        watermark: u64,
+    ) -> Vec<(
+        u64,
+        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
+    )> {
+        profile_scope!(&self.stats.advance_ns);
+
+        let diff = watermark.saturating_sub(self.watermark);
+        let seconds = Duration::milliseconds(diff as i64).whole_seconds() as u64;
+        let mut res = Vec::new();
+
+        for _tick in 0..seconds {
+            self.watermark += 1000;
+            if self.watermark == self.next_window_end {
+                let from = self.watermark - self.range.whole_milliseconds() as u64;
+                let to = self.watermark;
+                {
+                    profile_scope!(&self.stats.window_computation_ns);
+                    let window = self.tree.range_query(from, to);
+                    res.push((self.watermark, window));
+                }
+                profile_scope!(&self.stats.cleanup_ns);
+                let evict_point = (self.watermark - self.range.whole_milliseconds() as u64)
+                    + self.slide.whole_milliseconds() as u64;
+                self.tree.evict_range(evict_point);
+                self.next_window_end = self.watermark + self.slide.whole_milliseconds() as u64;
+            }
+        }
+        res
+    }
+    #[inline]
+    fn insert(
+        &mut self,
+        entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
+    ) {
+        profile_scope!(&self.stats.insert_ns);
+        if entry.timestamp >= self.watermark {
+            let diff = entry.timestamp - self.watermark;
+            let seconds = std::time::Duration::from_millis(diff).as_secs();
+            let ts = self.watermark + (seconds * 1000);
+            self.tree.insert(ts, entry.data);
+            // align per second
+        }
+    }
+    fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
+        unimplemented!();
+    }
+    fn stats(&self) -> &Stats {
+        self.stats.size_bytes.set(self.tree.size_bytes());
+        &self.stats
+    }
+}
+
 pub struct BFingerEightWheel {
     range: Duration,
     slide: Duration,
@@ -305,6 +391,7 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tree::{FiBA4, FiBA8};
     use awheel::{
         aggregator::sum::U64SumAggregator,
         time::{Duration, NumericalDuration},
@@ -408,12 +495,14 @@ mod tests {
     }
     #[test]
     fn window_60_sec_range_10_sec_slide_fiba_b4_test() {
-        let wheel = BFingerFourWheel::new(0, Duration::minutes(1), Duration::seconds(10));
+        let wheel: WindowTree<FiBA4> =
+            WindowTree::new(0, Duration::minutes(1), Duration::seconds(10));
         window_60_sec_range_10_sec_slide(wheel);
     }
     #[test]
     fn window_60_sec_range_10_sec_slide_fiba_b8_test() {
-        let wheel = BFingerEightWheel::new(0, Duration::minutes(1), Duration::seconds(10));
+        let wheel: WindowTree<FiBA8> =
+            WindowTree::new(0, Duration::minutes(1), Duration::seconds(10));
         window_60_sec_range_10_sec_slide(wheel);
     }
 

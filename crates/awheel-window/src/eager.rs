@@ -332,7 +332,13 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
     #[cfg(feature = "stats")]
     fn stats(&self) -> &crate::stats::Stats {
         let agg_store_size = self.wheel.read().as_ref().size_bytes();
-        self.stats.size_bytes.set(agg_store_size);
+        let write_ahead_size = self.wheel.write().size_bytes().unwrap();
+        let pairs_wheel_size = self.inverse_wheel.size_bytes().unwrap();
+
+        let total = agg_store_size + write_ahead_size + pairs_wheel_size;
+
+        self.stats.size_bytes.set(total);
+
         &self.stats
     }
 }
