@@ -158,9 +158,6 @@ impl BenchResult {
 
 // default execution
 pub const EXECUTIONS: [Execution; 5] = [
-    //Execution::new(Duration::seconds(30), Duration::seconds(10)),
-    //Execution::new(Duration::minutes(1), Duration::seconds(10)),
-    //Execution::new(Duration::minutes(15), Duration::seconds(10)),
     Execution::new(Duration::seconds(30), Duration::seconds(2)),
     Execution::new(Duration::minutes(1), Duration::seconds(2)),
     Execution::new(Duration::minutes(15), Duration::seconds(2)),

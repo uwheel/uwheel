@@ -7,12 +7,18 @@ if [ -f "$FILE" ]; then
     echo "NYC Citi Bike Data found"
 else
     echo "Downloading and preparing NYC Citi Bike data"
-    ./fetch_data.sh
+    # ./fetch_data.sh
 fi
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     export LIBRARY_PATH=$LIBRARY_PATH:$(brew --prefix)/opt/openblas/lib:$(brew --prefix)/opt/lapack/lib
 fi
+
+
+echo "Starting DEBS13 Window experiment (1/5)"
+touch results/debs13_window.log
+(cd window && cargo run --release --bin real -- debs13 >> ../results/debs13_window.log )
+echo "Finished DEBS13 Window experiment (1/5)"
 
 echo "Starting NYC Citi Bike Window experiment (2/5)"
 touch results/nyc_citi_bike_window.log

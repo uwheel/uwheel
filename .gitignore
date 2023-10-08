@@ -3,4 +3,5 @@
 crates/awheel-demo/dist
 benchmarks/results
 benchmarks/data
+benchmarks/plots
 .DS_STORE

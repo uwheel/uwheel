@@ -43,11 +43,19 @@ struct Args {
     data: Dataset,
 }
 
+// DEBS 12 Event
 #[derive(Debug, Deserialize)]
 struct CDataPoint {
     ts: String,
     _index: u64,
     mf01: u32,
+}
+
+// DEBS 13 Event
+#[derive(Debug, Deserialize)]
+struct FootballEvent {
+    sid: u32,
+    ts: u64,
 }
 
 #[inline]
@@ -59,11 +67,9 @@ pub fn datetime_to_u64(datetime: &str) -> u64 {
 pub fn debs_datetime_to_u64(datetime: &str) -> u64 {
     // Parse the timestamp string into a Chrono DateTime object
     let datetime = DateTime::parse_from_rfc3339(datetime).unwrap();
-
     datetime.naive_local().timestamp_millis() as u64
 }
 
-// more of a estimation
 fn events_per_second(events: &[Event]) -> f64 {
     let start_time = events.first().map(|event| event.timestamp).unwrap_or(0);
     let end_time = events
@@ -133,6 +139,7 @@ impl Event {
 pub enum Dataset {
     CitiBike,
     DEBS12,
+    DEBS13,
 }
 
 struct WatermarkGenerator {
@@ -529,6 +536,45 @@ fn main() {
             println!("Out-of-order events {:.2}", ooo_events);
             println!("Events/s {}", events_per_second(&events));
             sum_aggregation("debs12", events, watermark, EXECUTIONS.to_vec());
+        }
+        Dataset::DEBS13 => {
+            // let watermark = debs_datetime_to_u64("2012-02-22T16:46:00.0+00:00");
+            let watermark = pico_to_milli(10629342490369879);
+
+            let path = "../data/debs13.csv";
+            let mut events: Vec<Event> = Vec::new();
+
+            fn pico_to_milli(picoseconds: u64) -> u64 {
+                // Convert picoseconds to milliseconds (dividing by 1,000,000)
+                // let milliseconds = picoseconds / 1_000_000;
+                (picoseconds as f64 / 1e6).round() as u64
+            }
+
+            let file = File::open(path).unwrap();
+
+            let mut rdr = ReaderBuilder::new()
+                .flexible(true)
+                .has_headers(false)
+                .from_reader(file);
+            println!("Preparing DEBS13 Data");
+            for result in rdr.deserialize() {
+                let record: FootballEvent = result.unwrap();
+                let event = Event {
+                    timestamp: pico_to_milli(record.ts),
+                    data: 1, // a count-like sum aggregation
+                };
+                events.push(event);
+            }
+
+            let ooo_events = calculate_out_of_order_percentage(watermark, &events);
+            println!("Total events {}", events.len());
+            println!("Out-of-order events {:.2}", ooo_events);
+            println!("Events/s {}", events_per_second(&events));
+            println!(
+                "v2 Events/s {}",
+                calculate_average_events_per_second(&events)
+            );
+            sum_aggregation("debs13", events, watermark, EXECUTIONS.to_vec());
         }
     }
 }
