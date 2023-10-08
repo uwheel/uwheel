@@ -7,7 +7,7 @@ use std::sync::{
     Arc,
 };
 use std::{cmp, fs::File};
-use window::Execution;
+use window::{PlottingOutput, Window};
 
 use awheel::{
     aggregator::sum::U64SumAggregator,
@@ -25,7 +25,7 @@ use window::{
     Run,
 };
 
-use window::EXECUTIONS;
+use window::WINDOWS;
 
 #[cfg(feature = "mimalloc")]
 use mimalloc::MiMalloc;
@@ -38,7 +38,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[clap(author, version, about, long_about = None)]
 struct Args {
     #[clap(short, long, value_parser, default_value_t = 100)]
-    watermark_frequency: u64,
+    watermark_frequency: usize,
     #[clap(arg_enum, value_parser, default_value_t = Dataset::CitiBike)]
     data: Dataset,
 }
@@ -158,12 +158,18 @@ impl WatermarkGenerator {
     }
 }
 
-fn sum_aggregation(id: &str, events: Vec<Event>, watermark: u64, executions: Vec<Execution>) {
+fn sum_aggregation(
+    id: &str,
+    events: Vec<Event>,
+    watermark: u64,
+    watermark_freq: usize,
+    windows: Vec<Window>,
+) {
     let mut results = Vec::new();
 
-    for exec in executions {
-        let range = exec.range;
-        let slide = exec.slide;
+    for window in windows {
+        let range = window.range;
+        let slide = window.slide;
         let total_insertions = events.len() as u64;
 
         let mut runs = Vec::new();
@@ -176,7 +182,7 @@ fn sum_aggregation(id: &str, events: Vec<Event>, watermark: u64, executions: Vec
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&lazy_wheel_64);
-        let (runtime, stats, lazy_results) = run(lazy_wheel_64, &events, watermark);
+        let (runtime, stats, lazy_results) = run(lazy_wheel_64, &events, watermark, watermark_freq);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
@@ -203,7 +209,8 @@ fn sum_aggregation(id: &str, events: Vec<Event>, watermark: u64, executions: Vec
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&lazy_wheel_512);
-        let (runtime, stats, _lazy_results) = run(lazy_wheel_512, &events, watermark);
+        let (runtime, stats, _lazy_results) =
+            run(lazy_wheel_512, &events, watermark, watermark_freq);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
@@ -232,7 +239,8 @@ fn sum_aggregation(id: &str, events: Vec<Event>, watermark: u64, executions: Vec
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&eager_wheel_64);
-        let (runtime, stats, eager_results) = run(eager_wheel_64, &events, watermark);
+        let (runtime, stats, eager_results) =
+            run(eager_wheel_64, &events, watermark, watermark_freq);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
@@ -261,7 +269,8 @@ fn sum_aggregation(id: &str, events: Vec<Event>, watermark: u64, executions: Vec
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&eager_wheel_512);
-        let (runtime, stats, eager_results) = run(eager_wheel_512, &events, watermark);
+        let (runtime, stats, eager_results) =
+            run(eager_wheel_512, &events, watermark, watermark_freq);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
@@ -280,7 +289,7 @@ fn sum_aggregation(id: &str, events: Vec<Event>, watermark: u64, executions: Vec
         });
 
         let fiba_4: WindowTree<tree::FiBA4> = WindowTree::new(watermark, range, slide);
-        let (runtime, stats, _fiba4_results) = run(fiba_4, &events, watermark);
+        let (runtime, stats, _fiba4_results) = run(fiba_4, &events, watermark, watermark_freq);
         dbg!("Finished FiBA Bfinger 4");
         runs.push(Run {
             id: "FiBA Bfinger 4".to_string(),
@@ -292,7 +301,7 @@ fn sum_aggregation(id: &str, events: Vec<Event>, watermark: u64, executions: Vec
         assert_eq!(eager_results, _fiba4_results);
 
         let fiba_8: WindowTree<tree::FiBA8> = WindowTree::new(watermark, range, slide);
-        let (runtime, stats, _fiba8_results) = run(fiba_8, &events, watermark);
+        let (runtime, stats, _fiba8_results) = run(fiba_8, &events, watermark, watermark_freq);
         dbg!("Finished FiBA Bfinger 8");
         runs.push(Run {
             id: "FiBA Bfinger 8".to_string(),
@@ -305,7 +314,8 @@ fn sum_aggregation(id: &str, events: Vec<Event>, watermark: u64, executions: Vec
 
         let pairs_fiba_4: PairsTree<tree::FiBA4> =
             external_impls::PairsTree::new(watermark, range, slide);
-        let (runtime, stats, _pairs_fiba_results) = run(pairs_fiba_4, &events, watermark);
+        let (runtime, stats, _pairs_fiba_results) =
+            run(pairs_fiba_4, &events, watermark, watermark_freq);
         dbg!("Finished Pairs FiBA Bfinger 4 Wheel");
         runs.push(Run {
             id: "Pairs FiBA Bfinger 4".to_string(),
@@ -318,7 +328,7 @@ fn sum_aggregation(id: &str, events: Vec<Event>, watermark: u64, executions: Vec
 
         let pairs_fiba8: PairsTree<tree::FiBA8> =
             external_impls::PairsTree::new(watermark, range, slide);
-        let (runtime, stats, _) = run(pairs_fiba8, &events, watermark);
+        let (runtime, stats, _) = run(pairs_fiba8, &events, watermark, watermark_freq);
         dbg!("Finished Pairs FiBA Bfinger 8 Wheel");
         runs.push(Run {
             id: "Pairs FiBA Bfinger 8".to_string(),
@@ -328,7 +338,7 @@ fn sum_aggregation(id: &str, events: Vec<Event>, watermark: u64, executions: Vec
             qps: None,
         });
 
-        dbg!(exec);
+        dbg!(window);
 
         /*
         let pairs_btreemap: PairsTree<BTreeMap<u64, _>> =
@@ -351,13 +361,16 @@ fn sum_aggregation(id: &str, events: Vec<Event>, watermark: u64, executions: Vec
         //assert_eq!(eager_results, btreemap_results);
         //assert_eq!(_pairs_fiba_results, btreemap_results);
 
-        let result = BenchResult::new(exec, runs);
+        let result = BenchResult::new(window, runs);
         result.print();
         results.push(result);
     }
 
     #[cfg(feature = "plot")]
     window::plot_window(id, &results);
+
+    let output = PlottingOutput::from(id, watermark_freq, results);
+    output.flush_to_file().unwrap();
 }
 
 #[cfg(feature = "sync")]
@@ -404,87 +417,9 @@ fn spawn_query_thread(
     (gate, handle)
 }
 
-// fn _nyc_citi_bike_bench_min() {
-//     let path = "../data/citibike-tripdata.csv";
-//     let mut events = Vec::new();
-//     let mut rdr = csv::Reader::from_path(path).unwrap();
-//     for result in rdr.deserialize() {
-//         let record: CitiBikeTrip = result.unwrap();
-//         let event = Event::from(record);
-//         events.push(event);
-//     }
-
-//     let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
-//     let mut results = Vec::new();
-
-//     for exec in EXECUTIONS {
-//         let range = exec.range;
-//         let slide = exec.slide;
-//         let total_insertions = events.len() as u64;
-
-//         let mut runs = Vec::new();
-//         let lazy_wheel_64: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
-//             .with_range(range)
-//             .with_slide(slide)
-//             .with_write_ahead(64)
-//             .with_watermark(watermark)
-//             .build();
-
-//         let (runtime, stats, _lazy_results) = run(lazy_wheel_64, &events);
-//         println!("Finished Lazy Wheel 64");
-
-//         runs.push(Run {
-//             id: "Lazy Wheel 64".to_string(),
-//             total_insertions,
-//             runtime,
-//             stats,
-//             qps: None,
-//         });
-
-//         let lazy_wheel_256: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
-//             .with_range(range)
-//             .with_slide(slide)
-//             .with_write_ahead(256)
-//             .with_watermark(watermark)
-//             .build();
-
-//         let (runtime, stats, _lazy_results) = run(lazy_wheel_256, &events);
-//         println!("Finished Lazy Wheel 256");
-
-//         runs.push(Run {
-//             id: "Lazy Wheel 256".to_string(),
-//             total_insertions,
-//             runtime,
-//             stats,
-//             qps: None,
-//         });
-
-//         let lazy_wheel_512: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
-//             .with_range(range)
-//             .with_slide(slide)
-//             .with_write_ahead(512)
-//             .with_watermark(watermark)
-//             .build();
-
-//         let (runtime, stats, _lazy_results) = run(lazy_wheel_512, &events);
-//         println!("Finished Lazy Wheel 512");
-
-//         runs.push(Run {
-//             id: "Lazy Wheel 512".to_string(),
-//             total_insertions,
-//             runtime,
-//             stats,
-//             qps: None,
-//         });
-
-//         let result = BenchResult::new(exec, runs);
-//         result.print();
-//         results.push(result);
-//     }
-// }
-
 fn main() {
     let args = Args::parse();
+    let watermark_freq = args.watermark_frequency;
     println!("Running with {:#?}", args);
 
     match args.data {
@@ -503,7 +438,13 @@ fn main() {
             let ooo_events = calculate_out_of_order_percentage(watermark, &events);
             println!("Out-of-order events {:.2}", ooo_events);
             println!("Events/s {}", events_per_second(&events));
-            sum_aggregation("nyc_citi_bike", events, watermark, EXECUTIONS.to_vec());
+            sum_aggregation(
+                "nyc_citi_bike",
+                events,
+                watermark,
+                watermark_freq,
+                WINDOWS.to_vec(),
+            );
         }
         Dataset::DEBS12 => {
             let watermark = debs_datetime_to_u64("2012-02-22T16:46:00.0+00:00");
@@ -528,7 +469,13 @@ fn main() {
             let ooo_events = calculate_out_of_order_percentage(watermark, &events);
             println!("Out-of-order events {:.2}", ooo_events);
             println!("Events/s {}", events_per_second(&events));
-            sum_aggregation("debs12", events, watermark, EXECUTIONS.to_vec());
+            sum_aggregation(
+                "debs12",
+                events,
+                watermark,
+                watermark_freq,
+                WINDOWS.to_vec(),
+            );
         }
     }
 }
@@ -537,6 +484,7 @@ fn run<A: Aggregator<Input = u64, Aggregate = u64>>(
     mut window: impl WindowExt<A>,
     events: &[Event],
     watermark: u64,
+    watermark_freq: usize,
 ) -> (std::time::Duration, Stats, Vec<(u64, Option<u64>)>) {
     dbg!(watermark);
     let mut watermark = watermark;
@@ -551,7 +499,7 @@ fn run<A: Aggregator<Input = u64, Aggregate = u64>>(
 
         counter += 1;
 
-        if counter == 100 {
+        if counter == watermark_freq {
             let wm = align_to_closest_thousand(generator.generate_watermark());
             if wm > watermark {
                 watermark = wm;

@@ -147,6 +147,12 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for WindowTree<T> {
                 profile_scope!(&self.stats.cleanup_ns);
                 let evict_point = (self.watermark - self.range.whole_milliseconds() as u64)
                     + self.slide.whole_milliseconds() as u64;
+
+                // before evicting update max memory usage
+                let curr_size = self.stats.size_bytes.get();
+                let new_size = std::cmp::max(curr_size, self.tree.size_bytes());
+                self.stats.size_bytes.set(new_size);
+
                 self.tree.evict_range(evict_point);
                 self.next_window_end = self.watermark + self.slide.whole_milliseconds() as u64;
             }
@@ -171,7 +177,6 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for WindowTree<T> {
         unimplemented!();
     }
     fn stats(&self) -> &Stats {
-        self.stats.size_bytes.set(self.tree.size_bytes());
         &self.stats
     }
 }
@@ -342,6 +347,11 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
                     let evict_point = (self.watermark - self.range.whole_milliseconds() as u64)
                         + self.slide.whole_milliseconds() as u64;
 
+                    // before evicting check and update memory usage
+                    let curr_size = self.stats.size_bytes.get();
+                    let new_size = std::cmp::max(curr_size, self.tree.size_bytes());
+                    self.stats.size_bytes.set(new_size);
+
                     // clean up main and pairs tree
                     self.tree.evict_range(evict_point);
 
@@ -381,9 +391,9 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
         unimplemented!();
     }
     fn stats(&self) -> &Stats {
-        let agg_store_size = self.agg_store.size_bytes();
-
-        self.stats.size_bytes.set(agg_store_size);
+        // the max of the main tree and 2r/s of query store
+        //let agg_store_size = self.agg_store.size_bytes();
+        //self.stats.size_bytes.set(agg_store_size);
         &self.stats
     }
 }

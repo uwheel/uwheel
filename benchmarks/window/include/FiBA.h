@@ -26,6 +26,7 @@
 #ifdef _MIMALLOC
 #include "mimalloc-new-delete.h"
 #endif
+//#include "mimalloc-new-delete.h"
 
 namespace btree {
 
@@ -1967,6 +1968,8 @@ public:
   }
 
   size_t size() const { return _size; }
+  // good estimation of how much memory is used
+  size_t memory_usage() const { return _size * sizeof(Node); }
 
   timeT youngest() const {
     timeT time;
