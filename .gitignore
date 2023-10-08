@@ -4,4 +4,5 @@ crates/awheel-demo/dist
 benchmarks/results
 benchmarks/data
 benchmarks/plots
+.ipynb_checkpoints/
 .DS_STORE

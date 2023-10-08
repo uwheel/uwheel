@@ -93,7 +93,7 @@ impl Tree<U64SumAggregator> for FiBA4 {
         self.fiba.pin_mut().evict();
     }
     fn size_bytes(&self) -> usize {
-        self.fiba.size()
+        self.fiba.memory_usage()
     }
 }
 
@@ -129,6 +129,6 @@ impl Tree<U64SumAggregator> for FiBA8 {
         self.fiba.pin_mut().evict();
     }
     fn size_bytes(&self) -> usize {
-        self.fiba.size()
+        self.fiba.memory_usage()
     }
 }

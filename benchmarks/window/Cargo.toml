@@ -18,6 +18,7 @@ mimalloc = { version = "*", default-features = false, optional = true }
 csv = "1.2.2"
 chrono = "0.4"
 clap.workspace = true
+serde_json = "1.0.107"
 serde.workspace = true
 fastrand.workspace = true
 hdrhistogram.workspace = true

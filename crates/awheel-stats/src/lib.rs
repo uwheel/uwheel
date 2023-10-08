@@ -8,11 +8,13 @@ pub fn sketch_percentiles(sketch: &DDSketch) -> Percentiles {
         count: sketch.count(),
         min: sketch.min().unwrap_or(0.0),
         p50: sketch.quantile(0.5).unwrap().unwrap_or(0.0),
+        p95: sketch.quantile(0.95).unwrap().unwrap_or(0.0),
         p99: sketch.quantile(0.99).unwrap().unwrap_or(0.0),
         p99_9: sketch.quantile(0.999).unwrap().unwrap_or(0.0),
         p99_99: sketch.quantile(0.9999).unwrap().unwrap_or(0.0),
         p99_999: sketch.quantile(0.99999).unwrap().unwrap_or(0.0),
         max: sketch.max().unwrap_or(0.0),
+        sum: sketch.sum().unwrap_or(0.0),
     }
 }
 
@@ -21,11 +23,13 @@ pub struct Percentiles {
     pub count: usize,
     pub min: f64,
     pub p50: f64,
+    pub p95: f64,
     pub p99: f64,
     pub p99_9: f64,
     pub p99_99: f64,
     pub p99_999: f64,
     pub max: f64,
+    pub sum: f64,
 }
 
 impl std::fmt::Debug for Percentiles {
@@ -34,11 +38,13 @@ impl std::fmt::Debug for Percentiles {
             .field("count", &self.count)
             .field("min", &format_args!("{:.2}ns", self.min))
             .field("p50", &format_args!("{:.2}ns", self.p50))
+            .field("p95", &format_args!("{:.2}ns", self.p95))
             .field("p99", &format_args!("{:.2}ns", self.p99))
             .field("p99.9", &format_args!("{:.2}ns", self.p99_9))
             .field("p99.99", &format_args!("{:.2}ns", self.p99_99))
             .field("p99.999", &format_args!("{:.2}ns", self.p99_999))
             .field("max", &format_args!("{:.2}ns", self.max))
+            .field("sum", &self.sum)
             .finish()
     }
 }

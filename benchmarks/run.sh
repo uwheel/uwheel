@@ -15,24 +15,23 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 fi
 
 
+<<<<<<< HEAD
 echo "Starting DEBS13 Window experiment (1/5)"
 touch results/debs13_window.log
 (cd window && cargo run --release --bin real -- debs13 >> ../results/debs13_window.log )
 echo "Finished DEBS13 Window experiment (1/5)"
 
+=======
+>>>>>>> 1f8f717affe79d83b27360eb23399277dd05b70e
 echo "Starting NYC Citi Bike Window experiment (2/5)"
 touch results/nyc_citi_bike_window.log
 (cd window && cargo run --release --bin real -- citi-bike >> ../results/nyc_citi_bike_window.log )
 echo "Finished NYC Citi Bike Window experiment (2/5)"
 
-
 echo "Starting DEBS12 Window experiment (1/5)"
 touch results/debs12_window.log
 (cd window && cargo run --release --bin real -- debs12 >> ../results/debs12_window.log )
 echo "Finished DEBS12 Window experiment (1/5)"
-
-
-
 
 
 echo "Starting NYC Citi Bike Window Sync experiment (3/5)"
