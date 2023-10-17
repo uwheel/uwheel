@@ -87,8 +87,6 @@ See a user-defined aggregator example [here](examples/aggregator/).
     - Enables recording of latencies for various operations
 - `serde`
     - Enables serde support
-- `tree`
-    - Enables the multi-key ``RwTreeWheel``
 - `timer`
     - Enables scheduling user-defined functions
 

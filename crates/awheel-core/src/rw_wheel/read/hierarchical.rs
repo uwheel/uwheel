@@ -769,33 +769,33 @@ where
             // insert 60 seconds worth of partial aggregates into minute wheel and then tick it
             let minutes = self.minutes_wheel.get_or_insert();
 
-            minutes.insert_rotation_data(rot_data);
+            minutes.insert_slot(rot_data);
 
             // full rotation of minutes wheel
             if let Some(rot_data) = minutes.tick() {
                 // insert 60 minutes worth of partial aggregates into hours wheel and then tick it
                 let hours = self.hours_wheel.get_or_insert();
 
-                hours.insert_rotation_data(rot_data);
+                hours.insert_slot(rot_data);
 
                 // full rotation of hours wheel
                 if let Some(rot_data) = hours.tick() {
                     // insert 24 hours worth of partial aggregates into days wheel and then tick it
                     let days = self.days_wheel.get_or_insert();
-                    days.insert_rotation_data(rot_data);
+                    days.insert_slot(rot_data);
 
                     // full rotation of days wheel
                     if let Some(rot_data) = days.tick() {
                         // insert 7 days worth of partial aggregates into weeks wheel and then tick it
                         let weeks = self.weeks_wheel.get_or_insert();
 
-                        weeks.insert_rotation_data(rot_data);
+                        weeks.insert_slot(rot_data);
 
                         // full rotation of weeks wheel
                         if let Some(rot_data) = weeks.tick() {
                             // insert 1 years worth of partial aggregates into year wheel and then tick it
                             let years = self.years_wheel.get_or_insert();
-                            years.insert_rotation_data(rot_data);
+                            years.insert_slot(rot_data);
 
                             // tick but ignore full rotations as this is the last hierarchy
                             let _ = years.tick();
@@ -813,30 +813,30 @@ where
             let minutes = self.minutes_wheel.get_or_insert();
 
             let minutes_opt = minutes.tick();
-            minutes.insert_rotation_data(seconds_total);
+            minutes.insert_slot(seconds_total);
 
             if let Some(minutes_total) = minutes_opt {
                 let hours = self.hours_wheel.get_or_insert();
 
                 let hours_opt = hours.tick();
-                hours.insert_rotation_data(minutes_total);
+                hours.insert_slot(minutes_total);
                 if let Some(hours_total) = hours_opt {
                     let days = self.days_wheel.get_or_insert();
 
                     let days_opt = days.tick();
-                    days.insert_rotation_data(hours_total);
+                    days.insert_slot(hours_total);
 
                     if let Some(days_total) = days_opt {
                         let weeks = self.weeks_wheel.get_or_insert();
 
                         let weeks_opt = weeks.tick();
-                        weeks.insert_rotation_data(days_total);
+                        weeks.insert_slot(days_total);
 
                         if let Some(weeks_total) = weeks_opt {
                             let years = self.years_wheel.get_or_insert();
 
                             let _ = years.tick();
-                            years.insert_rotation_data(weeks_total);
+                            years.insert_slot(weeks_total);
                             // years wheel is last in the hierarchy, nothing more to do..
                         }
                     }

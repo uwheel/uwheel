@@ -3,9 +3,15 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 use ahash::AHashMap;
 use awheel::{
     aggregator::sum::U64SumAggregator,
-    rw_wheel::read::{Haw, Lazy},
+    rw_wheel::read::{
+        aggregation::conf::{RetentionPolicy, WheelConf},
+        hierarchical::HawConf,
+        Haw,
+        Lazy,
+    },
     time::NumericalDuration,
     Entry,
+    Options,
     RwWheel,
 };
 use eframe::egui::{self};
@@ -228,36 +234,53 @@ pub struct TemplateApp {
 
 impl Default for TemplateApp {
     fn default() -> Self {
-        let wheel = RwWheel::<DemoAggregator>::with_drill_down(0);
+        let conf = HawConf::default()
+            .with_seconds(
+                WheelConf::new(60)
+                    .with_drill_down(true)
+                    .with_retention_policy(RetentionPolicy::KeepWithLimit(60)),
+            )
+            .with_minutes(
+                WheelConf::new(60)
+                    .with_drill_down(true)
+                    .with_retention_policy(RetentionPolicy::KeepWithLimit(60)),
+            )
+            .with_hours(
+                WheelConf::new(64)
+                    .with_drill_down(true)
+                    .with_retention_policy(RetentionPolicy::KeepWithLimit(24)),
+            )
+            .with_days(
+                WheelConf::new(7)
+                    .with_drill_down(true)
+                    .with_retention_policy(RetentionPolicy::KeepWithLimit(7)),
+            )
+            .with_weeks(
+                WheelConf::new(52)
+                    .with_drill_down(true)
+                    .with_retention_policy(RetentionPolicy::KeepWithLimit(52)),
+            )
+            .with_years(
+                WheelConf::new(10)
+                    .with_drill_down(true)
+                    .with_retention_policy(RetentionPolicy::KeepWithLimit(10)),
+            );
+        let opts = Options::default().with_haw_conf(conf);
+
+        let new_wheel = |opts| RwWheel::<DemoAggregator>::with_options(0, opts);
+
+        let wheel = new_wheel(opts);
         let mut wheels = AHashMap::default();
-        wheels.insert(
-            Student::Max,
-            Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
-        );
-        wheels.insert(
-            Student::Adam,
-            Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
-        );
-        wheels.insert(
-            Student::Klas,
-            Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
-        );
-        wheels.insert(
-            Student::Jonas,
-            Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
-        );
-        wheels.insert(
-            Student::Harald,
-            Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
-        );
-        wheels.insert(
-            Student::Sonia,
-            Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
-        );
+        wheels.insert(Student::Max, Rc::new(RefCell::new(new_wheel(opts))));
+        wheels.insert(Student::Adam, Rc::new(RefCell::new(new_wheel(opts))));
+        wheels.insert(Student::Klas, Rc::new(RefCell::new(new_wheel(opts))));
+        wheels.insert(Student::Jonas, Rc::new(RefCell::new(new_wheel(opts))));
+        wheels.insert(Student::Harald, Rc::new(RefCell::new(new_wheel(opts))));
+        wheels.insert(Student::Sonia, Rc::new(RefCell::new(new_wheel(opts))));
         let labels = HawLabels::new(&wheel);
         Self {
             wheels,
-            star_wheel: Rc::new(RefCell::new(RwWheel::with_drill_down(0))),
+            star_wheel: Rc::new(RefCell::new(wheel)),
             labels,
             tick_granularity: Default::default(),
             plot_key: Default::default(),
@@ -457,7 +480,8 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Minute, pos)) => {
                                         if let Some(minutes) = wheel.read().as_ref().minutes() {
-                                            if let Some(slots) = measure(|| minutes.drill_down(pos))
+                                            if let Some(slots) =
+                                                measure(|| minutes.table().drill_down(pos))
                                             {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -485,7 +509,9 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Hour, pos)) => {
                                         if let Some(hours) = wheel.read().as_ref().hours() {
-                                            if let Some(slots) = measure(|| hours.drill_down(pos)) {
+                                            if let Some(slots) =
+                                                measure(|| hours.table().drill_down(pos))
+                                            {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
                                                 for (i, s) in slots.iter().enumerate() {
@@ -512,7 +538,9 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Day, pos)) => {
                                         if let Some(days) = wheel.read().as_ref().days() {
-                                            if let Some(slots) = measure(|| days.drill_down(pos)) {
+                                            if let Some(slots) =
+                                                measure(|| days.table().drill_down(pos))
+                                            {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
                                                 for (i, s) in slots.iter().enumerate() {
@@ -538,7 +566,9 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Week, pos)) => {
                                         if let Some(weeks) = wheel.read().as_ref().weeks() {
-                                            if let Some(slots) = measure(|| weeks.drill_down(pos)) {
+                                            if let Some(slots) =
+                                                measure(|| weeks.table().drill_down(pos))
+                                            {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
                                                 for (i, s) in slots.iter().enumerate() {
@@ -564,7 +594,9 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Year, pos)) => {
                                         if let Some(years) = wheel.read().as_ref().years() {
-                                            if let Some(slots) = measure(|| years.drill_down(pos)) {
+                                            if let Some(slots) =
+                                                measure(|| years.table().drill_down(pos))
+                                            {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
                                                 for (i, s) in slots.iter().enumerate() {
