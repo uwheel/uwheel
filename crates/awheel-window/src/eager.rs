@@ -217,15 +217,25 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
         }
 
         let last_rotation = self.last_rotation.unwrap();
-        let current_rotation = self
+        let (current_rotation, _ops) = self
             .wheel
             .read()
-            .interval(Duration::seconds(self.current_secs_rotation as i64))
-            .unwrap_or_default();
+            .interval_with_ops(Duration::seconds(self.current_secs_rotation as i64));
+
+        #[cfg(feature = "stats")]
+        let total_combines = _ops + 2; // 1 combine + 1 inverse_combine
+
+        #[cfg(feature = "stats")]
+        self.stats
+            .window_combines
+            .set(self.stats.window_combines.get() + total_combines);
 
         // Function: combine(inverse_combine(last_rotation, slice), current_rotation);
         // ⊕((⊖(last_rotation, slice)), current_rotation)
-        A::combine(A::inverse_combine(last_rotation, inverse), current_rotation)
+        A::combine(
+            A::inverse_combine(last_rotation, inverse),
+            current_rotation.unwrap_or_default(),
+        )
     }
 }
 impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
@@ -263,16 +273,21 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
                             #[cfg(feature = "stats")]
                             profile_scope!(&self.stats.window_computation_ns);
 
-                            let window_result = self
+                            let (window_result, _combine_ops) = self
                                 .wheel
                                 .read()
-                                .interval(self.range_interval_duration())
-                                .unwrap_or_default();
-                            self.last_rotation = Some(window_result);
+                                .interval_with_ops(self.range_interval_duration());
+
+                            self.last_rotation = Some(window_result.unwrap_or_default());
+
+                            #[cfg(feature = "stats")]
+                            self.stats
+                                .window_combines
+                                .set(self.stats.window_combines.get() + _combine_ops);
 
                             window_results.push((
                                 self.wheel.read().watermark(),
-                                Some(A::lower(window_result)),
+                                Some(A::lower(window_result.unwrap_or_default())),
                             ));
                         }
                         #[cfg(feature = "stats")]

@@ -35,7 +35,8 @@ using namespace std;
 #ifdef COLLECT_STATS
 #define IF_COLLECT_STATS(x) x
 #else
-#define IF_COLLECT_STATS(x) ;
+#define IF_COLLECT_STATS(x) x
+//#define IF_COLLECT_STATS(x) ;
 #endif
 
 #define FAKE_NODE ((Node *)0x1L)
@@ -1970,6 +1971,7 @@ public:
   size_t size() const { return _size; }
   // good estimation of how much memory is used
   size_t memory_usage() const { return _size * sizeof(Node); }
+  size_t combine_operations() const { return statsCombineCount; }
 
   timeT youngest() const {
     timeT time;

@@ -169,9 +169,9 @@ impl<A: Aggregator> AggregationWheel<A> {
     /// - If given a interval, returns the combined partial aggregate based on that interval,
     ///   or `None` if out of bounds
     #[inline]
-    pub fn interval(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
+    pub fn interval(&self, subtrahend: usize) -> (Option<A::PartialAggregate>, usize) {
         if subtrahend > self.len() {
-            None
+            (None, 0)
         } else {
             let tail = self.slot_idx_backward_from_head(subtrahend);
             Iter::<A>::new(&self.slots, tail, self.head).combine()
@@ -181,9 +181,9 @@ impl<A: Aggregator> AggregationWheel<A> {
     /// This function takes the current rotation into context and if the interval is equal to the rotation count,
     /// then it will return the total for the rotation otherwise call the regular interval function.
     #[inline]
-    pub fn interval_or_total(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
+    pub fn interval_or_total(&self, subtrahend: usize) -> (Option<A::PartialAggregate>, usize) {
         if subtrahend == self.rotation_count {
-            self.total()
+            (self.total(), 0)
         } else {
             self.interval(subtrahend)
         }
@@ -196,6 +196,7 @@ impl<A: Aggregator> AggregationWheel<A> {
     #[inline]
     pub fn lower_interval(&self, subtrahend: usize) -> Option<A::Aggregate> {
         self.interval(subtrahend)
+            .0
             .map(|partial_agg| A::lower(partial_agg))
     }
 
@@ -366,7 +367,7 @@ impl<A: Aggregator> AggregationWheel<A> {
     where
         R: RangeBounds<usize>,
     {
-        self.range(range).combine()
+        self.range(range).combine().0
     }
     /// Combines partial aggregates from the specified range and lowers it to a final aggregate value
     ///
