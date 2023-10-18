@@ -7,7 +7,7 @@ if [ -f "$FILE" ]; then
     echo "NYC Citi Bike Data found"
 else
     echo "Downloading and preparing NYC Citi Bike data"
-    ./fetch_data.sh
+    # ./fetch_data.sh
 fi
 
 echo "Starting NYC Citi Bike Window Small Range experiment (1/5)"
@@ -30,7 +30,6 @@ echo "Starting DEBS12 Window Big Range experiment (4/5)"
 touch results/debs12_window_big_range.log
 (cd window && cargo run --release --bin real -- debs12 big-range >> ../results/debs12_window_big_range.log )
 echo "Finished DEBS12 Window Big Range experiment (4/5)"
-
 
 
 #echo "Starting NYC Citi Bike Window Sync experiment (3/5)"
