@@ -541,11 +541,11 @@ fn main() {
             println!("Out-of-order events {:.2}", ooo_events);
             println!("Events/s {}", events_per_second(&events));
             sum_aggregation(
-                "debs13",
+                &id_gen("debs13"),
                 events,
                 watermark,
                 watermark_freq,
-                WINDOWS.to_vec(),
+                windows.to_vec(),
             );
         }
     }
