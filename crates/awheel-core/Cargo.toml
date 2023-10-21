@@ -25,9 +25,13 @@ serde = ["dep:serde", "dep:serde-big-array", "parking_lot?/serde", "hashbrown?/s
 sync = ["dep:parking_lot", "std"]
 timer = []
 profiler = ["dep:awheel-stats", "prettytable-rs", "std"]
+pco = ["dep:pco", "std"]
+simd = ["dep:arrow2", "std"]
 
 
 [dependencies]
+arrow2 = { version = "0.18.0", features = ["simd", "compute_aggregate"], optional = true }
+pco = { version = "0.0.0-alpha.1", optional = true }
 awheel-stats = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
 hashbrown = { workspace = true, optional = true }

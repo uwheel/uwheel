@@ -61,6 +61,16 @@ impl AggState {
     pub fn avg(&self) -> f64 {
         self.sum / self.count as f64
     }
+
+    /// Returns the identity aggregate of AggState
+    pub const fn identity() -> Self {
+        Self {
+            min: f64::MAX,
+            max: f64::MIN,
+            count: 0,
+            sum: 0.0,
+        }
+    }
 }
 impl PartialAggregateType for AggState {}
 
@@ -88,6 +98,7 @@ impl PartialEq for AggState {
 pub struct AllAggregator;
 
 impl Aggregator for AllAggregator {
+    const IDENTITY: Self::PartialAggregate = AggState::identity();
     type Input = f64;
     type Aggregate = AggState;
     type PartialAggregate = AggState;

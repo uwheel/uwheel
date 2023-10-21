@@ -38,6 +38,8 @@ where
     A: Aggregator + Clone + Copy,
     A::PartialAggregate: Ord + Copy,
 {
+    const IDENTITY: Self::PartialAggregate = TopNState::identity();
+
     type Input = (Key, A::Input);
     type MutablePartialAggregate = TopNMap<Key, A>;
     type PartialAggregate = TopNState<Key, N, A>;

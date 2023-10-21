@@ -4,6 +4,9 @@ use core::{
     marker::{Copy, Send},
 };
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 /// An All Aggregator enabling the following functions (MAX, MIN, SUM, COUNT, AVG).
 #[cfg(feature = "all")]
 pub mod all;
@@ -26,6 +29,9 @@ pub mod top_n;
 
 /// Aggregation interface that library users must implement to use awheel
 pub trait Aggregator: Default + Debug + Clone + 'static {
+    /// Identity value for the Aggregator's Partial Aggregate
+    const IDENTITY: Self::PartialAggregate;
+
     /// Input type that can be inserted into [Self::MutablePartialAggregate]
     type Input: InputBounds;
 
@@ -50,8 +56,31 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     /// Combine two partial aggregates and produce new output
     fn combine(a: Self::PartialAggregate, b: Self::PartialAggregate) -> Self::PartialAggregate;
 
+    /// Combines a slice of partial aggregates into a new partial
+    ///
+    /// A default implementation is provided that iterates over the aggregates and combines them
+    /// individually. If your aggregation supports SIMD, then implement the function accordingly.
+    fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
+        slice.iter().fold(None, |accumulator, &item| {
+            Some(match accumulator {
+                Some(acc) => Self::combine(acc, item),
+                None => item,
+            })
+        })
+    }
+
     /// Convert a partial aggregate to a final result
     fn lower(a: Self::PartialAggregate) -> Self::Aggregate;
+
+    /// User-defined encoding function of partial aggregates
+    fn encode(_data: &[Self::PartialAggregate]) -> Vec<u8> {
+        unimplemented!();
+    }
+
+    /// User-defined decoding function of partial aggregates
+    fn decode(_bytes: &[u8]) -> Vec<Self::PartialAggregate> {
+        unimplemented!();
+    }
 }
 
 /// Extension trait for inverse combine operations

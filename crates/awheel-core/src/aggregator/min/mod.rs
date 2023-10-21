@@ -7,6 +7,8 @@ macro_rules! min_impl {
         pub struct $struct;
 
         impl Aggregator for $struct {
+            const IDENTITY: Self::PartialAggregate = <$type>::MAX;
+
             type Input = $type;
             type MutablePartialAggregate = $pa;
             type Aggregate = $type;
@@ -23,6 +25,13 @@ macro_rules! min_impl {
 
             fn freeze(a: Self::MutablePartialAggregate) -> Self::PartialAggregate {
                 a.into()
+            }
+            #[cfg(feature = "simd")]
+            #[inline]
+            fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
+                // NOTE: arrow2 does not seem to have a min_slice function?
+                let arr = arrow2::array::PrimitiveArray::from_slice(slice);
+                arrow2::compute::aggregate::min_primitive(&arr)
             }
 
             #[inline]
@@ -43,7 +52,6 @@ macro_rules! min_impl {
 min_impl!(U16MinAggregator, u16, u16);
 min_impl!(U32MinAggregator, u32, u32);
 min_impl!(U64MinAggregator, u64, u64);
-min_impl!(U128MinAggregator, u128, u128);
 min_impl!(I16MinAggregator, i16, i16);
 min_impl!(I32MinAggregator, i32, i32);
 min_impl!(I64MinAggregator, i64, i64);

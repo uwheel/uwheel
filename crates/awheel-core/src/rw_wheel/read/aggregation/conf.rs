@@ -28,15 +28,19 @@ impl RetentionPolicy {
 #[derive(Copy, Clone, Debug)]
 pub struct WheelConf {
     pub(crate) capacity: usize,
+    pub(crate) watermark: u64,
+    pub(crate) tick_size_ms: u64,
     pub(crate) retention: RetentionPolicy,
     pub(crate) drill_down: bool,
 }
 
 impl WheelConf {
     /// Initiates a new Configuration
-    pub fn new(capacity: usize) -> Self {
+    pub fn new(tick_size_ms: u64, capacity: usize) -> Self {
         Self {
             capacity,
+            watermark: Default::default(),
+            tick_size_ms,
             retention: Default::default(),
             drill_down: false,
         }
@@ -49,6 +53,10 @@ impl WheelConf {
     pub fn with_drill_down(mut self, drill_down: bool) -> Self {
         self.drill_down = drill_down;
         self
+    }
+    /// Sets the retention policy for this wheel
+    pub fn set_retention_policy(&mut self, policy: RetentionPolicy) {
+        self.retention = policy;
     }
     /// Configures the wheel to use the given retention policy
     pub fn with_retention_policy(mut self, policy: RetentionPolicy) -> Self {

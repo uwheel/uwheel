@@ -81,6 +81,18 @@ impl PartialAggregate {
             sum: self.wind_speed.sum + other_wind_speed_sum,
         };
     }
+    pub const fn identity() -> Self {
+        Self {
+            wind_speed: PartialAvg {
+                count: 0.0,
+                sum: 0.0,
+            },
+            temperature: PartialAvg {
+                count: 0.0,
+                sum: 0.0,
+            },
+        }
+    }
 }
 
 // Need to implement PartialAggregateType for our custom struct
@@ -104,6 +116,8 @@ impl Aggregate {
 // Implement the Aggregator trait for our aggregator
 // NOTE: in this case both the mutable and immutable aggregate types are the same
 impl Aggregator for CustomAggregator {
+    const IDENTITY: Self::PartialAggregate = PartialAggregate::identity();
+
     type Input = RawData;
     type PartialAggregate = PartialAggregate;
     type MutablePartialAggregate = PartialAggregate;

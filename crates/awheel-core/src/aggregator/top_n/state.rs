@@ -38,6 +38,11 @@ where
     A: Aggregator,
     A::PartialAggregate: Ord + Copy,
 {
+    /// Returns the identity aggregate of TopNState
+    pub const fn identity() -> Self {
+        let top_n = [None; N];
+        Self { top_n }
+    }
     pub(super) fn from(heap: Vec<Option<TopNEntry<Key, A::PartialAggregate>>>) -> Self {
         let top_n: [Option<TopNEntry<Key, A::PartialAggregate>>; N] = heap.try_into().unwrap();
         Self { top_n }

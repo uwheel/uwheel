@@ -8,6 +8,7 @@ macro_rules! avg_impl {
         pub struct $struct;
 
         impl Aggregator for $struct {
+            const IDENTITY: Self::PartialAggregate = (0 as $type, 0 as $type);
             type Input = $type;
             type MutablePartialAggregate = $pa;
             type Aggregate = $type;
@@ -35,6 +36,19 @@ macro_rules! avg_impl {
                 let count = a.1 + b.1;
                 (sum, count)
             }
+
+            #[cfg(feature = "simd")]
+            #[inline]
+            fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
+                let sum_arr: Vec<_> = slice.iter().map(|(sum, _)| sum).copied().collect();
+                let count_arr: Vec<_> = slice.iter().map(|(_, count)| count).copied().collect();
+
+                let sum = arrow2::compute::aggregate::sum_slice(&sum_arr);
+                let count = arrow2::compute::aggregate::sum_slice(&count_arr);
+
+                Some((sum, count))
+            }
+
             #[inline]
             fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a.0 / a.1
@@ -59,7 +73,6 @@ macro_rules! avg_impl {
 avg_impl!(U16AvgAggregator, u16, (u16, u16));
 avg_impl!(U32AvgAggregator, u32, (u32, u32));
 avg_impl!(U64AvgAggregator, u64, (u64, u64));
-avg_impl!(U128AvgAggregator, u128, (u128, u128));
 avg_impl!(I16AvgAggregator, i16, (i16, i16));
 avg_impl!(I32AvgAggregator, i32, (i32, i32));
 avg_impl!(I64AvgAggregator, i64, (i64, i64));

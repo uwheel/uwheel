@@ -28,6 +28,7 @@ stats = ["std", "dep:awheel-stats", "awheel-window?/stats"]
 serde = ["awheel-core/serde"]
 profiler = ["std", "awheel-core/profiler"]
 timer = ["awheel-core/timer"]
+simd = ["awheel-core/simd", "std"]
 
 [dependencies]
 awheel-core = { workspace = true, default-features = false }
@@ -50,6 +51,10 @@ harness = false
 
 [[bench]]
 name = "queries"
+harness = false
+
+[[bench]]
+name = "combine"
 harness = false
 
 [[bench]]

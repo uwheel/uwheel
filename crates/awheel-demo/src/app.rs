@@ -3,12 +3,7 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 use ahash::AHashMap;
 use awheel::{
     aggregator::sum::U64SumAggregator,
-    rw_wheel::read::{
-        aggregation::conf::{RetentionPolicy, WheelConf},
-        hierarchical::HawConf,
-        Haw,
-        Lazy,
-    },
+    rw_wheel::read::{aggregation::conf::RetentionPolicy, hierarchical::HawConf, Haw, Lazy},
     time::NumericalDuration,
     Entry,
     Options,
@@ -234,37 +229,31 @@ pub struct TemplateApp {
 
 impl Default for TemplateApp {
     fn default() -> Self {
-        let conf = HawConf::default()
-            .with_seconds(
-                WheelConf::new(60)
-                    .with_drill_down(true)
-                    .with_retention_policy(RetentionPolicy::KeepWithLimit(60)),
-            )
-            .with_minutes(
-                WheelConf::new(60)
-                    .with_drill_down(true)
-                    .with_retention_policy(RetentionPolicy::KeepWithLimit(60)),
-            )
-            .with_hours(
-                WheelConf::new(64)
-                    .with_drill_down(true)
-                    .with_retention_policy(RetentionPolicy::KeepWithLimit(24)),
-            )
-            .with_days(
-                WheelConf::new(7)
-                    .with_drill_down(true)
-                    .with_retention_policy(RetentionPolicy::KeepWithLimit(7)),
-            )
-            .with_weeks(
-                WheelConf::new(52)
-                    .with_drill_down(true)
-                    .with_retention_policy(RetentionPolicy::KeepWithLimit(52)),
-            )
-            .with_years(
-                WheelConf::new(10)
-                    .with_drill_down(true)
-                    .with_retention_policy(RetentionPolicy::KeepWithLimit(10)),
-            );
+        let mut conf = HawConf::default();
+        conf.seconds.set_drill_down(true);
+        conf.seconds
+            .set_retention_policy(RetentionPolicy::KeepWithLimit(60));
+
+        conf.minutes.set_drill_down(true);
+        conf.minutes
+            .set_retention_policy(RetentionPolicy::KeepWithLimit(60));
+
+        conf.hours.set_drill_down(true);
+        conf.hours
+            .set_retention_policy(RetentionPolicy::KeepWithLimit(24));
+
+        conf.days.set_drill_down(true);
+        conf.days
+            .set_retention_policy(RetentionPolicy::KeepWithLimit(7));
+
+        conf.weeks.set_drill_down(true);
+        conf.weeks
+            .set_retention_policy(RetentionPolicy::KeepWithLimit(52));
+
+        conf.years.set_drill_down(true);
+        conf.years
+            .set_retention_policy(RetentionPolicy::KeepWithLimit(10));
+
         let opts = Options::default().with_haw_conf(conf);
 
         let new_wheel = |opts| RwWheel::<DemoAggregator>::with_options(0, opts);

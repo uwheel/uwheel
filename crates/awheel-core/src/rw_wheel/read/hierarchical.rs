@@ -39,6 +39,19 @@ crate::cfg_timer! {
 }
 use super::aggregation::conf::WheelConf;
 
+/// Default Second tick represented in milliseconds
+pub const SECOND_TICK_MS: u64 = time::Duration::SECOND.whole_milliseconds() as u64;
+/// Default Minute tick represented in milliseconds
+pub const MINUTE_TICK_MS: u64 = time::Duration::MINUTE.whole_milliseconds() as u64;
+/// Default Hour tick represented in milliseconds
+pub const HOUR_TICK_MS: u64 = time::Duration::HOUR.whole_milliseconds() as u64;
+/// Default Day tick represented in milliseconds
+pub const DAY_TICK_MS: u64 = time::Duration::DAY.whole_milliseconds() as u64;
+/// Default Week tick represented in milliseconds
+pub const WEEK_TICK_MS: u64 = time::Duration::WEEK.whole_milliseconds() as u64;
+/// Default Year tick represented in milliseconds
+pub const YEAR_TICK_MS: u64 = WEEK_TICK_MS * 52;
+
 /// Configuration for a Hierarchical Aggregation Wheel
 #[derive(Clone, Copy, Debug)]
 pub struct HawConf {
@@ -59,12 +72,12 @@ pub struct HawConf {
 impl Default for HawConf {
     fn default() -> Self {
         Self {
-            seconds: WheelConf::new(SECONDS),
-            minutes: WheelConf::new(MINUTES),
-            hours: WheelConf::new(HOURS),
-            days: WheelConf::new(DAYS),
-            weeks: WheelConf::new(WEEKS),
-            years: WheelConf::new(YEARS),
+            seconds: WheelConf::new(SECOND_TICK_MS, SECONDS),
+            minutes: WheelConf::new(MINUTE_TICK_MS, MINUTES),
+            hours: WheelConf::new(HOUR_TICK_MS, HOURS),
+            days: WheelConf::new(DAY_TICK_MS, DAYS),
+            weeks: WheelConf::new(WEEK_TICK_MS, WEEKS),
+            years: WheelConf::new(YEAR_TICK_MS, YEARS),
         }
     }
 }
@@ -170,13 +183,14 @@ where
     A: Aggregator,
     K: Kind,
 {
-    const SECOND_AS_MS: u64 = time::Duration::SECOND.whole_milliseconds() as u64;
     const MINUTES_AS_SECS: u64 = time::Duration::MINUTE.whole_seconds() as u64;
     const HOURS_AS_SECS: u64 = time::Duration::HOUR.whole_seconds() as u64;
     const DAYS_AS_SECS: u64 = time::Duration::DAY.whole_seconds() as u64;
     const WEEK_AS_SECS: u64 = time::Duration::WEEK.whole_seconds() as u64;
     const YEAR_AS_SECS: u64 = Self::WEEK_AS_SECS * WEEKS as u64;
     const CYCLE_LENGTH_SECS: u64 = Self::CYCLE_LENGTH.whole_seconds() as u64;
+
+    const SECOND_AS_MS: u64 = time::Duration::SECOND.whole_milliseconds() as u64;
 
     const TOTAL_SECS_IN_WHEEL: u64 = Self::YEAR_AS_SECS * YEARS as u64;
     /// Duration of a full wheel cycle

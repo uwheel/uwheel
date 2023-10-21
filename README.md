@@ -81,6 +81,8 @@ See a user-defined aggregator example [here](examples/aggregator/).
     - Enables top_n aggregation
 - `window`
     - Enables wheels for streaming window aggregation
+- `simd` (_implicitly enables `std`_)
+    - Enables support to speed up aggregation functions with SIMD operations
 - `sync` (_implicitly enables `std`_)
     - Enables a sync version of ``ReadWheel`` that can be shared and queried across threads
 - `stats` (_implicitly enables `std`_)

@@ -7,6 +7,8 @@ macro_rules! max_impl {
         pub struct $struct;
 
         impl Aggregator for $struct {
+            const IDENTITY: Self::PartialAggregate = <$type>::MIN;
+
             type Input = $type;
             type MutablePartialAggregate = $pa;
             type Aggregate = $type;
@@ -32,6 +34,15 @@ macro_rules! max_impl {
             ) -> Self::PartialAggregate {
                 <$type>::max(a, b)
             }
+
+            #[cfg(feature = "simd")]
+            #[inline]
+            fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
+                // NOTE: arrow2 does not seem to have a max_slice function?
+                let arr = arrow2::array::PrimitiveArray::from_slice(slice);
+                arrow2::compute::aggregate::max_primitive(&arr)
+            }
+
             #[inline]
             fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a
@@ -43,7 +54,6 @@ macro_rules! max_impl {
 max_impl!(U16MaxAggregator, u16, u16);
 max_impl!(U32MaxAggregator, u32, u32);
 max_impl!(U64MaxAggregator, u64, u64);
-max_impl!(U128MaxAggregator, u128, u128);
 max_impl!(I16MaxAggregator, i16, i16);
 max_impl!(I32MaxAggregator, i32, i32);
 max_impl!(I64MaxAggregator, i64, i64);

@@ -1,6 +1,9 @@
 use super::super::Aggregator;
 use crate::aggregator::InverseExt;
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 macro_rules! integer_sum_impl {
     ($struct:tt, $type:ty, $pa:tt) => {
         #[derive(Default, Debug, Clone, Copy)]
@@ -8,6 +11,8 @@ macro_rules! integer_sum_impl {
         pub struct $struct;
 
         impl Aggregator for $struct {
+            const IDENTITY: Self::PartialAggregate = 0;
+
             type Input = $type;
             type MutablePartialAggregate = $pa;
             type Aggregate = $type;
@@ -31,9 +36,27 @@ macro_rules! integer_sum_impl {
             ) -> Self::PartialAggregate {
                 a.saturating_add(b)
             }
+
+            #[cfg(feature = "simd")]
+            #[inline]
+            fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
+                Some(arrow2::compute::aggregate::sum_slice(slice))
+            }
+
             #[inline]
             fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a
+            }
+
+            fn encode(_data: &[Self::PartialAggregate]) -> Vec<u8> {
+                // pco::standalone::auto_compress(_data, pco::DEFAULT_COMPRESSION_LEVEL)
+                unimplemented!();
+            }
+
+            fn decode(_bytes: &[u8]) -> Vec<Self::PartialAggregate> {
+                // pco::standalone::auto_decompress::<Self::PartialAggregate>(&_bytes)
+                // .expect("failed to decompress")
+                unimplemented!();
             }
         }
         impl InverseExt for $struct {
@@ -55,6 +78,7 @@ macro_rules! float_sum_impl {
         pub struct $struct;
 
         impl Aggregator for $struct {
+            const IDENTITY: Self::PartialAggregate = 0.0;
             type Input = $pa;
             type Aggregate = $type;
             type PartialAggregate = $pa;
@@ -77,8 +101,23 @@ macro_rules! float_sum_impl {
             ) -> Self::PartialAggregate {
                 a + b
             }
+            #[cfg(feature = "simd")]
+            #[inline]
+            fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
+                Some(arrow2::compute::aggregate::sum_slice(slice))
+            }
             fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a as Self::Aggregate
+            }
+            fn encode(_data: &[Self::PartialAggregate]) -> Vec<u8> {
+                // pco::standalone::auto_compress(_data, pco::DEFAULT_COMPRESSION_LEVEL)
+                unimplemented!();
+            }
+
+            fn decode(_bytes: &[u8]) -> Vec<Self::PartialAggregate> {
+                // pco::standalone::auto_decompress::<Self::PartialAggregate>(&_bytes)
+                // .expect("failed to decompress")
+                unimplemented!();
             }
         }
     };
@@ -87,7 +126,6 @@ macro_rules! float_sum_impl {
 integer_sum_impl!(U16SumAggregator, u16, u16);
 integer_sum_impl!(U32SumAggregator, u32, u32);
 integer_sum_impl!(U64SumAggregator, u64, u64);
-integer_sum_impl!(U128SumAggregator, u128, u128);
 integer_sum_impl!(I16SumAggregator, i16, i16);
 integer_sum_impl!(I32SumAggregator, i32, i32);
 integer_sum_impl!(I64SumAggregator, i64, i64);
