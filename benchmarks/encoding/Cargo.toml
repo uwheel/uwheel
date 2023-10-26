@@ -1,0 +1,19 @@
+[package]
+name = "encoding"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+categories.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[dependencies]
+awheel  = { workspace = true, features = ["pco"] }
+clap.workspace = true
+fastrand.workspace = true
+minstant.workspace = true
+
+[dev-dependencies]
+fastrand.workspace = true
+rand.workspace = true
+criterion.workspace = true

@@ -96,7 +96,19 @@ impl PartialAggregate {
 }
 
 // Need to implement PartialAggregateType for our custom struct
-impl PartialAggregateType for PartialAggregate {}
+impl PartialAggregateType for PartialAggregate {
+    type Bytes = [u8; std::mem::size_of::<Self>()];
+
+    #[inline]
+    fn to_le_bytes(&self) -> Self::Bytes {
+        unimplemented!();
+    }
+
+    #[inline]
+    fn from_le_bytes(_bytes: Self::Bytes) -> Self {
+        unimplemented!();
+    }
+}
 
 /// Lowered Aggregate State
 #[derive(Debug, Copy, Clone)]

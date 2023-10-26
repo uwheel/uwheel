@@ -29,9 +29,7 @@ macro_rules! min_impl {
             #[cfg(feature = "simd")]
             #[inline]
             fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
-                // NOTE: arrow2 does not seem to have a min_slice function?
-                let arr = arrow2::array::PrimitiveArray::from_slice(slice);
-                arrow2::compute::aggregate::min_primitive(&arr)
+                Some(arrow2::compute::aggregate::min_slice(slice))
             }
 
             #[inline]

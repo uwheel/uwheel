@@ -38,9 +38,7 @@ macro_rules! max_impl {
             #[cfg(feature = "simd")]
             #[inline]
             fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
-                // NOTE: arrow2 does not seem to have a max_slice function?
-                let arr = arrow2::array::PrimitiveArray::from_slice(slice);
-                arrow2::compute::aggregate::max_primitive(&arr)
+                Some(arrow2::compute::aggregate::max_slice(slice))
             }
 
             #[inline]

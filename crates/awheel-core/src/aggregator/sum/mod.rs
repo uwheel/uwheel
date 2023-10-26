@@ -1,9 +1,6 @@
 use super::super::Aggregator;
 use crate::aggregator::InverseExt;
 
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
-
 macro_rules! integer_sum_impl {
     ($struct:tt, $type:ty, $pa:tt) => {
         #[derive(Default, Debug, Clone, Copy)]
@@ -48,15 +45,20 @@ macro_rules! integer_sum_impl {
                 a
             }
 
-            fn encode(_data: &[Self::PartialAggregate]) -> Vec<u8> {
-                // pco::standalone::auto_compress(_data, pco::DEFAULT_COMPRESSION_LEVEL)
-                unimplemented!();
+            #[cfg(feature = "pco")]
+            fn compress(_data: &[Self::PartialAggregate]) -> Option<Vec<u8>> {
+                Some(pco::standalone::auto_compress(
+                    _data,
+                    pco::DEFAULT_COMPRESSION_LEVEL,
+                ))
             }
 
-            fn decode(_bytes: &[u8]) -> Vec<Self::PartialAggregate> {
-                // pco::standalone::auto_decompress::<Self::PartialAggregate>(&_bytes)
-                // .expect("failed to decompress")
-                unimplemented!();
+            #[cfg(feature = "pco")]
+            fn decompress(_bytes: &[u8]) -> Option<Vec<Self::PartialAggregate>> {
+                Some(
+                    pco::standalone::auto_decompress::<Self::PartialAggregate>(&_bytes)
+                        .expect("failed to decompress"),
+                )
             }
         }
         impl InverseExt for $struct {
@@ -109,27 +111,32 @@ macro_rules! float_sum_impl {
             fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a as Self::Aggregate
             }
-            fn encode(_data: &[Self::PartialAggregate]) -> Vec<u8> {
-                // pco::standalone::auto_compress(_data, pco::DEFAULT_COMPRESSION_LEVEL)
-                unimplemented!();
+            #[cfg(feature = "pco")]
+            fn compress(_data: &[Self::PartialAggregate]) -> Option<Vec<u8>> {
+                Some(pco::standalone::auto_compress(
+                    _data,
+                    pco::DEFAULT_COMPRESSION_LEVEL,
+                ))
             }
 
-            fn decode(_bytes: &[u8]) -> Vec<Self::PartialAggregate> {
-                // pco::standalone::auto_decompress::<Self::PartialAggregate>(&_bytes)
-                // .expect("failed to decompress")
-                unimplemented!();
+            #[cfg(feature = "pco")]
+            fn decompress(_bytes: &[u8]) -> Option<Vec<Self::PartialAggregate>> {
+                Some(
+                    pco::standalone::auto_decompress::<Self::PartialAggregate>(&_bytes)
+                        .expect("failed to decompress"),
+                )
             }
         }
     };
 }
 
-integer_sum_impl!(U16SumAggregator, u16, u16);
+// integer_sum_impl!(U16SumAggregator, u16, u16);
 integer_sum_impl!(U32SumAggregator, u32, u32);
 integer_sum_impl!(U64SumAggregator, u64, u64);
-integer_sum_impl!(I16SumAggregator, i16, i16);
+// integer_sum_impl!(I16SumAggregator, i16, i16);
 integer_sum_impl!(I32SumAggregator, i32, i32);
 integer_sum_impl!(I64SumAggregator, i64, i64);
-integer_sum_impl!(I128SumAggregator, i128, i128);
+// integer_sum_impl!(I128SumAggregator, i128, i128);
 
 float_sum_impl!(F32SumAggregator, f32, f32);
 float_sum_impl!(F64SumAggregator, f64, f64);

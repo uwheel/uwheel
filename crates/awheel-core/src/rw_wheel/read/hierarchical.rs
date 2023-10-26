@@ -17,7 +17,7 @@ use super::{
 };
 use crate::{
     aggregator::Aggregator,
-    rw_wheel::read::Mode,
+    rw_wheel::read::{aggregation::WheelSlot, Mode},
     time::{self, Duration},
 };
 
@@ -725,29 +725,35 @@ where
 
         self.watermark += Self::SECOND_AS_MS;
 
-        // if the partial has some value then update the wheel(s)
-        if let Some(partial) = partial_opt {
-            self.seconds_wheel.get_or_insert().insert_head(partial);
+        // let mut seconds = self.seconds_wheel.get_or_insert();
+        // seconds.insert_identity();
 
-            // pre-aggregate all wheel heads if Eager aggregation is used
-            if let Mode::Eager = K::mode() {
-                if let Some(ref mut minutes) = self.minutes_wheel.as_mut() {
-                    minutes.insert_head(partial);
-                    if let Some(ref mut hours) = self.hours_wheel.as_mut() {
-                        hours.insert_head(partial);
-                        if let Some(ref mut days) = self.days_wheel.as_mut() {
-                            days.insert_head(partial);
-                            if let Some(ref mut weeks) = self.weeks_wheel.as_mut() {
-                                weeks.insert_head(partial);
-                                if let Some(ref mut years) = self.years_wheel.as_mut() {
-                                    years.insert_head(partial);
-                                }
+        // if the partial has some value then update the wheel(s)
+        // if let Some(partial) = partial_opt {
+        let partial = partial_opt.unwrap_or(A::IDENTITY);
+        self.seconds_wheel
+            .get_or_insert()
+            .insert_slot(WheelSlot::new(partial_opt, None));
+
+        // pre-aggregate all wheel heads if Eager aggregation is used
+        if let Mode::Eager = K::mode() {
+            if let Some(ref mut minutes) = self.minutes_wheel.as_mut() {
+                minutes.insert_head(partial);
+                if let Some(ref mut hours) = self.hours_wheel.as_mut() {
+                    hours.insert_head(partial);
+                    if let Some(ref mut days) = self.days_wheel.as_mut() {
+                        days.insert_head(partial);
+                        if let Some(ref mut weeks) = self.weeks_wheel.as_mut() {
+                            weeks.insert_head(partial);
+                            if let Some(ref mut years) = self.years_wheel.as_mut() {
+                                years.insert_head(partial);
                             }
                         }
                     }
                 }
             }
         }
+        // }
 
         match K::mode() {
             Mode::Lazy => self.lazy_tick(),
@@ -954,9 +960,14 @@ mod tests {
 
         haw.delta_advance(deltas);
 
-        assert_eq!(haw.interval(1.seconds()), None);
+        assert_eq!(haw.interval(1.seconds()), Some(0));
         assert_eq!(haw.interval(2.seconds()), Some(50));
         assert_eq!(haw.interval(3.seconds()), Some(50));
         assert_eq!(haw.interval(4.seconds()), Some(60));
+
+        // 10
+        // 0, 10
+        // 50, 0, 10
+        // 0, 50, 0, 10
     }
 }

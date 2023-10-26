@@ -27,7 +27,7 @@ impl<A: Aggregator> MaybeWheel<A> {
     }
     #[inline]
     pub fn head(&self) -> Option<A::PartialAggregate> {
-        self.inner.as_ref().and_then(|w| w.at(0))
+        self.inner.as_ref().and_then(|w| w.at(0)).copied()
     }
     #[inline]
     pub fn interval(&self, interval: usize) -> Option<A::PartialAggregate> {
