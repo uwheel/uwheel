@@ -9,6 +9,8 @@ readme.workspace = true
 
 [dependencies]
 awheel  = { workspace = true, features = ["pco"] }
+serde.workspace = true
+serde_json = "1.0.107"
 clap.workspace = true
 fastrand.workspace = true
 minstant.workspace = true

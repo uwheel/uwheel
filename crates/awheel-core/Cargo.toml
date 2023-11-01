@@ -31,6 +31,8 @@ simd = ["dep:arrow2", "std"]
 
 [dependencies]
 arrow2 = { git = "https://github.com/Max-Meldrum/arrow2.git", branch = "min_max_slice", features = ["simd", "compute_aggregate"], optional = true }
+rayon = { version = "1.8.0", optional = true }
+zerocopy = { version = "0.7.18", features = ["derive"] }
 pco = { version = "0.0.0-alpha.1", optional = true }
 awheel-stats = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
@@ -49,4 +51,12 @@ criterion.workspace = true
 
 [[bench]]
 name = "agg_wheel"
+harness = false
+
+[[bench]]
+name = "combine"
+harness = false
+
+[[bench]]
+name = "merge"
 harness = false

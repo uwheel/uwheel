@@ -8,10 +8,11 @@ use core::{
     marker::Copy,
     option::{Option, Option::Some},
 };
+use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
 /// Aggregate State for the [AllAggregator]
+#[derive(AsBytes, FromBytes, FromZeroes, Default, Debug, Clone, Copy)]
 #[repr(C)]
-#[derive(Default, Debug, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct AggState {
     /// Minimum value seen

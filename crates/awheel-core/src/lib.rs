@@ -1,5 +1,6 @@
 //! awheel-core is a sub-crate of ahweel that contains core functionality
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(feature = "simd", feature(portable_simd))]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(nonstandard_style, missing_copy_implementations, missing_docs)]
 #![forbid(unsafe_code)]

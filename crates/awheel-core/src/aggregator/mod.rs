@@ -4,6 +4,8 @@ use core::{
     marker::{Copy, Send},
 };
 
+use zerocopy::{AsBytes, FromBytes};
+
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
@@ -11,8 +13,8 @@ use alloc::vec::Vec;
 #[cfg(feature = "all")]
 pub mod all;
 /// Incremental AVG aggregation
-#[cfg(feature = "avg")]
-pub mod avg;
+// #[cfg(feature = "avg")]
+// pub mod avg;
 /// Incremental MAX aggregation
 #[cfg(feature = "max")]
 pub mod max;
@@ -60,6 +62,7 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     ///
     /// A default implementation is provided that iterates over the aggregates and combines them
     /// individually. If your aggregation supports SIMD, then implement the function accordingly.
+    #[inline]
     fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
         slice.iter().fold(None, |accumulator, &item| {
             Some(match accumulator {
@@ -67,6 +70,18 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
                 None => item,
             })
         })
+    }
+
+    /// Merges two slices of partial aggregates together
+    ///
+    /// A default implementation is provided that iterates over the aggregates and merges them
+    /// individually. If your aggregation supports SIMD, then implement the function accordingly.
+    #[inline]
+    fn merge_slices(s1: &mut [Self::PartialAggregate], s2: &[Self::PartialAggregate]) {
+        // NOTE: merges at most s2.len() aggregates
+        for (self_slot, other_slot) in s1.iter_mut().zip(s2.iter()).take(s2.len()) {
+            *self_slot = Self::combine(*self_slot, *other_slot);
+        }
     }
 
     /// Convert a partial aggregate to a final result
@@ -81,15 +96,6 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     fn decompress(_bytes: &[u8]) -> Option<Vec<Self::PartialAggregate>> {
         None
     }
-}
-
-/// Encodes a slice of partial aggreates to bytes
-pub fn encode_partials<T: PartialAggregateType>(data: &[T]) -> Vec<u8> {
-    let mut result = Vec::with_capacity(core::mem::size_of_val(data));
-    for item in data {
-        result.extend_from_slice(item.to_le_bytes().as_ref());
-    }
-    result
 }
 
 /// Extension trait for inverse combine operations
@@ -140,17 +146,31 @@ impl<T> MutablePartialAggregateType for T where
 
 /// Trait bounds for a partial aggregate type
 #[cfg(not(feature = "serde"))]
-pub trait PartialAggregateBounds: Default + Debug + Clone + Copy + Send {}
+pub trait PartialAggregateBounds:
+    Default + Debug + Clone + Copy + Send + AsBytes + FromBytes
+{
+}
 
 /// Trait bounds for a partial aggregate type
 #[cfg(feature = "serde")]
 pub trait PartialAggregateBounds:
-    Default + Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
+    Default
+    + Debug
+    + Clone
+    + Copy
+    + Send
+    + AsBytes
+    + FromBytes
+    + serde::Serialize
+    + for<'a> serde::Deserialize<'a>
 {
 }
 
 #[cfg(not(feature = "serde"))]
-impl<T> PartialAggregateBounds for T where T: Default + Debug + Clone + Copy + Send {}
+impl<T> PartialAggregateBounds for T where
+    T: Default + Debug + Clone + Copy + Send + AsBytes + FromBytes
+{
+}
 
 #[cfg(feature = "serde")]
 impl<T> PartialAggregateBounds for T where
@@ -159,13 +179,13 @@ impl<T> PartialAggregateBounds for T where
         + Clone
         + Copy
         + Send
+        + AsBytes
+        + FromBytes
         + serde::Serialize
         + for<'a> serde::Deserialize<'a>
         + 'static
 {
 }
-
-// impl<T> PartialAggregateBounds for T where T: PartialAggregateBounds {}
 
 /// An immutable aggregate type
 pub trait PartialAggregateType: PartialAggregateBounds {
@@ -231,44 +251,44 @@ primitive_partial!(f64);
 primitive_partial!(i128);
 primitive_partial!(u128);
 
-macro_rules! tuple_partial {
-    ($t1:ty, $t2:ty) => {
-        impl PartialAggregateType for ($t1, $t2) {
-            type Bytes = [u8; core::mem::size_of::<Self>()];
-            #[inline]
-            fn to_le_bytes(&self) -> Self::Bytes {
-                // Self::to_le_bytes(*self)
-                unimplemented!();
-            }
+// macro_rules! tuple_partial {
+//     ($t1:ty, $t2:ty) => {
+//         impl PartialAggregateType for ($t1, $t2) {
+//             type Bytes = [u8; core::mem::size_of::<Self>()];
+//             #[inline]
+//             fn to_le_bytes(&self) -> Self::Bytes {
+//                 // Self::to_le_bytes(*self)
+//                 unimplemented!();
+//             }
 
-            #[inline]
-            fn from_le_bytes(_bytes: Self::Bytes) -> Self {
-                // Self::from_le_bytes(bytes)
-                unimplemented!();
-            }
+//             #[inline]
+//             fn from_le_bytes(_bytes: Self::Bytes) -> Self {
+//                 // Self::from_le_bytes(bytes)
+//                 unimplemented!();
+//             }
 
-            // #[inline]
-            // fn from_be_bytes(bytes: Self::Bytes) -> Self {
-            //     Self::from_be_bytes(bytes)
-            // }
-            // #[inline]
-            // fn to_be_bytes(&self) -> Self::Bytes {
-            //     Self::to_be_bytes(*self)
-            // }
-            // }
-        }
-    };
-}
+//             // #[inline]
+//             // fn from_be_bytes(bytes: Self::Bytes) -> Self {
+//             //     Self::from_be_bytes(bytes)
+//             // }
+//             // #[inline]
+//             // fn to_be_bytes(&self) -> Self::Bytes {
+//             //     Self::to_be_bytes(*self)
+//             // }
+//             // }
+//         }
+//     };
+// }
 
-tuple_partial!(u16, u16);
-tuple_partial!(u32, u32);
-tuple_partial!(u64, u64);
-tuple_partial!(f32, f32);
-tuple_partial!(f64, f64);
-tuple_partial!(i16, i16);
-tuple_partial!(i32, i32);
-tuple_partial!(i64, i64);
-tuple_partial!(i128, i128);
+// tuple_partial!(u16, u16);
+// tuple_partial!(u32, u32);
+// tuple_partial!(u64, u64);
+// tuple_partial!(f32, f32);
+// tuple_partial!(f64, f64);
+// tuple_partial!(i16, i16);
+// tuple_partial!(i32, i32);
+// tuple_partial!(i64, i64);
+// tuple_partial!(i128, i128);
 
 // macro_rules! tuple_partial {
 //     ( $( $name:ident )+ ) => {

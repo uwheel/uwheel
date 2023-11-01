@@ -1,8 +1,14 @@
 use super::super::Aggregator;
 use crate::aggregator::InverseExt;
 
+#[cfg(feature = "simd")]
+use core::simd::{f32x16, f64x8, i16x32, i32x16, i64x8, u16x32, u32x16, u64x8};
+
 macro_rules! integer_sum_impl {
     ($struct:tt, $type:ty, $pa:tt) => {
+        integer_sum_impl!($struct, $type, $pa, ());
+    };
+    ($struct:tt, $type:ty, $pa:tt, $simd: ty) => {
         #[derive(Default, Debug, Clone, Copy)]
         #[allow(missing_docs)]
         pub struct $struct;
@@ -40,9 +46,33 @@ macro_rules! integer_sum_impl {
                 Some(arrow2::compute::aggregate::sum_slice(slice))
             }
 
+            #[cfg(feature = "simd")]
+            #[inline]
+            fn merge_slices(arr1: &mut [Self::PartialAggregate], arr2: &[Self::PartialAggregate]) {
+                let simd_width = <$simd>::LANES;
+                let mut i = 0;
+
+                // Process as many elements as possible in SIMD chunks
+                while i + simd_width <= arr1.len() {
+                    let a = <$simd>::from_slice(&arr1[i..]);
+                    let b = <$simd>::from_slice(&arr2[i..]);
+                    let sum = a + b;
+
+                    // Store the result in the first array
+                    sum.copy_to_slice(&mut arr1[i..]);
+
+                    i += simd_width;
+                }
+
+                // Process the remaining elements sequentially
+                for j in i..arr1.len() {
+                    arr1[j] += arr2[j];
+                }
+            }
+
             #[inline]
             fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
-                a
+                a.into()
             }
 
             #[cfg(feature = "pco")]
@@ -130,12 +160,37 @@ macro_rules! float_sum_impl {
     };
 }
 
+// #[cfg(not(feature = "simd"))]
 // integer_sum_impl!(U16SumAggregator, u16, u16);
+// #[cfg(feature = "simd")]
+// integer_sum_impl!(U16SumAggregator, u16, u16, u16x32);
+
+#[cfg(not(feature = "simd"))]
 integer_sum_impl!(U32SumAggregator, u32, u32);
+#[cfg(feature = "simd")]
+integer_sum_impl!(U32SumAggregator, u32, u32, u32x16);
+
+#[cfg(not(feature = "simd"))]
 integer_sum_impl!(U64SumAggregator, u64, u64);
+#[cfg(feature = "simd")]
+integer_sum_impl!(U64SumAggregator, u64, u64, u64x8);
+
+// #[cfg(not(feature = "simd"))]
 // integer_sum_impl!(I16SumAggregator, i16, i16);
+// #[cfg(feature = "simd")]
+// integer_sum_impl!(I16SumAggregator, i16, i16, i16x32);
+
+#[cfg(not(feature = "simd"))]
 integer_sum_impl!(I32SumAggregator, i32, i32);
+#[cfg(feature = "simd")]
+integer_sum_impl!(I32SumAggregator, i32, i32, i32x16);
+
+#[cfg(not(feature = "simd"))]
 integer_sum_impl!(I64SumAggregator, i64, i64);
+#[cfg(feature = "simd")]
+integer_sum_impl!(I64SumAggregator, i64, i64, i64x8);
+
+// #[cfg(not(feature = "simd"))]
 // integer_sum_impl!(I128SumAggregator, i128, i128);
 
 float_sum_impl!(F32SumAggregator, f32, f32);
