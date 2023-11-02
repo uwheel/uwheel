@@ -11,6 +11,12 @@ pub struct PartialArray<'a, A: Aggregator> {
     arr: &'a [A::PartialAggregate],
 }
 
+impl<'a, A: Aggregator> AsRef<[A::PartialAggregate]> for PartialArray<'a, A> {
+    fn as_ref(&self) -> &[A::PartialAggregate] {
+        &self.arr
+    }
+}
+
 impl<'a, A: Aggregator> PartialArray<'a, A> {
     /// Creates a PartialArray from a byte-slice
     pub fn from_bytes(bytes: &'a [u8]) -> Self {
@@ -34,6 +40,7 @@ impl<'a, A: Aggregator> PartialArray<'a, A> {
     ///
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of array
+    #[inline]
     pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
@@ -47,6 +54,7 @@ impl<'a, A: Aggregator> PartialArray<'a, A> {
     ///
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the array
+    #[inline]
     pub fn combine_range_and_lower<R>(&self, range: R) -> Option<A::Aggregate>
     where
         R: RangeBounds<usize>,
@@ -59,7 +67,8 @@ impl<'a, A: Aggregator> PartialArray<'a, A> {
     /// # Panics
     ///
     /// Panics if the starting point is greater than the end point or if
-    /// the end point is greater than the length of the array    #[inline]
+    /// the end point is greater than the length of the array
+    #[inline]
     pub fn combine_range_with_filter<R>(
         &self,
         range: R,
@@ -181,14 +190,17 @@ impl<A: Aggregator> MutablePartialArray<A> {
         let _ = self.inner.pop();
     }
 
-    /// Merges two partial arrays of the same size
+    /// Merges another mutable array into this array
     pub fn merge(&mut self, other: &Self) {
         A::merge_slices(&mut self.inner, &other.inner);
     }
     /// Merges a partial array into this mutable array
-    pub fn merge_with_ref(&mut self, other: PartialArray<'_, A>) {
-        A::merge_slices(&mut self.inner, other.arr);
+    pub fn merge_with_ref(&mut self, other: impl AsRef<[A::PartialAggregate]>) {
+        A::merge_slices(&mut self.inner, other.as_ref());
     }
+    // pub fn merge_with_ref(&mut self, other: &PartialArray<'_, A>) {
+    // A::merge_slices(&mut self.inner, other.arr);
+    // }
 
     /// Returns a front-to-back iterator of roll-up slots
     #[inline]
@@ -255,5 +267,10 @@ impl<A: Aggregator> MutablePartialArray<A> {
     #[inline]
     pub fn get_mut(&mut self, slot: usize) -> Option<&mut A::PartialAggregate> {
         self.inner.get_mut(slot)
+    }
+}
+impl<'a, A: Aggregator> AsRef<[A::PartialAggregate]> for MutablePartialArray<A> {
+    fn as_ref(&self) -> &[A::PartialAggregate] {
+        &self.inner
     }
 }

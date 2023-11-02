@@ -2,7 +2,12 @@ use super::super::Aggregator;
 use crate::aggregator::InverseExt;
 
 #[cfg(feature = "simd")]
-use core::simd::{f32x16, f64x8, i16x32, i32x16, i64x8, u16x32, u32x16, u64x8};
+use core::simd::{i32x16, i64x8, u32x16, u64x8};
+
+#[cfg(feature = "simd")]
+use multiversion::multiversion;
+
+// use core::simd::{f32x16, f64x8};
 
 macro_rules! integer_sum_impl {
     ($struct:tt, $type:ty, $pa:tt) => {
@@ -47,26 +52,27 @@ macro_rules! integer_sum_impl {
             }
 
             #[cfg(feature = "simd")]
+            #[multiversion(targets = "simd")]
             #[inline]
-            fn merge_slices(arr1: &mut [Self::PartialAggregate], arr2: &[Self::PartialAggregate]) {
+            fn merge_slices(dst: &mut [$pa], src: &[$pa]) {
                 let simd_width = <$simd>::LANES;
                 let mut i = 0;
 
                 // Process as many elements as possible in SIMD chunks
-                while i + simd_width <= arr1.len() {
-                    let a = <$simd>::from_slice(&arr1[i..]);
-                    let b = <$simd>::from_slice(&arr2[i..]);
+                while i + simd_width <= src.len() {
+                    let a = <$simd>::from_slice(&dst[i..]);
+                    let b = <$simd>::from_slice(&src[i..]);
                     let sum = a + b;
 
-                    // Store the result in the first array
-                    sum.copy_to_slice(&mut arr1[i..]);
+                    // merge the result into dst
+                    sum.copy_to_slice(&mut dst[i..]);
 
                     i += simd_width;
                 }
 
                 // Process the remaining elements sequentially
-                for j in i..arr1.len() {
-                    arr1[j] += arr2[j];
+                for j in i..src.len() {
+                    dst[j] += src[j];
                 }
             }
 

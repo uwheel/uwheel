@@ -639,11 +639,27 @@ impl<A: Aggregator> AggregationWheel<A> {
     }
 
     /// Merges the slots from a zero-copy partial array into this one
-    pub fn merge_from_array<'a>(&mut self, array: PartialArray<'a, A>) {
+    pub fn merge_from_array<'a>(&mut self, array: &PartialArray<'a, A>) {
         if let Some(total) = array.combine_range(..) {
             combine_or_insert::<A>(&mut self.total, total);
         }
         self.slots.merge_with_ref(array);
+    }
+
+    /// Merges the slots from a reference
+    pub fn merge_from_ref<'a>(&mut self, array: impl AsRef<[A::PartialAggregate]>) {
+        if let Some(total) = A::combine_slice(array.as_ref()) {
+            combine_or_insert::<A>(&mut self.total, total);
+        }
+
+        self.slots.merge_with_ref(array);
+    }
+
+    /// Merges the slots from an array partial arrays into this wheel
+    pub fn merge_from_arrays<'a>(&mut self, arrays: &[PartialArray<'a, A>]) {
+        for array in arrays {
+            self.merge_from_array(array)
+        }
     }
 
     /// Returns a reference to roll-up slots
@@ -1047,7 +1063,7 @@ mod tests {
 
         let slots = wheel.slots.as_bytes().to_vec();
         let partial: PartialArray<'_, U64SumAggregator> = PartialArray::from_bytes(&slots);
-        wheel.merge_from_array(partial);
+        wheel.merge_from_ref(partial);
         assert_eq!(wheel.combine_range(..), Some(499500 * 2));
     }
 
