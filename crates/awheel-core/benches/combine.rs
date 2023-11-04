@@ -1,6 +1,6 @@
 use awheel_core::{
     aggregator::{max::U64MaxAggregator, min::U64MinAggregator, sum::U64SumAggregator},
-    rw_wheel::read::aggregation::PartialArray,
+    rw_wheel::read::aggregation::array::PartialArray,
     *,
 };
 use criterion::{
@@ -12,7 +12,7 @@ use criterion::{
     BenchmarkId,
     Criterion,
 };
-use zerocopy::{self, AsBytes, Ref};
+use zerocopy::{self, AsBytes};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("combine");

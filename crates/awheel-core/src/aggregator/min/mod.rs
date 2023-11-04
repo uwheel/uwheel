@@ -26,11 +26,6 @@ macro_rules! min_impl {
             fn freeze(a: Self::MutablePartialAggregate) -> Self::PartialAggregate {
                 a.into()
             }
-            #[cfg(feature = "simd")]
-            #[inline]
-            fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
-                Some(arrow2::compute::aggregate::min_slice(slice))
-            }
 
             #[inline]
             fn combine(

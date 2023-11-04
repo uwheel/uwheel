@@ -35,12 +35,6 @@ macro_rules! max_impl {
                 <$type>::max(a, b)
             }
 
-            #[cfg(feature = "simd")]
-            #[inline]
-            fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
-                Some(arrow2::compute::aggregate::max_slice(slice))
-            }
-
             #[inline]
             fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a

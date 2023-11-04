@@ -26,12 +26,11 @@ sync = ["dep:parking_lot", "std"]
 timer = []
 profiler = ["dep:awheel-stats", "prettytable-rs", "std"]
 pco = ["dep:pco", "std"]
-simd = ["dep:arrow2", "dep:multiversion", "std"]
+simd = ["dep:multiversion"]
 
 
 [dependencies]
-arrow2 = { git = "https://github.com/Max-Meldrum/arrow2.git", branch = "min_max_slice", features = ["simd", "compute_aggregate"], optional = true }
-multiversion = { version = "0.7.3", optional = true }
+multiversion = { version = "0.7.3", default-features = false, optional = true }
 rayon = { version = "1.8.0", optional = true }
 zerocopy = { version = "0.7.18", features = ["derive"] }
 pco = { version = "0.0.0-alpha.1", optional = true }
