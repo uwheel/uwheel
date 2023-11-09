@@ -86,7 +86,7 @@ impl Duration {
     /// Equivalent to `0.seconds()`.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::ZERO, 0.seconds());
     /// ```
     pub const ZERO: Self = Self::seconds(0);
@@ -94,7 +94,7 @@ impl Duration {
     /// Equivalent to `1.nanoseconds()`.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::NANOSECOND, 1.nanoseconds());
     /// ```
     pub const NANOSECOND: Self = Self::nanoseconds(1);
@@ -102,7 +102,7 @@ impl Duration {
     /// Equivalent to `1.microseconds()`.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::MICROSECOND, 1.microseconds());
     /// ```
     pub const MICROSECOND: Self = Self::microseconds(1);
@@ -110,7 +110,7 @@ impl Duration {
     /// Equivalent to `1.milliseconds()`.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::MILLISECOND, 1.milliseconds());
     /// ```
     pub const MILLISECOND: Self = Self::milliseconds(1);
@@ -118,7 +118,7 @@ impl Duration {
     /// Equivalent to `1.seconds()`.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::SECOND, 1.seconds());
     /// ```
     pub const SECOND: Self = Self::seconds(1);
@@ -126,7 +126,7 @@ impl Duration {
     /// Equivalent to `1.minutes()`.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::MINUTE, 1.minutes());
     /// ```
     pub const MINUTE: Self = Self::minutes(1);
@@ -134,7 +134,7 @@ impl Duration {
     /// Equivalent to `1.hours()`.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::HOUR, 1.hours());
     /// ```
     pub const HOUR: Self = Self::hours(1);
@@ -142,7 +142,7 @@ impl Duration {
     /// Equivalent to `1.days()`.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::DAY, 1.days());
     /// ```
     pub const DAY: Self = Self::days(1);
@@ -150,7 +150,7 @@ impl Duration {
     /// Equivalent to `1.weeks()`.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::WEEK, 1.weeks());
     /// ```
     pub const WEEK: Self = Self::weeks(1);
@@ -166,7 +166,7 @@ impl Duration {
     /// Check if a duration is exactly zero.
     ///
     /// ```rust
-    /// # use awheel_core::time::NumericalDuration;
+    /// # use awheel_core::time_internal::NumericalDuration;
     /// assert!(0.seconds().is_zero());
     /// assert!(!1.nanoseconds().is_zero());
     /// ```
@@ -177,7 +177,7 @@ impl Duration {
     /// Check if a duration is negative.
     ///
     /// ```rust
-    /// # use awheel_core::time::NumericalDuration;
+    /// # use awheel_core::time_internal::NumericalDuration;
     /// assert!((-1).seconds().is_negative());
     /// assert!(!0.seconds().is_negative());
     /// assert!(!1.seconds().is_negative());
@@ -189,7 +189,7 @@ impl Duration {
     /// Check if a duration is positive.
     ///
     /// ```rust
-    /// # use awheel_core::time::NumericalDuration;
+    /// # use awheel_core::time_internal::NumericalDuration;
     /// assert!(1.seconds().is_positive());
     /// assert!(!0.seconds().is_positive());
     /// assert!(!(-1).seconds().is_positive());
@@ -205,7 +205,7 @@ impl Duration {
     /// This method saturates the returned value if it would otherwise overflow.
     ///
     /// ```rust
-    /// # use awheel_core::time::NumericalDuration;
+    /// # use awheel_core::time_internal::NumericalDuration;
     /// assert_eq!(1.seconds().abs(), 1.seconds());
     /// assert_eq!(0.seconds().abs(), 0.seconds());
     /// assert_eq!((-1).seconds().abs(), 1.seconds());
@@ -245,7 +245,7 @@ impl Duration {
     /// least ±10<sup>9</sup>, it will wrap to the number of seconds.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::new(1, 0), 1.seconds());
     /// assert_eq!(Duration::new(-1, 0), (-1).seconds());
     /// assert_eq!(Duration::new(1, 2_000_000_000), 3.seconds());
@@ -274,7 +274,7 @@ impl Duration {
     /// `Duration::seconds(weeks * 604_800)`.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::weeks(1), 604_800.seconds());
     /// ```
     pub const fn weeks(weeks: i64) -> Self {
@@ -296,7 +296,7 @@ impl Duration {
     /// `Duration::seconds(days * 86_400)`.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::days(1), 86_400.seconds());
     /// ```
     pub const fn days(days: i64) -> Self {
@@ -310,7 +310,7 @@ impl Duration {
     /// `Duration::seconds(hours * 3_600)`.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::hours(1), 3_600.seconds());
     /// ```
     pub const fn hours(hours: i64) -> Self {
@@ -324,7 +324,7 @@ impl Duration {
     /// `Duration::seconds(minutes * 60)`.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::minutes(1), 60.seconds());
     /// ```
     pub const fn minutes(minutes: i64) -> Self {
@@ -337,7 +337,7 @@ impl Duration {
     /// Create a new `Duration` with the given number of seconds.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::seconds(1), 1_000.milliseconds());
     /// ```
     pub const fn seconds(seconds: i64) -> Self {
@@ -347,7 +347,7 @@ impl Duration {
     /// Create a new `Duration` with the given number of milliseconds.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::milliseconds(1), 1_000.microseconds());
     /// assert_eq!(Duration::milliseconds(-1), (-1_000).microseconds());
     /// ```
@@ -361,7 +361,7 @@ impl Duration {
     /// Create a new `Duration` with the given number of microseconds.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(Duration::microseconds(1), 1_000.nanoseconds());
     /// assert_eq!(Duration::microseconds(-1), (-1_000).nanoseconds());
     /// ```
@@ -386,7 +386,7 @@ impl Duration {
     /// Get the number of whole weeks in the duration.
     ///
     /// ```rust
-    /// # use awheel_core::time::NumericalDuration;
+    /// # use awheel_core::time_internal::NumericalDuration;
     /// assert_eq!(1.weeks().whole_weeks(), 1);
     /// assert_eq!((-1).weeks().whole_weeks(), -1);
     /// assert_eq!(6.days().whole_weeks(), 0);
@@ -399,7 +399,7 @@ impl Duration {
     /// Get the number of whole days in the duration.
     ///
     /// ```rust
-    /// # use awheel_core::time::NumericalDuration;
+    /// # use awheel_core::time_internal::NumericalDuration;
     /// assert_eq!(1.days().whole_days(), 1);
     /// assert_eq!((-1).days().whole_days(), -1);
     /// assert_eq!(23.hours().whole_days(), 0);
@@ -412,7 +412,7 @@ impl Duration {
     /// Get the number of whole hours in the duration.
     ///
     /// ```rust
-    /// # use awheel_core::time::NumericalDuration;
+    /// # use awheel_core::time_internal::NumericalDuration;
     /// assert_eq!(1.hours().whole_hours(), 1);
     /// assert_eq!((-1).hours().whole_hours(), -1);
     /// assert_eq!(59.minutes().whole_hours(), 0);
@@ -425,7 +425,7 @@ impl Duration {
     /// Get the number of whole minutes in the duration.
     ///
     /// ```rust
-    /// # use awheel_core::time::NumericalDuration;
+    /// # use awheel_core::time_internal::NumericalDuration;
     /// assert_eq!(1.minutes().whole_minutes(), 1);
     /// assert_eq!((-1).minutes().whole_minutes(), -1);
     /// assert_eq!(59.seconds().whole_minutes(), 0);
@@ -438,7 +438,7 @@ impl Duration {
     /// Get the number of whole seconds in the duration.
     ///
     /// ```rust
-    /// # use awheel_core::time::NumericalDuration;
+    /// # use awheel_core::time_internal::NumericalDuration;
     /// assert_eq!(1.seconds().whole_seconds(), 1);
     /// assert_eq!((-1).seconds().whole_seconds(), -1);
     /// assert_eq!(1.minutes().whole_seconds(), 60);
@@ -461,7 +461,7 @@ impl Duration {
     /// Get the number of whole milliseconds in the duration.
     ///
     /// ```rust
-    /// # use awheel_core::time::NumericalDuration;
+    /// # use awheel_core::time_internal::NumericalDuration;
     /// assert_eq!(1.seconds().whole_milliseconds(), 1_000);
     /// assert_eq!((-1).seconds().whole_milliseconds(), -1_000);
     /// assert_eq!(1.milliseconds().whole_milliseconds(), 1);
@@ -479,7 +479,7 @@ impl Duration {
     /// Get the number of whole microseconds in the duration.
     ///
     /// ```rust
-    /// # use awheel_core::time::NumericalDuration;
+    /// # use awheel_core::time_internal::NumericalDuration;
     /// assert_eq!(1.milliseconds().whole_microseconds(), 1_000);
     /// assert_eq!((-1).milliseconds().whole_microseconds(), -1_000);
     /// assert_eq!(1.microseconds().whole_microseconds(), 1);
@@ -497,7 +497,7 @@ impl Duration {
     /// Get the number of nanoseconds in the duration.
     ///
     /// ```rust
-    /// # use awheel_core::time::NumericalDuration;
+    /// # use awheel_core::time_internal::NumericalDuration;
     /// assert_eq!(1.microseconds().whole_nanoseconds(), 1_000);
     /// assert_eq!((-1).microseconds().whole_nanoseconds(), -1_000);
     /// assert_eq!(1.nanoseconds().whole_nanoseconds(), 1);
@@ -517,7 +517,7 @@ impl Duration {
     /// Computes `self + rhs`, returning `None` if an overflow occurred.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(5.seconds().checked_add(5.seconds()), Some(10.seconds()));
     /// assert_eq!(Duration::MAX.checked_add(1.nanoseconds()), None);
     /// assert_eq!((-5).seconds().checked_add(5.seconds()), Some(0.seconds()));
@@ -540,7 +540,7 @@ impl Duration {
     /// Computes `self - rhs`, returning `None` if an overflow occurred.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(5.seconds().checked_sub(5.seconds()), Some(Duration::ZERO));
     /// assert_eq!(Duration::MIN.checked_sub(1.nanoseconds()), None);
     /// assert_eq!(5.seconds().checked_sub(10.seconds()), Some((-5).seconds()));
@@ -563,7 +563,7 @@ impl Duration {
     /// Computes `self * rhs`, returning `None` if an overflow occurred.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(5.seconds().checked_mul(2), Some(10.seconds()));
     /// assert_eq!(5.seconds().checked_mul(-2), Some((-10).seconds()));
     /// assert_eq!(5.seconds().checked_mul(0), Some(0.seconds()));
@@ -585,7 +585,7 @@ impl Duration {
     /// Computes `self / rhs`, returning `None` if `rhs == 0` or if the result would overflow.
     ///
     /// ```rust
-    /// # use awheel_core::time::NumericalDuration;
+    /// # use awheel_core::time_internal::NumericalDuration;
     /// assert_eq!(10.seconds().checked_div(2), Some(5.seconds()));
     /// assert_eq!(10.seconds().checked_div(-2), Some((-5).seconds()));
     /// assert_eq!(1.seconds().checked_div(0), None);
@@ -604,7 +604,7 @@ impl Duration {
     /// Computes `self + rhs`, saturating if an overflow occurred.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(5.seconds().saturating_add(5.seconds()), 10.seconds());
     /// assert_eq!(Duration::MAX.saturating_add(1.nanoseconds()), Duration::MAX);
     /// assert_eq!(
@@ -643,7 +643,7 @@ impl Duration {
     /// Computes `self - rhs`, saturating if an overflow occurred.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(5.seconds().saturating_sub(5.seconds()), Duration::ZERO);
     /// assert_eq!(Duration::MIN.saturating_sub(1.nanoseconds()), Duration::MIN);
     /// assert_eq!(
@@ -682,7 +682,7 @@ impl Duration {
     /// Computes `self * rhs`, saturating if an overflow occurred.
     ///
     /// ```rust
-    /// # use awheel_core::time::{Duration, NumericalDuration};
+    /// # use awheel_core::time_internal::{Duration, NumericalDuration};
     /// assert_eq!(5.seconds().saturating_mul(2), 10.seconds());
     /// assert_eq!(5.seconds().saturating_mul(-2), (-10).seconds());
     /// assert_eq!(5.seconds().saturating_mul(0), Duration::ZERO);
@@ -722,7 +722,7 @@ impl Duration {
 /// For a concise, rounded printout instead, you can use the `.N` format specifier:
 ///
 /// ```
-/// # use awheel_core::time::Duration;
+/// # use awheel_core::time_internal::Duration;
 /// #
 /// let duration = Duration::new(123456, 789011223);
 /// println!("{duration:.3}");

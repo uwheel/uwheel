@@ -98,6 +98,10 @@ impl WheelConf {
     pub fn set_drill_down(&mut self, drill_down: bool) {
         self.drill_down = drill_down;
     }
+    /// Sets the watermark
+    pub fn set_watermark(&mut self, watermark: u64) {
+        self.watermark = watermark;
+    }
     /// Configures the wheel to maintain dril-down slots
     pub fn with_drill_down(mut self, drill_down: bool) -> Self {
         self.drill_down = drill_down;

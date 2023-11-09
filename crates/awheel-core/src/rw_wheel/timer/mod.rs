@@ -11,7 +11,7 @@ pub(crate) mod raw_wheel;
 use core::{fmt::Debug, hash::Hash, time::Duration};
 pub(super) use raw_wheel::RawTimerWheel;
 
-use crate::{time, Aggregator};
+use crate::{time_internal, Aggregator};
 use core::{fmt, fmt::Display};
 
 /// Result of a [can_skip](quad_wheel::QuadWheelWithOverflow::can_skip) invocation
@@ -116,5 +116,5 @@ pub type WheelFn<A, K> = Box<dyn Fn(&Haw<A, K>)>;
 
 pub enum TimerAction<A: Aggregator, K: Kind> {
     Oneshot(WheelFn<A, K>),
-    Repeat((u64, time::Duration, WheelFn<A, K>)),
+    Repeat((u64, time_internal::Duration, WheelFn<A, K>)),
 }

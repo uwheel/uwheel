@@ -54,7 +54,7 @@ min_impl!(F64MinAggregator, f64, f64);
 
 #[cfg(test)]
 mod tests {
-    use crate::{time::NumericalDuration, Entry, RwWheel};
+    use crate::{time_internal::NumericalDuration, Entry, RwWheel};
 
     use super::*;
 

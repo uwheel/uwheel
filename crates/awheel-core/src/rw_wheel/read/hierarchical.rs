@@ -1,5 +1,6 @@
 use core::{
     cmp,
+    fmt::{self, Display},
     iter::IntoIterator,
     marker::PhantomData,
     ops::RangeBounds,
@@ -8,6 +9,7 @@ use core::{
         Option::{None, Some},
     },
 };
+use time::OffsetDateTime;
 
 use super::{
     super::write::WriteAheadWheel,
@@ -18,7 +20,7 @@ use super::{
 use crate::{
     aggregator::Aggregator,
     rw_wheel::read::{aggregation::WheelSlot, Mode},
-    time::{self, Duration},
+    time_internal::{self, Duration},
 };
 
 #[cfg(not(feature = "std"))]
@@ -55,6 +57,8 @@ pub const YEAR_TICK_MS: u64 = WEEK_TICK_MS * 52;
 /// Configuration for a Hierarchical Aggregation Wheel
 #[derive(Clone, Copy, Debug)]
 pub struct HawConf {
+    /// Initial watermark of the wheel
+    pub watermark: u64,
     /// Config for the seconds wheel
     pub seconds: WheelConf,
     /// Config for the minutes wheel
@@ -72,6 +76,7 @@ pub struct HawConf {
 impl Default for HawConf {
     fn default() -> Self {
         Self {
+            watermark: 0,
             seconds: WheelConf::new(SECOND_TICK_MS, SECONDS),
             minutes: WheelConf::new(MINUTE_TICK_MS, MINUTES),
             hours: WheelConf::new(HOUR_TICK_MS, HOURS),
@@ -83,6 +88,18 @@ impl Default for HawConf {
 }
 
 impl HawConf {
+    /// Configures the initial watermark
+    pub fn with_watermark(mut self, watermark: u64) -> Self {
+        self.seconds.set_watermark(watermark);
+        self.minutes.set_watermark(watermark);
+        self.hours.set_watermark(watermark);
+        self.days.set_watermark(watermark);
+        self.weeks.set_watermark(watermark);
+        self.years.set_watermark(watermark);
+
+        self.watermark = watermark;
+        self
+    }
     /// Configures the seconds granularity
     pub fn with_seconds(mut self, seconds: WheelConf) -> Self {
         self.seconds = seconds;
@@ -257,7 +274,7 @@ where
 
     /// Returns Duration that represents where the wheel currently is in its cycle
     #[inline]
-    pub fn current_time_in_cycle(&self) -> time::Duration {
+    pub fn current_time_in_cycle(&self) -> time_internal::Duration {
         let secs = self.seconds_wheel.rotation_count() as u64;
         let min_secs = self.minutes_wheel.rotation_count() as u64 * Self::MINUTES_AS_SECS;
         let hr_secs = self.hours_wheel.rotation_count() as u64 * Self::HOURS_AS_SECS;
@@ -265,12 +282,12 @@ where
         let week_secs = self.weeks_wheel.rotation_count() as u64 * Self::WEEK_AS_SECS;
         let year_secs = self.years_wheel.rotation_count() as u64 * Self::YEAR_AS_SECS;
         let cycle_time = secs + min_secs + hr_secs + day_secs + week_secs + year_secs;
-        time::Duration::seconds(cycle_time as i64)
+        time_internal::Duration::seconds(cycle_time as i64)
     }
 
     /// Advance the watermark of the wheel by the given [time::Duration]
     #[inline(always)]
-    pub fn advance(&mut self, duration: time::Duration, waw: &mut WriteAheadWheel<A>) {
+    pub fn advance(&mut self, duration: time_internal::Duration, waw: &mut WriteAheadWheel<A>) {
         let mut ticks: usize = duration.whole_seconds() as usize;
 
         // helper fn to tick N times
@@ -319,7 +336,7 @@ where
     #[inline(always)]
     pub fn advance_and_emit_deltas(
         &mut self,
-        duration: time::Duration,
+        duration: time_internal::Duration,
         waw: &mut WriteAheadWheel<A>,
     ) -> Vec<Option<A::PartialAggregate>> {
         let ticks: usize = duration.whole_seconds() as usize;
@@ -340,7 +357,7 @@ where
     #[inline]
     pub(crate) fn advance_to(&mut self, watermark: u64, waw: &mut WriteAheadWheel<A>) {
         let diff = watermark.saturating_sub(self.watermark());
-        self.advance(time::Duration::milliseconds(diff as i64), waw);
+        self.advance(time_internal::Duration::milliseconds(diff as i64), waw);
     }
 
     /// Advances the wheel by applying a set of deltas where each delta represents the lowest unit of time
@@ -370,13 +387,87 @@ where
         self.watermark
     }
     /// Returns the aggregate in the given time interval
-    pub fn interval_and_lower(&self, dur: time::Duration) -> Option<A::Aggregate> {
+    pub fn interval_and_lower(&self, dur: time_internal::Duration) -> Option<A::Aggregate> {
         self.interval(dur).map(|partial| A::lower(partial))
+    }
+    /// Combines partial aggregates within the given date range and lowers it to a final aggregate
+    #[inline]
+    pub fn combine_range_and_lower(
+        &self,
+        start: OffsetDateTime,
+        end: OffsetDateTime,
+    ) -> Option<A::Aggregate> {
+        self.combine_range(start, end).map(A::lower)
+    }
+    /// Combines partial aggregates within the given date range
+    #[inline]
+    pub fn combine_range(
+        &self,
+        start: OffsetDateTime,
+        end: OffsetDateTime,
+    ) -> Option<A::PartialAggregate> {
+        // NOTE: very naivé version, still needs checks and can do more optimizations
+        assert!(
+            end >= start,
+            "End date needs to be equal or larger than start date"
+        );
+        let is_seconds = start.second() != 0 || end.second() != 0;
+        let is_minutes = start.minute() != 0 || end.minute() != 0;
+        let is_hours = start.hour() != 0 || end.hour() != 0;
+
+        let watermark_date =
+            |wm: u64| OffsetDateTime::from_unix_timestamp((wm as i64) / 1000).unwrap();
+
+        // TODO: move inner logic to inner wheel?
+        if is_seconds {
+            // We have the number of seconds in the range
+            let seconds = (end - start).whole_seconds();
+            // dbg!(seconds);
+            if let Some(wheel) = self.seconds_wheel.as_ref() {
+                let watermark = watermark_date(wheel.watermark());
+                let watermark_start_diff: usize = (watermark - start).whole_seconds() as usize;
+                let start_pos = watermark_start_diff - seconds as usize;
+                let end_pos = start_pos + seconds as usize;
+                // dbg!(start_pos, end_pos);
+                wheel.combine_range(start_pos..end_pos)
+            } else {
+                panic!("sec wheel not initialized");
+            }
+        } else if is_minutes {
+            // We have the number of minutes in the range
+            let minutes = (end - start).whole_minutes();
+            dbg!(minutes);
+            if let Some(wheel) = self.minutes_wheel.as_ref() {
+                let watermark = watermark_date(wheel.watermark());
+                // start must be lower than watermark
+                // end must be lower or equal to watermark
+                let watermark_start_diff: usize = (watermark - start).whole_minutes() as usize;
+                let start_pos = watermark_start_diff - minutes as usize;
+                let end_pos = start_pos + minutes as usize;
+                wheel.combine_range(start_pos..end_pos)
+            } else {
+                panic!("min wheel not initialized");
+            }
+        } else if is_hours {
+            let hours = (end - start).whole_hours();
+            // dbg!(hours);
+            if let Some(wheel) = self.hours_wheel.as_ref() {
+                let watermark = watermark_date(wheel.watermark());
+                let watermark_start_diff: usize = (watermark - start).whole_hours() as usize;
+                let start_pos = watermark_start_diff - hours as usize;
+                let end_pos = start_pos + hours as usize;
+                wheel.combine_range(start_pos..end_pos)
+            } else {
+                panic!("hours wheel not initialized");
+            }
+        } else {
+            unimplemented!();
+        }
     }
 
     // helper function to convert a time interval to the responding time granularities
     #[inline]
-    fn duration_to_granularities(dur: time::Duration) -> Granularities {
+    fn duration_to_granularities(dur: time_internal::Duration) -> Granularities {
         // closure that turns i64 to None if it is zero
         let to_option = |num: i64| {
             if num == 0 {
@@ -411,7 +502,7 @@ where
     pub(crate) fn schedule_repeat(
         &self,
         at: u64,
-        interval: time::Duration,
+        interval: time_internal::Duration,
         f: impl Fn(&Haw<A, K>) + 'static,
     ) -> Result<(), TimerError<TimerAction<A, K>>> {
         self.timer
@@ -455,7 +546,7 @@ where
     ///
     /// The given time duration must be quantizable to the time intervals of the HAW
     #[inline]
-    pub fn interval(&self, dur: time::Duration) -> Option<A::PartialAggregate> {
+    pub fn interval(&self, dur: time_internal::Duration) -> Option<A::PartialAggregate> {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.interval);
 
@@ -662,16 +753,16 @@ where
 
     // Checks whether the duration is quantizable to time intervals of HAW
     #[inline]
-    const fn is_quantizable(duration: time::Duration) -> bool {
+    const fn is_quantizable(duration: time_internal::Duration) -> bool {
         let seconds = duration.whole_seconds();
 
         if seconds > 0 && seconds <= 59
-            || seconds % time::Duration::minutes(1).whole_seconds() == 0
-            || seconds % time::Duration::hours(1).whole_seconds() == 0
-            || seconds % time::Duration::days(1).whole_seconds() == 0
-            || seconds % time::Duration::weeks(1).whole_seconds() == 0
-            || seconds % time::Duration::years(1).whole_seconds() == 0
-            || seconds <= time::Duration::years(YEARS as i64).whole_seconds()
+            || seconds % time_internal::Duration::minutes(1).whole_seconds() == 0
+            || seconds % time_internal::Duration::hours(1).whole_seconds() == 0
+            || seconds % time_internal::Duration::days(1).whole_seconds() == 0
+            || seconds % time_internal::Duration::weeks(1).whole_seconds() == 0
+            || seconds % time_internal::Duration::years(1).whole_seconds() == 0
+            || seconds <= time_internal::Duration::years(YEARS as i64).whole_seconds()
         {
             return true;
         }
@@ -946,15 +1037,52 @@ where
     }
 }
 
+/// A type containing error variants that may arise when querying a wheel
+#[derive(Copy, Clone, Debug)]
+pub enum QueryError {
+    /// Invalid Date Range
+    Invalid,
+}
+impl Display for QueryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            QueryError::Invalid => write!(f, "Invalid Date Range"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{aggregator::sum::U64SumAggregator, time::NumericalDuration};
+    use crate::{aggregator::sum::U64SumAggregator, time_internal::NumericalDuration};
+    use time::macros::datetime;
 
     use super::*;
 
     #[test]
     fn delta_advance_test() {
         let mut haw: Haw<U64SumAggregator> = Haw::new(0, Default::default());
+        // oldest to newest
+        let deltas = vec![Some(10), None, Some(50), None];
+
+        // Visualization:
+        // 10
+        // 0, 10
+        // 50, 0, 10
+        // 0, 50, 0, 10
+        haw.delta_advance(deltas);
+
+        assert_eq!(haw.interval(1.seconds()), Some(0));
+        assert_eq!(haw.interval(2.seconds()), Some(50));
+        assert_eq!(haw.interval(3.seconds()), Some(50));
+        assert_eq!(haw.interval(4.seconds()), Some(60));
+    }
+
+    #[test]
+    fn range_query_sec_test() {
+        // 2023-11-09 00:00:00
+        let watermark = 1699488000000;
+        let conf = HawConf::default().with_watermark(watermark);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(watermark, conf);
         // oldest to newest
         let deltas = vec![Some(10), None, Some(50), None];
 
@@ -965,9 +1093,36 @@ mod tests {
         assert_eq!(haw.interval(3.seconds()), Some(50));
         assert_eq!(haw.interval(4.seconds()), Some(60));
 
-        // 10
-        // 0, 10
-        // 50, 0, 10
-        // 0, 50, 0, 10
+        let start = datetime!(2023-11-09 00:00:00 UTC);
+        let end = datetime!(2023-11-09 00:00:02 UTC);
+
+        let agg = haw.combine_range(start, end);
+        assert_eq!(agg, Some(10));
+
+        let start = datetime!(2023-11-09 00:00:00 UTC);
+        let end = datetime!(2023-11-09 00:00:04 UTC);
+        let agg = haw.combine_range(start, end);
+        assert_eq!(agg, Some(60));
+    }
+
+    #[test]
+    fn range_query_min_test() {
+        // 2023-11-09 00:00:00
+        let watermark = 1699488000000;
+        let conf = HawConf::default().with_watermark(watermark);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(watermark, conf);
+
+        let deltas: Vec<Option<u64>> = (0..180).map(|_| Some(1)).collect();
+        haw.delta_advance(deltas);
+        assert_eq!(haw.watermark(), 1699488180000);
+
+        // time is 2023-11-09 00:03:00
+        // queryable minutes are 00:00 - 00:03
+        let start = datetime!(2023-11-09 00:00 UTC);
+        let end = datetime!(2023-11-09 00:03 UTC);
+
+        let agg = haw.combine_range(start, end);
+        // 1 for each second rolled-up over 3 minutes > 180
+        assert_eq!(agg, Some(180));
     }
 }

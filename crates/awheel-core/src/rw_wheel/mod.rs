@@ -16,7 +16,7 @@ mod stats;
 #[allow(dead_code)]
 mod timer;
 
-use crate::{aggregator::Aggregator, delta::DeltaState, time, Entry, Error};
+use crate::{aggregator::Aggregator, delta::DeltaState, time_internal, Entry, Error};
 use core::fmt::Debug;
 use read::ReadWheel;
 use write::{WriteAheadWheel, DEFAULT_WRITE_AHEAD_SLOTS};
@@ -129,8 +129,9 @@ where
             #[cfg(feature = "profiler")]
             profile_scope!(&self.stats.overflow_schedule);
             // TODO: cluster the entry with other timestamps around the same write-ahead range
-            let write_ahead_ms = time::Duration::seconds(self.write.write_ahead_len() as i64)
-                .whole_milliseconds() as u64;
+            let write_ahead_ms =
+                time_internal::Duration::seconds(self.write.write_ahead_len() as i64)
+                    .whole_milliseconds() as u64;
             let timestamp = entry.timestamp - write_ahead_ms / 2; // for now
             self.overflow.schedule_at(timestamp, entry).unwrap();
         }
@@ -154,7 +155,7 @@ where
     }
     /// Advance the watermark of the wheel by the given [time::Duration]
     #[inline]
-    pub fn advance(&mut self, duration: time::Duration) {
+    pub fn advance(&mut self, duration: time_internal::Duration) {
         let to = self.watermark() + duration.whole_milliseconds() as u64;
         self.advance_to(to);
     }
@@ -162,7 +163,7 @@ where
     #[inline]
     pub fn advance_and_emit_deltas(
         &mut self,
-        duration: time::Duration,
+        duration: time_internal::Duration,
     ) -> DeltaState<A::PartialAggregate> {
         let to = self.watermark() + duration.whole_milliseconds() as u64;
         self.advance_to_and_emit_deltas(to)
@@ -194,7 +195,7 @@ where
 
         // Advance the read wheel
         let delta_state = self.read.advance_and_emit_deltas(
-            time::Duration::milliseconds((watermark - self.watermark()) as i64),
+            time_internal::Duration::milliseconds((watermark - self.watermark()) as i64),
             &mut self.write,
         );
         debug_assert_eq!(self.write.watermark(), self.read.watermark());
@@ -307,7 +308,7 @@ mod tests {
     use std::rc::Rc;
 
     use super::*;
-    use crate::{aggregator::sum::U32SumAggregator, time::*, *};
+    use crate::{aggregator::sum::U32SumAggregator, time_internal::*, *};
 
     #[test]
     fn delta_emit_test() {

@@ -30,6 +30,7 @@ simd = ["dep:multiversion"]
 
 
 [dependencies]
+time = { version = "0.3.30", default-features = false, features = ["macros", "parsing"] }
 multiversion = { version = "0.7.3", default-features = false, optional = true }
 rayon = { version = "1.8.0", optional = true }
 zerocopy = { version = "0.7.18", features = ["derive"] }

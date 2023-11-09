@@ -1,4 +1,4 @@
-use crate::aggregator::Aggregator;
+use crate::{aggregator::Aggregator, time_internal::Duration};
 #[cfg(feature = "std")]
 use std::collections::VecDeque;
 
@@ -428,6 +428,10 @@ impl<A: Aggregator> AggregationWheel<A> {
     pub fn watermark(&self) -> u64 {
         self.watermark
     }
+    /// Returns the current watermark of the wheel as a Duration
+    pub fn now(&self) -> Duration {
+        Duration::milliseconds(self.watermark as i64)
+    }
 
     /// Returns ``Some(size)``of the drill down if it is enabled or ```None`` if its not
     fn _drill_down_step(&self) -> Option<usize> {
@@ -520,6 +524,7 @@ impl<A: Aggregator> AggregationWheel<A> {
     ///
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the wheel.
+    #[inline]
     pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
     where
         R: RangeBounds<usize>,

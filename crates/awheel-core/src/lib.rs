@@ -28,7 +28,7 @@ pub mod rw_wheel;
 /// Time utilities
 ///
 /// Heavily borrowed from the [time](https://docs.rs/time/latest/time/) crate
-pub mod time;
+pub mod time_internal;
 
 #[macro_use]
 #[doc(hidden)]

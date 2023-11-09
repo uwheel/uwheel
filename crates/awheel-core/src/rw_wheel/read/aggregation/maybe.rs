@@ -64,6 +64,7 @@ impl<A: Aggregator> MaybeWheel<A> {
     pub fn rotation_count(&self) -> usize {
         self.inner.as_ref().map(|w| w.rotation_count()).unwrap_or(0)
     }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.inner.as_ref().map(|w| w.len()).unwrap_or(0)

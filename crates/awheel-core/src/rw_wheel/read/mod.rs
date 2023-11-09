@@ -10,7 +10,7 @@ pub(crate) mod stats;
 #[cfg(feature = "timer")]
 use crate::rw_wheel::timer::{TimerAction, TimerError};
 
-use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, time::Duration, WriteAheadWheel};
+use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, time_internal::Duration, WriteAheadWheel};
 pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 
 use crate::aggregator::Aggregator;
@@ -104,7 +104,7 @@ where
         self.inner.write().schedule_repeat(at, interval, f)
     }
 
-    /// Advance the watermark of the wheel by the given [time::Duration]
+    /// Advance the watermark of the wheel by the given [Duration]
     #[inline]
     #[doc(hidden)]
     pub fn advance(&self, duration: Duration, waw: &mut WriteAheadWheel<A>) {
