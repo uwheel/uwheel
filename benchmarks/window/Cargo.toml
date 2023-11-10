@@ -4,16 +4,14 @@ version = "0.1.0"
 edition.workspace = true
 
 [features]
-default = ["plot"]
+default = []
 debug = []
 sync = ["awheel/sync"]
-plot = ["dep:plotpy"]
 
 [dependencies]
 cxx = "1.0"
 flume = "0.11.0"
 awheel = { workspace = true, features = ["window", "stats"] }
-plotpy = { workspace = true, optional = true }
 mimalloc = { version = "*", default-features = false, optional = true }
 csv = "1.2.2"
 chrono = "0.4"

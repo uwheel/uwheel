@@ -444,11 +444,11 @@ mod tests {
         );
 
         assert_eq!(
-            wheel.read().as_ref().seconds_unchecked().interval(5),
+            wheel.read().as_ref().seconds_unchecked().interval(5).0,
             Some(6u32)
         );
         assert_eq!(
-            wheel.read().as_ref().seconds_unchecked().interval(1),
+            wheel.read().as_ref().seconds_unchecked().interval(1).0,
             Some(5u32)
         );
 

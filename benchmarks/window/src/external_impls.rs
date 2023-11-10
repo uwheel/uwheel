@@ -141,7 +141,14 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for WindowTree<T> {
                 let to = self.watermark;
                 {
                     profile_scope!(&self.stats.window_computation_ns);
+                    let ops_before = self.tree.combine_ops();
                     let window = self.tree.range_query(from, to);
+                    let ops_after = self.tree.combine_ops();
+
+                    let window_ops = ops_after.saturating_sub(ops_before);
+                    self.stats
+                        .window_combines
+                        .set(self.stats.window_combines.get() + window_ops);
                     res.push((self.watermark, window));
                 }
                 profile_scope!(&self.stats.cleanup_ns);
@@ -292,9 +299,18 @@ impl<T: Tree<U64SumAggregator>> PairsTree<T> {
         }
     }
     #[inline]
-    fn compute_window(&self) -> Option<u64> {
+    fn compute_window(&mut self) -> Option<u64> {
         profile_scope!(&self.stats.window_computation_ns);
-        self.agg_store.query()
+        let ops_before = self.tree.combine_ops();
+        let window = self.agg_store.query();
+        let ops_after = self.tree.combine_ops();
+
+        let window_ops = ops_after.saturating_sub(ops_before);
+        self.stats
+            .window_combines
+            .set(self.stats.window_combines.get() + window_ops);
+
+        window
     }
 }
 impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {

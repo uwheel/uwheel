@@ -69,6 +69,9 @@ impl Sketch {
     pub fn percentiles(&self) -> Percentiles {
         sketch_percentiles(&self.inner.borrow())
     }
+    pub fn count(&self) -> usize {
+        self.inner.borrow().count()
+    }
 }
 
 // Inspired by https://github.com/spacejam/sled/blob/main/src/metrics.rs

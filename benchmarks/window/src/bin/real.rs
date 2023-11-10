@@ -25,7 +25,7 @@ use window::{
     Run,
 };
 
-use window::WINDOWS;
+use window::{BIG_RANGE_WINDOWS, SMALL_RANGE_WINDOWS};
 
 #[cfg(feature = "mimalloc")]
 use mimalloc::MiMalloc;
@@ -41,6 +41,8 @@ struct Args {
     watermark_frequency: usize,
     #[clap(arg_enum, value_parser, default_value_t = Dataset::CitiBike)]
     data: Dataset,
+    #[clap(arg_enum, value_parser, default_value_t = WindowType::SmallRange)]
+    window_type: WindowType,
 }
 
 // DEBS 12 Event
@@ -141,6 +143,12 @@ pub enum Dataset {
     CitiBike,
     DEBS12,
     DEBS13,
+}
+
+#[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
+pub enum WindowType {
+    SmallRange,
+    BigRange,
 }
 
 struct WatermarkGenerator {
@@ -429,6 +437,20 @@ fn main() {
     let args = Args::parse();
     let watermark_freq = args.watermark_frequency;
     println!("Running with {:#?}", args);
+    let window_type = args.window_type;
+
+    let id_gen = |id: &str| {
+        let range = match window_type {
+            WindowType::SmallRange => "small_range",
+            WindowType::BigRange => "big_range",
+        };
+        format!("{}_{}", id, range)
+    };
+
+    let windows = match window_type {
+        WindowType::SmallRange => SMALL_RANGE_WINDOWS,
+        WindowType::BigRange => BIG_RANGE_WINDOWS,
+    };
 
     match args.data {
         Dataset::CitiBike => {
@@ -447,11 +469,11 @@ fn main() {
             println!("Out-of-order events {:.2}", ooo_events);
             println!("Events/s {}", events_per_second(&events));
             sum_aggregation(
-                "nyc_citi_bike",
+                &id_gen("nyc_citi_bike"),
                 events,
                 watermark,
                 watermark_freq,
-                WINDOWS.to_vec(),
+                windows.to_vec(),
             );
         }
         Dataset::DEBS12 => {
@@ -478,11 +500,11 @@ fn main() {
             println!("Out-of-order events {:.2}", ooo_events);
             println!("Events/s {}", events_per_second(&events));
             sum_aggregation(
-                "debs12",
+                &id_gen("debs12"),
                 events,
                 watermark,
                 watermark_freq,
-                WINDOWS.to_vec(),
+                windows.to_vec(),
             );
         }
         Dataset::DEBS13 => {
@@ -519,11 +541,11 @@ fn main() {
             println!("Out-of-order events {:.2}", ooo_events);
             println!("Events/s {}", events_per_second(&events));
             sum_aggregation(
-                "debs13",
+                &id_gen("debs13"),
                 events,
                 watermark,
                 watermark_freq,
-                WINDOWS.to_vec(),
+                windows.to_vec(),
             );
         }
     }

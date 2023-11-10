@@ -72,7 +72,7 @@ impl<A: Aggregator> DistributedWindow<A> {
     #[inline]
     fn compute_window(&self) -> A::PartialAggregate {
         let pair_slots = pairs_space(self.range, self.slide);
-        self.pairs_wheel.interval(pair_slots).unwrap_or_default()
+        self.pairs_wheel.interval(pair_slots).0.unwrap_or_default()
     }
 }
 
@@ -210,7 +210,7 @@ impl<A: Aggregator> DistributedWindowOnly<A> {
     #[inline]
     fn compute_window(&self) -> A::PartialAggregate {
         let pair_slots = pairs_space(self.range, self.slide);
-        self.pairs_wheel.interval(pair_slots).unwrap_or_default()
+        self.pairs_wheel.interval(pair_slots).0.unwrap_or_default()
     }
 }
 
