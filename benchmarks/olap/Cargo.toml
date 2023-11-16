@@ -4,13 +4,11 @@ version = "0.1.0"
 edition.workspace = true
 
 [features]
-default = ["plot"]
-plot = ["dep:plotpy"]
+default = []
 
 [dependencies]
 duckdb.workspace = true
-plotpy = { workspace = true, optional = true }
-awheel = { workspace = true, features = ["tree", "sync", "stats", "top_n"] }
+awheel = { workspace = true, features = ["tree", "sync", "simd", "stats"] }
 clap.workspace = true
 fastrand.workspace = true
 hdrhistogram.workspace = true

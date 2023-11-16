@@ -220,14 +220,32 @@ where
     ///
     /// Time is represented as milliseconds
     pub fn new(time: u64, conf: HawConf) -> Self {
+        let mut seconds = conf.seconds;
+        seconds.set_watermark(time);
+
+        let mut minutes = conf.minutes;
+        minutes.set_watermark(time);
+
+        let mut hours = conf.hours;
+        hours.set_watermark(time);
+
+        let mut days = conf.days;
+        days.set_watermark(time);
+
+        let mut weeks = conf.weeks;
+        weeks.set_watermark(time);
+
+        let mut years = conf.years;
+        years.set_watermark(time);
+
         Self {
             watermark: time,
-            seconds_wheel: MaybeWheel::new(conf.seconds),
-            minutes_wheel: MaybeWheel::new(conf.minutes),
-            hours_wheel: MaybeWheel::new(conf.hours),
-            days_wheel: MaybeWheel::new(conf.days),
-            weeks_wheel: MaybeWheel::new(conf.weeks),
-            years_wheel: MaybeWheel::new(conf.years),
+            seconds_wheel: MaybeWheel::new(seconds),
+            minutes_wheel: MaybeWheel::new(minutes),
+            hours_wheel: MaybeWheel::new(hours),
+            days_wheel: MaybeWheel::new(days),
+            weeks_wheel: MaybeWheel::new(weeks),
+            years_wheel: MaybeWheel::new(years),
             #[cfg(feature = "timer")]
             timer: Rc::new(RefCell::new(RawTimerWheel::default())),
             _marker: PhantomData,
@@ -288,7 +306,7 @@ where
     /// Advance the watermark of the wheel by the given [time::Duration]
     #[inline(always)]
     pub fn advance(&mut self, duration: time_internal::Duration, waw: &mut WriteAheadWheel<A>) {
-        let mut ticks: usize = duration.whole_seconds() as usize;
+        let ticks: usize = duration.whole_seconds() as usize;
 
         // helper fn to tick N times
         let tick_n = |ticks: usize, haw: &mut Self, waw: &mut WriteAheadWheel<A>| {
@@ -297,39 +315,41 @@ where
                 haw.tick(waw.tick().map(|m| A::freeze(m)));
             }
         };
-
-        if ticks <= SECONDS {
+        if ticks <= Self::CYCLE_LENGTH_SECS as usize {
             tick_n(ticks, self, waw);
-        } else if ticks <= Self::CYCLE_LENGTH_SECS as usize {
-            // force full rotation
-            let rem_ticks = self.seconds_wheel.get_or_insert().ticks_remaining();
-            tick_n(rem_ticks, self, waw);
-            ticks -= rem_ticks;
-
-            // calculate how many fast_ticks we can perform
-            let fast_ticks = ticks.saturating_div(SECONDS);
-
-            if fast_ticks == 0 {
-                // if fast ticks is 0, then tick normally
-                tick_n(ticks, self, waw);
-            } else {
-                // perform a number of fast ticks
-                // NOTE: currently a fast tick is a full SECONDS rotation.
-                let fast_tick_ms = (SECONDS - 1) as u64 * Self::SECOND_AS_MS;
-                for _ in 0..fast_ticks {
-                    self.seconds_wheel.get_or_insert().fast_skip_tick();
-                    self.watermark += fast_tick_ms;
-                    *waw.watermark_mut() += fast_tick_ms;
-                    self.tick(waw.tick().map(|m| A::freeze(m)));
-                    ticks -= SECONDS;
-                }
-                // tick any remaining ticks
-                tick_n(ticks, self, waw);
-            }
         } else {
             // Exceeds full cycle length, clear all!
             self.clear();
         }
+
+        // if ticks <= SECONDS {
+        //     tick_n(ticks, self, waw);
+        // } else if ticks <= Self::CYCLE_LENGTH_SECS as usize {
+        //     // force full rotation
+        //     let rem_ticks = self.seconds_wheel.get_or_insert().ticks_remaining();
+        //     tick_n(rem_ticks, self, waw);
+        //     ticks -= rem_ticks;
+
+        //     // calculate how many fast_ticks we can perform
+        //     let fast_ticks = ticks.saturating_div(SECONDS);
+
+        //     if fast_ticks == 0 {
+        //         // if fast ticks is 0, then tick normally
+        //         tick_n(ticks, self, waw);
+        //     } else {
+        //         // perform a number of fast ticks
+        //         // NOTE: currently a fast tick is a full SECONDS rotation.
+        //         let fast_tick_ms = (SECONDS - 1) as u64 * Self::SECOND_AS_MS;
+        //         for _ in 0..fast_ticks {
+        //             self.seconds_wheel.get_or_insert().fast_skip_tick();
+        //             self.watermark += fast_tick_ms;
+        //             *waw.watermark_mut() += fast_tick_ms;
+        //             self.tick(waw.tick().map(|m| A::freeze(m)));
+        //             ticks -= SECONDS;
+        //         }
+        //         // tick any remaining ticks
+        //         tick_n(ticks, self, waw);
+        //     }
     }
 
     /// Advances the watermark by the given duration and returns deltas that were applied
@@ -414,16 +434,18 @@ where
         let is_seconds = start.second() != 0 || end.second() != 0;
         let is_minutes = start.minute() != 0 || end.minute() != 0;
         let is_hours = start.hour() != 0 || end.hour() != 0;
+        let is_days = start.day() != 0 || end.day() != 0;
 
         let watermark_date =
             |wm: u64| OffsetDateTime::from_unix_timestamp((wm as i64) / 1000).unwrap();
 
-        // TODO: move inner logic to inner wheel?
+        // TODO: Refactor and move inner logic to inner wheel?
         if is_seconds {
             // We have the number of seconds in the range
             let seconds = (end - start).whole_seconds();
             // dbg!(seconds);
             if let Some(wheel) = self.seconds_wheel.as_ref() {
+                // dbg!(wheel.total_slots());
                 let watermark = watermark_date(wheel.watermark());
                 let watermark_start_diff: usize = (watermark - start).whole_seconds() as usize;
                 let start_pos = watermark_start_diff - seconds as usize;
@@ -436,7 +458,6 @@ where
         } else if is_minutes {
             // We have the number of minutes in the range
             let minutes = (end - start).whole_minutes();
-            dbg!(minutes);
             if let Some(wheel) = self.minutes_wheel.as_ref() {
                 let watermark = watermark_date(wheel.watermark());
                 // start must be lower than watermark
@@ -450,7 +471,6 @@ where
             }
         } else if is_hours {
             let hours = (end - start).whole_hours();
-            // dbg!(hours);
             if let Some(wheel) = self.hours_wheel.as_ref() {
                 let watermark = watermark_date(wheel.watermark());
                 let watermark_start_diff: usize = (watermark - start).whole_hours() as usize;
@@ -459,6 +479,17 @@ where
                 wheel.combine_range(start_pos..end_pos)
             } else {
                 panic!("hours wheel not initialized");
+            }
+        } else if is_days {
+            let days = (end - start).whole_days();
+            if let Some(wheel) = self.days_wheel.as_ref() {
+                let watermark = watermark_date(wheel.watermark());
+                let watermark_start_diff: usize = (watermark - start).whole_days() as usize;
+                let start_pos = watermark_start_diff - days as usize;
+                let end_pos = start_pos + days as usize;
+                wheel.combine_range(start_pos..end_pos)
+            } else {
+                panic!("days wheel not initialized");
             }
         } else {
             unimplemented!();
@@ -1124,5 +1155,53 @@ mod tests {
         let agg = haw.combine_range(start, end);
         // 1 for each second rolled-up over 3 minutes > 180
         assert_eq!(agg, Some(180));
+    }
+
+    #[test]
+    fn range_query_hour_test() {
+        // 2023-11-09 00:00:00
+        let watermark = 1699488000000;
+        let conf = HawConf::default().with_watermark(watermark);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(watermark, conf);
+
+        let hours_as_secs = 3600;
+        let hours = hours_as_secs * 3;
+        let deltas: Vec<Option<u64>> = (0..hours).map(|_| Some(1)).collect();
+        // advance wheel by 3 hours
+        haw.delta_advance(deltas);
+
+        let start = datetime!(2023-11-09 00:00 UTC);
+        let end = datetime!(2023-11-09 01:00 UTC);
+
+        assert_eq!(haw.combine_range(start, end), Some(3600));
+
+        let start = datetime!(2023-11-09 00:00 UTC);
+        let end = datetime!(2023-11-09 03:00 UTC);
+
+        assert_eq!(haw.combine_range(start, end), Some(10800));
+    }
+
+    #[test]
+    fn range_query_day_test() {
+        // 2023-11-09 00:00:00
+        let watermark = 1699488000000;
+        let conf = HawConf::default().with_watermark(watermark);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(watermark, conf);
+
+        let days_as_secs = 3600 * 24;
+        let days = days_as_secs * 3;
+        let deltas: Vec<Option<u64>> = (0..days).map(|_| Some(1)).collect();
+        // advance wheel by 3 days
+        haw.delta_advance(deltas);
+
+        let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
+        let end = datetime!(2023 - 11 - 10 00:00:00 UTC);
+
+        assert_eq!(haw.combine_range(start, end), Some(3600 * 24));
+
+        let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
+        let end = datetime!(2023 - 11 - 12 00:00:00 UTC);
+
+        assert_eq!(haw.combine_range(start, end), Some(259200));
     }
 }

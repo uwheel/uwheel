@@ -1,16 +1,21 @@
 use minstant::Instant;
 
 use awheel::{
-    aggregator::{all::AllAggregator, Aggregator},
-    time,
-    tree::RwTreeWheel,
+    aggregator::{sum::F64SumAggregator, Aggregator},
+    time_internal::NumericalDuration,
+    tree::wheel_tree::WheelTree,
     Entry,
+    Options,
+    RwWheel,
 };
 use clap::{ArgEnum, Parser};
 use duckdb::Result;
 use hdrhistogram::Histogram;
 use olap::*;
-use std::time::Duration;
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
 pub enum Workload {
@@ -37,7 +42,7 @@ struct Args {
     queries: usize,
     #[clap(short, long, action)]
     disk: bool,
-    #[clap(arg_enum, value_parser, default_value_t = Workload::All)]
+    #[clap(arg_enum, value_parser, default_value_t = Workload::Sum)]
     workload: Workload,
 }
 
@@ -53,8 +58,6 @@ fn main() -> Result<()> {
         result.print();
         results.push(result);
     }
-    #[cfg(feature = "plot")]
-    plot_queries(&results);
 
     Ok(())
 }
@@ -62,23 +65,19 @@ fn main() -> Result<()> {
 struct BenchResult {
     pub total_queries: usize,
     pub total_entries: usize,
-    pub duckdb_low_all: (Duration, Histogram<u64>),
-    pub duckdb_high_all: (Duration, Histogram<u64>),
-    pub duckdb_low_point: (Duration, Histogram<u64>),
-    pub duckdb_high_point: (Duration, Histogram<u64>),
-    pub duckdb_low_range: (Duration, Histogram<u64>),
-    pub duckdb_high_range: (Duration, Histogram<u64>),
-    pub duckdb_low_random: (Duration, Histogram<u64>),
-    pub duckdb_high_random: (Duration, Histogram<u64>),
+    pub duckdb_q1: (Duration, Histogram<u64>),
+    pub duckdb_q2: (Duration, Histogram<u64>),
+    pub duckdb_q3: (Duration, Histogram<u64>),
+    pub duckdb_q4: (Duration, Histogram<u64>),
+    pub duckdb_q5: (Duration, Histogram<u64>),
+    pub duckdb_q6: (Duration, Histogram<u64>),
 
-    pub wheel_low_all: (Duration, Histogram<u64>),
-    pub wheel_high_all: (Duration, Histogram<u64>),
-    pub wheel_low_point: (Duration, Histogram<u64>),
-    pub wheel_high_point: (Duration, Histogram<u64>),
-    pub wheel_low_range: (Duration, Histogram<u64>),
-    pub wheel_high_range: (Duration, Histogram<u64>),
-    pub wheel_low_random: (Duration, Histogram<u64>),
-    pub wheel_high_random: (Duration, Histogram<u64>),
+    pub wheel_q1: (Duration, Histogram<u64>),
+    pub wheel_q2: (Duration, Histogram<u64>),
+    pub wheel_q3: (Duration, Histogram<u64>),
+    pub wheel_q4: (Duration, Histogram<u64>),
+    pub wheel_q5: (Duration, Histogram<u64>),
+    pub wheel_q6: (Duration, Histogram<u64>),
 }
 impl BenchResult {
     pub fn print(&self) {
@@ -93,108 +92,83 @@ impl BenchResult {
         };
 
         print_fn(
-            "DuckDB All Low Intervals",
+            "DuckDB Q1",
             self.total_queries,
-            self.duckdb_low_all.0.as_secs_f64(),
-            &self.duckdb_low_all.1,
+            self.duckdb_q1.0.as_secs_f64(),
+            &self.duckdb_q1.1,
         );
         print_fn(
-            "DuckDB All High Intervals",
+            "DuckDB Q2",
             self.total_queries,
-            self.duckdb_high_all.0.as_secs_f64(),
-            &self.duckdb_high_all.1,
+            self.duckdb_q2.0.as_secs_f64(),
+            &self.duckdb_q2.1,
         );
         print_fn(
-            "DuckDB Point Low Intervals",
+            "DuckDB Q3",
             self.total_queries,
-            self.duckdb_low_point.0.as_secs_f64(),
-            &self.duckdb_low_point.1,
+            self.duckdb_q3.0.as_secs_f64(),
+            &self.duckdb_q3.1,
         );
         print_fn(
-            "DuckDB Point High Intervals",
+            "DuckDB Q4",
             self.total_queries,
-            self.duckdb_high_point.0.as_secs_f64(),
-            &self.duckdb_high_point.1,
-        );
-
-        print_fn(
-            "DuckDB Range Low Intervals",
-            self.total_queries,
-            self.duckdb_low_range.0.as_secs_f64(),
-            &self.duckdb_low_range.1,
-        );
-        print_fn(
-            "DuckDB Range High Intervals",
-            self.total_queries,
-            self.duckdb_high_range.0.as_secs_f64(),
-            &self.duckdb_high_range.1,
+            self.duckdb_q4.0.as_secs_f64(),
+            &self.duckdb_q4.1,
         );
 
         print_fn(
-            "DuckDB Random Low Intervals",
+            "DuckDB Q5",
             self.total_queries,
-            self.duckdb_low_random.0.as_secs_f64(),
-            &self.duckdb_low_random.1,
+            self.duckdb_q5.0.as_secs_f64(),
+            &self.duckdb_q5.1,
         );
         print_fn(
-            "DuckDB Random High Intervals",
+            "DuckDB Q6",
             self.total_queries,
-            self.duckdb_high_random.0.as_secs_f64(),
-            &self.duckdb_high_random.1,
+            self.duckdb_q6.0.as_secs_f64(),
+            &self.duckdb_q6.1,
         );
 
         // Wheel
 
         print_fn(
-            "RwWheelTree All Low Intervals",
+            "WheelTree Q1",
             self.total_queries,
-            self.wheel_low_all.0.as_secs_f64(),
-            &self.wheel_low_all.1,
-        );
-        print_fn(
-            "RwWheelTree All High Intervals",
-            self.total_queries,
-            self.wheel_high_all.0.as_secs_f64(),
-            &self.wheel_high_all.1,
-        );
-        print_fn(
-            "RwWheelTree Point Low Intervals",
-            self.total_queries,
-            self.wheel_low_point.0.as_secs_f64(),
-            &self.wheel_low_point.1,
-        );
-        print_fn(
-            "RwWheelTree Point High Intervals",
-            self.total_queries,
-            self.wheel_high_point.0.as_secs_f64(),
-            &self.wheel_high_point.1,
+            self.wheel_q1.0.as_secs_f64(),
+            &self.wheel_q1.1,
         );
 
         print_fn(
-            "RwWheelTree Range Low Intervals",
+            "WheelTree Q2",
             self.total_queries,
-            self.wheel_low_range.0.as_secs_f64(),
-            &self.wheel_low_range.1,
+            self.wheel_q2.0.as_secs_f64(),
+            &self.wheel_q2.1,
+        );
+        print_fn(
+            "WheelTree Q3",
+            self.total_queries,
+            self.wheel_q3.0.as_secs_f64(),
+            &self.wheel_q3.1,
+        );
+        print_fn(
+            "WheelTree Q4",
+            self.total_queries,
+            self.wheel_q4.0.as_secs_f64(),
+            &self.wheel_q4.1,
         );
 
         print_fn(
-            "RwWheelTree Range High Intervals",
+            "WheelTree Q5",
             self.total_queries,
-            self.wheel_high_range.0.as_secs_f64(),
-            &self.wheel_high_range.1,
+            self.wheel_q5.0.as_secs_f64(),
+            &self.wheel_q5.1,
         );
 
         print_fn(
-            "RwWheelTree Random Low Intervals",
+            "WheelTree Q6",
             self.total_queries,
-            self.wheel_low_random.0.as_secs_f64(),
-            &self.wheel_low_random.1,
-        );
-        print_fn(
-            "RwWheelTree Random High Intervals",
-            self.total_queries,
-            self.wheel_high_random.0.as_secs_f64(),
-            &self.wheel_high_random.1,
+            self.wheel_q6.0.as_secs_f64(),
+            &self.wheel_q6.1,
         );
     }
 }
@@ -203,31 +177,40 @@ fn run(args: &Args) -> BenchResult {
     let total_queries = args.queries;
     let events_per_sec = args.events_per_sec;
     let workload = args.workload;
+    let start_date = START_DATE_MS;
 
-    println!("Running with {:#?}", args);
-
-    let (watermark, batches) = DataGenerator::generate_query_data(events_per_sec);
+    let (watermark, batches) = DataGenerator::generate_query_data(start_date, events_per_sec);
     let duckdb_batches = batches.clone();
 
-    let point_queries_low_interval =
-        QueryGenerator::generate_low_interval_point_queries(total_queries);
-    let point_queries_high_interval =
-        QueryGenerator::generate_high_interval_point_queries(total_queries);
-    let olap_queries_low_interval = QueryGenerator::generate_low_interval_olap(total_queries);
-    let olap_queries_high_interval = QueryGenerator::generate_high_interval_olap(total_queries);
+    // Generate Q1
 
-    let random_queries_low_interval =
-        QueryGenerator::generate_low_interval_random_queries(total_queries);
-    let random_queries_high_interval =
-        QueryGenerator::generate_high_interval_random_queries(total_queries);
+    let q1_queries = QueryGenerator::generate_q1(total_queries);
+    let q1_queries_duckdb = q1_queries.clone();
 
-    let olap_range_queries_low_interval =
-        QueryGenerator::generate_low_interval_range_queries(total_queries);
-    let olap_range_queries_high_interval =
-        QueryGenerator::generate_high_interval_range_queries(total_queries);
+    // Generate Q2
 
-    let awheel_olap_queries_low_interval = olap_queries_low_interval.clone();
-    let awheel_olap_queries_high_interval = olap_queries_high_interval.clone();
+    let q2_queries = QueryGenerator::generate_q2(total_queries);
+    let q2_queries_duckdb = q2_queries.clone();
+
+    // Generate Q3
+
+    let q3_queries = QueryGenerator::generate_q3(total_queries);
+    let q3_queries_duckdb = q3_queries.clone();
+
+    // Generate Q4
+
+    let q4_queries = QueryGenerator::generate_q4(total_queries);
+    let q4_queries_duckdb = q4_queries.clone();
+
+    // Generate Q5
+
+    let q5_queries = QueryGenerator::generate_q5(total_queries);
+    let q5_queries_duckdb = q5_queries.clone();
+
+    // Generate Q6
+
+    let q6_queries = QueryGenerator::generate_q6(total_queries);
+    let q6_queries_duckdb = q6_queries.clone();
 
     let total_entries = batches.len() * events_per_sec;
     println!("Running with total entries {}", total_entries);
@@ -241,159 +224,121 @@ fn run(args: &Args) -> BenchResult {
 
     dbg!(watermark);
 
-    let duckdb_low_all = duckdb_run(
-        "DuckDB ALL Low Intervals",
-        watermark,
-        workload,
-        &duckdb,
-        olap_queries_low_interval,
-    );
-    let duckdb_high_all = duckdb_run(
-        "DuckDB ALL High Intervals",
-        watermark,
-        workload,
-        &duckdb,
-        olap_queries_high_interval,
-    );
-    let duckdb_low_point = duckdb_run(
-        "DuckDB POINT Low Intervals",
-        watermark,
-        workload,
-        &duckdb,
-        point_queries_low_interval.clone(),
-    );
-    let duckdb_high_point = duckdb_run(
-        "DuckDB POINT High Intervals",
-        watermark,
-        workload,
-        &duckdb,
-        point_queries_high_interval.clone(),
-    );
-    let duckdb_low_range = duckdb_run(
-        "DuckDB RANGE Low Intervals",
-        watermark,
-        workload,
-        &duckdb,
-        olap_range_queries_low_interval.clone(),
-    );
-    let duckdb_high_range = duckdb_run(
-        "DuckDB RANGE High Intervals",
-        watermark,
-        workload,
-        &duckdb,
-        olap_range_queries_high_interval.clone(),
-    );
-    let duckdb_low_random = duckdb_run(
-        "DuckDB RANDOM Low Intervals",
-        watermark,
-        workload,
-        &duckdb,
-        random_queries_low_interval.clone(),
-    );
-    let duckdb_high_random = duckdb_run(
-        "DuckDB RANDOM High Intervals",
-        watermark,
-        workload,
-        &duckdb,
-        random_queries_high_interval.clone(),
-    );
+    let duckdb_q1 = duckdb_run("DuckDB Q1", watermark, workload, &duckdb, q1_queries_duckdb);
+    println!("DuckDB Q1 {:?}", duckdb_q1.0);
 
-    fn fill_rw_tree<A: Aggregator<Input = f64> + Clone>(
-        batches: Vec<Vec<RideData>>,
-        rw_tree: &mut RwTreeWheel<u64, A>,
-    ) {
-        for batch in batches {
-            for record in batch {
-                rw_tree
-                    .insert(
-                        record.pu_location_id,
-                        Entry::new(record.fare_amount, record.do_time),
-                    )
-                    .unwrap();
+    let duckdb_q2 = duckdb_run("DuckDB Q2", watermark, workload, &duckdb, q2_queries_duckdb);
+    println!("DuckDB Q2 {:?}", duckdb_q2.0);
+
+    let duckdb_q3 = duckdb_run("DuckDB Q3", watermark, workload, &duckdb, q3_queries_duckdb);
+    println!("DuckDB Q3 {:?}", duckdb_q3.0);
+
+    let duckdb_q4 = duckdb_run("DuckDB Q4", watermark, workload, &duckdb, q4_queries_duckdb);
+    println!("DuckDB Q4 {:?}", duckdb_q4.0);
+
+    let duckdb_q5 = duckdb_run("DuckDB Q5", watermark, workload, &duckdb, q5_queries_duckdb);
+    println!("DuckDB Q5 {:?}", duckdb_q5.0);
+
+    let duckdb_q6 = duckdb_run("DuckDB Q6", watermark, workload, &duckdb, q6_queries_duckdb);
+    println!("DuckDB Q6 {:?}", duckdb_q6.0);
+
+    fn get_unique_ids(data: &Vec<Vec<RideData>>) -> Vec<u64> {
+        let mut unique_ids = HashSet::new();
+
+        for ride_data_vec in data {
+            for ride_data in ride_data_vec {
+                unique_ids.insert(ride_data.pu_location_id);
             }
-            use awheel::time::NumericalDuration;
-            rw_tree.advance(60.seconds());
+        }
+
+        unique_ids.into_iter().collect()
+    }
+
+    fn fill_tree<A: Aggregator<Input = f64> + Clone>(
+        start_time: u64,
+        batches: Vec<Vec<RideData>>,
+        tree: &WheelTree<u64, A>,
+    ) where
+        A::PartialAggregate: Sync,
+    {
+        let unique_ids = get_unique_ids(&batches);
+        let mut wheels = HashMap::with_capacity(unique_ids.len());
+        let opts = Options::default().with_write_ahead(604800usize.next_power_of_two());
+        for id in unique_ids {
+            let wheel = RwWheel::<A>::with_options(start_time, opts);
+            wheels.insert(id, wheel);
+        }
+        // let wheels = HashMap<u64, RwWheel<A>>;
+        for batch in batches {
+            // 1 batch represents 1 second of data
+            for record in batch {
+                let wheel = wheels.get_mut(&record.pu_location_id).unwrap();
+                wheel.insert(Entry::new(record.fare_amount, record.do_time));
+            }
+        }
+
+        // advance all wheels by 7 days
+        for wheel in wheels.values_mut() {
+            wheel.advance(7.days());
+            // dbg!(wheel.read().as_ref().current_time_in_cycle());
+        }
+
+        // insert the filled wheels into the tree
+        for (id, wheel) in wheels {
+            tree.insert(id, wheel.read().clone());
         }
     }
-    let mut rw_tree: RwTreeWheel<u64, AllAggregator> = RwTreeWheel::new(0);
-    fill_rw_tree(batches, &mut rw_tree);
-    let wheel_low_all = awheel_run(
-        "RwTreeWheel ALL Low Intervals",
-        watermark,
-        &rw_tree,
-        awheel_olap_queries_low_interval,
-    );
-    let wheel_high_all = awheel_run(
-        "RwTreeWheel ALL High Intervals",
-        watermark,
-        &rw_tree,
-        awheel_olap_queries_high_interval,
-    );
-    let wheel_low_point = awheel_run(
-        "RwTreeWheel POINT Low Intervals",
-        watermark,
-        &rw_tree,
-        point_queries_low_interval,
-    );
-    let wheel_high_point = awheel_run(
-        "RwTreeWheel POINT High Intervals",
-        watermark,
-        &rw_tree,
-        point_queries_high_interval,
-    );
 
-    let wheel_low_range = awheel_run(
-        "RwTreeWheel RANGE Low Intervals",
-        watermark,
-        &rw_tree,
-        olap_range_queries_low_interval,
-    );
-    let wheel_high_range = awheel_run(
-        "RwTreeWheel RANGE High Intervals",
-        watermark,
-        &rw_tree,
-        olap_range_queries_high_interval,
-    );
-    let wheel_low_random = awheel_run(
-        "RwTreeWheel RANDOM Low Intervals",
-        watermark,
-        &rw_tree,
-        random_queries_low_interval,
-    );
-    let wheel_high_random = awheel_run(
-        "RwTreeWheel RANDOM High Intervals",
-        watermark,
-        &rw_tree,
-        random_queries_high_interval,
-    );
+    let tree: WheelTree<u64, F64SumAggregator> = WheelTree::default();
+    println!("Preparing WheelTree");
+    fill_tree(start_date, batches, &tree);
+    println!("Finished preparing WheelTree");
+
+    let wheel_q1 = awheel_run("WheelTree Q1", watermark, &tree, q1_queries);
+    println!("WheelTree Q1 {:?}", wheel_q1.0);
+
+    let wheel_q2 = awheel_run("WheelTree Q2", watermark, &tree, q2_queries);
+    println!("WheelTree Q2 {:?}", wheel_q2.0);
+
+    let wheel_q3 = awheel_run("WheelTree Q3", watermark, &tree, q3_queries);
+    println!("WheelTree Q3 {:?}", wheel_q3.0);
+
+    let wheel_q4 = awheel_run("WheelTree Q4", watermark, &tree, q4_queries);
+    println!("WheelTree Q4 {:?}", wheel_q4.0);
+
+    let wheel_q5 = awheel_run("WheelTree Q5", watermark, &tree, q5_queries);
+    println!("WheelTree Q5 {:?}", wheel_q5.0);
+
+    let wheel_q6 = awheel_run("WheelTree Q6", watermark, &tree, q6_queries);
+    println!("WheelTree Q6 {:?}", wheel_q6.0);
+
     BenchResult {
         total_queries,
         total_entries,
-        duckdb_low_all,
-        duckdb_high_all,
-        duckdb_low_point,
-        duckdb_high_point,
-        duckdb_low_range,
-        duckdb_high_range,
-        duckdb_low_random,
-        duckdb_high_random,
-        wheel_low_all,
-        wheel_high_all,
-        wheel_low_point,
-        wheel_high_point,
-        wheel_low_range,
-        wheel_high_range,
-        wheel_low_random,
-        wheel_high_random,
+        duckdb_q1,
+        duckdb_q2,
+        duckdb_q3,
+        duckdb_q4,
+        duckdb_q5,
+        duckdb_q6,
+        wheel_q1,
+        wheel_q2,
+        wheel_q3,
+        wheel_q4,
+        wheel_q5,
+        wheel_q6,
     }
 }
 
 fn awheel_run<A: Aggregator + Clone>(
     _id: &str,
     _watermark: u64,
-    wheel: &RwTreeWheel<u64, A>,
+    wheel: &WheelTree<u64, A>,
     queries: Vec<Query>,
-) -> (Duration, Histogram<u64>) {
+) -> (Duration, Histogram<u64>)
+where
+    A::PartialAggregate: Sync,
+{
     let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
     let full = Instant::now();
     for query in queries {
@@ -401,74 +346,39 @@ fn awheel_run<A: Aggregator + Clone>(
         match query.query_type {
             QueryType::Keyed(pu_location_id) => {
                 let _res = match query.interval {
-                    QueryInterval::Seconds(secs) => wheel
-                        .read()
-                        .get(&pu_location_id)
-                        .map(|rw| rw.interval(time::Duration::seconds(secs as i64))),
-                    QueryInterval::Minutes(mins) => wheel
-                        .read()
-                        .get(&pu_location_id)
-                        .map(|rw| rw.interval(time::Duration::minutes(mins as i64))),
-                    QueryInterval::Hours(hours) => wheel
-                        .read()
-                        .get(&pu_location_id)
-                        .map(|rw| rw.interval(time::Duration::hours(hours as i64))),
-                    QueryInterval::Days(days) => wheel
-                        .read()
-                        .get(&pu_location_id)
-                        .map(|rw| rw.interval(time::Duration::days(days as i64))),
-                    QueryInterval::Weeks(weeks) => wheel
-                        .read()
-                        .get(&pu_location_id)
-                        .map(|rw| rw.interval(time::Duration::weeks(weeks as i64))),
-                    QueryInterval::Landmark => {
-                        wheel.read().get(&pu_location_id).map(|rw| rw.landmark())
+                    TimeInterval::Range(start, end) => {
+                        let (start, end) = into_offset_date_time_start_end(start, end);
+                        wheel
+                            .get(&pu_location_id)
+                            .map(|w| w.as_ref().combine_range(start, end))
                     }
+                    TimeInterval::Landmark => wheel.get(&pu_location_id).map(|rw| rw.landmark()),
                 };
-                //assert!(res.is_some());
+                assert!(_res.is_some());
                 hist.record(now.elapsed().as_nanos() as u64).unwrap();
             }
             QueryType::Range(start, end) => {
                 let range = start..end;
                 let _res = match query.interval {
-                    QueryInterval::Seconds(secs) => wheel
-                        .read()
-                        .interval_range(time::Duration::seconds(secs as i64), range),
-                    QueryInterval::Minutes(mins) => wheel
-                        .read()
-                        .interval_range(time::Duration::minutes(mins as i64), range),
-                    QueryInterval::Hours(hours) => wheel
-                        .read()
-                        .interval_range(time::Duration::hours(hours as i64), range),
-                    QueryInterval::Days(days) => wheel
-                        .read()
-                        .interval_range(time::Duration::days(days as i64), range),
-                    QueryInterval::Weeks(weeks) => wheel
-                        .read()
-                        .interval_range(time::Duration::weeks(weeks as i64), range),
-                    QueryInterval::Landmark => wheel.read().landmark_range(range),
+                    TimeInterval::Range(start, end) => {
+                        let (start, end) = into_offset_date_time_start_end(start, end);
+                        wheel.range_with_time_filter(range, start, end)
+                    }
+                    TimeInterval::Landmark => wheel.landmark_range(range),
                 };
                 //assert!(res.is_some());
                 hist.record(now.elapsed().as_nanos() as u64).unwrap();
             }
             QueryType::All => {
                 let _res = match query.interval {
-                    QueryInterval::Seconds(secs) => {
-                        wheel.interval(time::Duration::seconds(secs as i64))
+                    TimeInterval::Range(start, end) => {
+                        let (start, end) = into_offset_date_time_start_end(start, end);
+                        wheel.range_with_time_filter(.., start, end)
                     }
-                    QueryInterval::Minutes(mins) => {
-                        wheel.interval(time::Duration::minutes(mins as i64))
-                    }
-                    QueryInterval::Hours(hours) => {
-                        wheel.interval(time::Duration::hours(hours as i64))
-                    }
-                    QueryInterval::Days(days) => wheel.interval(time::Duration::days(days as i64)),
-                    QueryInterval::Weeks(weeks) => {
-                        wheel.interval(time::Duration::weeks(weeks as i64))
-                    }
-                    QueryInterval::Landmark => wheel.landmark(),
+                    TimeInterval::Landmark => wheel.landmark_range(..),
                 };
-                //assert!(res.is_some());
+                // dbg!(_res);
+                assert!(_res.is_some());
                 hist.record(now.elapsed().as_nanos() as u64).unwrap();
             }
         };
@@ -479,7 +389,7 @@ fn awheel_run<A: Aggregator + Clone>(
 
 fn duckdb_run(
     _id: &str,
-    watermark: u64,
+    _watermark: u64,
     workload: Workload,
     db: &duckdb::Connection,
     queries: Vec<Query>,
@@ -495,21 +405,21 @@ fn duckdb_run(
             // Generate Key clause. If no key then leave as empty ""
             let key_clause = match query.query_type {
                 QueryType::Keyed(pu_location_id) => {
-                    if let QueryInterval::Landmark = query.interval {
+                    if let TimeInterval::Landmark = query.interval {
                         format!("WHERE pu_location_id={}", pu_location_id)
                     } else {
                         format!("WHERE pu_location_id={} AND", pu_location_id)
                     }
                 }
                 QueryType::Range(start, end) => {
-                    if let QueryInterval::Landmark = query.interval {
+                    if let TimeInterval::Landmark = query.interval {
                         format!("WHERE pu_location_id BETWEEN {} AND {}", start, end)
                     } else {
                         format!("WHERE pu_location_id BETWEEN {} AND {} AND", start, end)
                     }
                 }
                 QueryType::All => {
-                    if let QueryInterval::Landmark = query.interval {
+                    if let TimeInterval::Landmark = query.interval {
                         "".to_string()
                     } else {
                         "WHERE".to_string()
@@ -517,41 +427,16 @@ fn duckdb_run(
                 }
             };
             let interval = match query.interval {
-                QueryInterval::Seconds(secs) => {
-                    let start_ts = watermark.saturating_sub(
-                        time::Duration::seconds(secs.into()).whole_milliseconds() as u64,
-                    );
-                    format!("do_time >= {} AND do_time < {}", start_ts, watermark)
+                TimeInterval::Range(start, end) => {
+                    let start_ms = start * 1000;
+                    let end_ms = end * 1000;
+                    format!("do_time >= {} AND do_time < {}", start_ms, end_ms)
                 }
-                QueryInterval::Minutes(mins) => {
-                    let start_ts = watermark.saturating_sub(
-                        time::Duration::minutes(mins.into()).whole_milliseconds() as u64,
-                    );
-                    format!("do_time >= {} AND do_time < {}", start_ts, watermark)
-                }
-                QueryInterval::Hours(hours) => {
-                    let start_ts = watermark.saturating_sub(
-                        time::Duration::hours(hours.into()).whole_milliseconds() as u64,
-                    );
-                    format!("do_time >= {} AND do_time < {}", start_ts, watermark)
-                }
-                QueryInterval::Days(days) => {
-                    let start_ts = watermark.saturating_sub(
-                        time::Duration::days(days.into()).whole_milliseconds() as u64,
-                    );
-                    format!("do_time >= {} AND do_time < {}", start_ts, watermark)
-                }
-                QueryInterval::Weeks(weeks) => {
-                    let start_ts = watermark.saturating_sub(
-                        time::Duration::weeks(weeks.into()).whole_milliseconds() as u64,
-                    );
-                    format!("do_time >= {} AND do_time < {}", start_ts, watermark)
-                }
-                QueryInterval::Landmark => "".to_string(),
+                TimeInterval::Landmark => "".to_string(),
             };
             // Generate SQL str to be executed
             let full_query = format!("{} {} {}", base_str, key_clause, interval);
-            //println!("QUERY {}", full_query);
+            // println!("QUERY {}", full_query);
             full_query
         })
         .collect();
@@ -584,213 +469,4 @@ fn print_hist(id: &str, hist: &Histogram<u64>) {
         Duration::from_nanos(hist.max()).as_nanos(),
         hist.len(),
     );
-}
-
-#[cfg(feature = "plot")]
-fn plot_queries(results: &Vec<BenchResult>) {
-    use plotpy::{Curve, Legend, Plot};
-    use std::path::Path;
-    std::fs::create_dir_all("../results").unwrap();
-
-    let x: Vec<f64> = results.iter().map(|e| e.total_entries as f64).collect();
-    let mut duckdb_low_all_y = Vec::new();
-    let mut duckdb_high_all_y = Vec::new();
-    let mut duckdb_low_point_y = Vec::new();
-    let mut duckdb_high_point_y = Vec::new();
-    let mut duckdb_low_range_y = Vec::new();
-    let mut duckdb_high_range_y = Vec::new();
-    let mut duckdb_low_random_y = Vec::new();
-    let mut duckdb_high_random_y = Vec::new();
-
-    let mut wheel_low_all_y = Vec::new();
-    let mut wheel_high_all_y = Vec::new();
-    let mut wheel_low_point_y = Vec::new();
-    let mut wheel_high_point_y = Vec::new();
-    let mut wheel_low_range_y = Vec::new();
-    let mut wheel_high_range_y = Vec::new();
-    let mut wheel_low_random_y = Vec::new();
-    let mut wheel_high_random_y = Vec::new();
-
-    for result in results {
-        let throughput = result.total_queries as f64 / result.duckdb_low_all.0.as_secs_f64();
-        duckdb_low_all_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.duckdb_high_all.0.as_secs_f64();
-        duckdb_high_all_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.duckdb_low_point.0.as_secs_f64();
-        duckdb_low_point_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.duckdb_high_point.0.as_secs_f64();
-        duckdb_high_point_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.duckdb_low_range.0.as_secs_f64();
-        duckdb_low_range_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.duckdb_high_range.0.as_secs_f64();
-        duckdb_high_range_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.duckdb_low_random.0.as_secs_f64();
-        duckdb_low_random_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.duckdb_high_random.0.as_secs_f64();
-        duckdb_high_random_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.wheel_low_all.0.as_secs_f64();
-        wheel_low_all_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.wheel_high_all.0.as_secs_f64();
-        wheel_high_all_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.wheel_low_point.0.as_secs_f64();
-        wheel_low_point_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.wheel_high_point.0.as_secs_f64();
-        wheel_high_point_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.wheel_low_range.0.as_secs_f64();
-        wheel_low_range_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.wheel_high_range.0.as_secs_f64();
-        wheel_high_range_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.wheel_low_random.0.as_secs_f64();
-        wheel_low_random_y.push(throughput);
-
-        let throughput = result.total_queries as f64 / result.wheel_high_random.0.as_secs_f64();
-        wheel_high_random_y.push(throughput);
-    }
-
-    let mut duckdb_low_all_curve = Curve::new();
-    duckdb_low_all_curve.set_label("DuckDB Low ALL");
-    duckdb_low_all_curve.set_line_color("r");
-    duckdb_low_all_curve.set_marker_style("^");
-    duckdb_low_all_curve.draw(&x, &duckdb_low_all_y);
-
-    let mut duckdb_high_all_curve = Curve::new();
-    duckdb_high_all_curve.set_label("DuckDB High ALL");
-    duckdb_high_all_curve.set_line_color("r");
-    duckdb_high_all_curve.set_marker_style("o");
-    duckdb_high_all_curve.draw(&x, &duckdb_high_all_y);
-
-    let mut duckdb_low_point_curve = Curve::new();
-    duckdb_low_point_curve.set_label("DuckDB Low Point");
-    duckdb_low_point_curve.set_line_color("m");
-    duckdb_low_point_curve.set_marker_style("^");
-    duckdb_low_point_curve.draw(&x, &duckdb_low_point_y);
-
-    let mut duckdb_high_point_curve = Curve::new();
-    duckdb_high_point_curve.set_label("DuckDB High Point");
-    duckdb_high_point_curve.set_line_color("m");
-    duckdb_high_point_curve.set_marker_style("o");
-    duckdb_high_point_curve.draw(&x, &duckdb_high_point_y);
-
-    let mut duckdb_low_range_curve = Curve::new();
-    duckdb_low_range_curve.set_label("DuckDB Low Range");
-    duckdb_low_range_curve.set_line_color("y");
-    duckdb_low_range_curve.set_marker_style("^");
-    duckdb_low_range_curve.draw(&x, &duckdb_low_range_y);
-
-    let mut duckdb_high_range_curve = Curve::new();
-    duckdb_high_range_curve.set_label("DuckDB High Range");
-    duckdb_high_range_curve.set_line_color("y");
-    duckdb_high_range_curve.set_marker_style("o");
-    duckdb_high_range_curve.draw(&x, &duckdb_high_range_y);
-
-    let mut duckdb_low_random_curve = Curve::new();
-    duckdb_low_random_curve.set_label("DuckDB Low Random");
-    duckdb_low_random_curve.set_line_color("c");
-    duckdb_low_random_curve.set_marker_style("^");
-    duckdb_low_random_curve.draw(&x, &duckdb_low_random_y);
-
-    let mut duckdb_high_random_curve = Curve::new();
-    duckdb_high_random_curve.set_label("DuckDB High Random");
-    duckdb_high_random_curve.set_line_color("c");
-    duckdb_high_random_curve.set_marker_style("o");
-    duckdb_high_random_curve.draw(&x, &duckdb_high_range_y);
-
-    let mut wheel_low_all_curve = Curve::new();
-    wheel_low_all_curve.set_label("Wheel Low ALL");
-    wheel_low_all_curve.set_line_color("k");
-    wheel_low_all_curve.set_marker_style("^");
-    wheel_low_all_curve.draw(&x, &wheel_low_all_y);
-
-    let mut wheel_high_all_curve = Curve::new();
-    wheel_high_all_curve.set_label("Wheel High ALL");
-    wheel_high_all_curve.set_line_color("k");
-    wheel_high_all_curve.set_marker_style("o");
-    wheel_high_all_curve.draw(&x, &wheel_high_all_y);
-
-    let mut wheel_low_point_curve = Curve::new();
-    wheel_low_point_curve.set_label("Wheel Low Point");
-    wheel_low_point_curve.set_line_color("#FFA833");
-    wheel_low_point_curve.set_marker_style("^");
-    wheel_low_point_curve.draw(&x, &wheel_low_point_y);
-
-    let mut wheel_high_point_curve = Curve::new();
-    wheel_high_point_curve.set_label("Wheel High Point");
-    wheel_high_point_curve.set_line_color("#FFA833");
-    wheel_high_point_curve.set_marker_style("o");
-    wheel_high_point_curve.draw(&x, &wheel_high_point_y);
-
-    let mut wheel_low_range_curve = Curve::new();
-    wheel_low_range_curve.set_label("Wheel Low Range");
-    wheel_low_range_curve.set_line_color("#FF33FC");
-    wheel_low_range_curve.set_marker_style("^");
-    wheel_low_range_curve.draw(&x, &wheel_low_range_y);
-
-    let mut wheel_high_range_curve = Curve::new();
-    wheel_high_range_curve.set_label("Wheel High Range");
-    wheel_high_range_curve.set_line_color("#FF33FC");
-    wheel_high_range_curve.set_marker_style("o");
-    wheel_high_range_curve.draw(&x, &wheel_high_range_y);
-
-    let mut wheel_low_random_curve = Curve::new();
-    wheel_low_random_curve.set_label("Wheel Low Random");
-    wheel_low_random_curve.set_line_color("#33FFBC");
-    wheel_low_random_curve.set_marker_style("^");
-    wheel_low_random_curve.draw(&x, &wheel_low_random_y);
-
-    let mut wheel_high_random_curve = Curve::new();
-    wheel_high_random_curve.set_label("Wheel High Random");
-    wheel_high_random_curve.set_line_color("#33FFBC");
-    wheel_high_random_curve.set_marker_style("o");
-    wheel_high_random_curve.draw(&x, &wheel_high_random_y);
-
-    let mut legend = Legend::new();
-    legend.set_outside(true);
-    legend.set_num_col(2);
-    legend.draw();
-
-    // configure plot
-    let mut plot = Plot::new();
-    plot.set_horizontal_gap(0.5)
-        .set_vertical_gap(0.5)
-        .set_gaps(0.3, 0.2);
-
-    plot.set_label_y("Throughput (queries/s)");
-    plot.set_log_y(true);
-    plot.set_log_x(true);
-    plot.set_label_x("Insert Events");
-
-    plot.add(&duckdb_low_all_curve)
-        .add(&duckdb_high_all_curve)
-        .add(&duckdb_low_point_curve)
-        .add(&duckdb_high_point_curve)
-        .add(&duckdb_low_range_curve)
-        .add(&duckdb_high_range_curve)
-        .add(&duckdb_low_random_curve)
-        .add(&duckdb_high_random_curve)
-        .add(&wheel_low_all_curve)
-        .add(&wheel_high_all_curve)
-        .add(&wheel_low_point_curve)
-        .add(&wheel_high_point_curve)
-        .add(&wheel_low_range_curve)
-        .add(&wheel_high_range_curve)
-        .add(&wheel_low_random_curve)
-        .add(&wheel_high_random_curve)
-        .add(&legend);
-
-    let path = Path::new("../results/query_throughput.png");
-    plot.save(&path).unwrap();
 }

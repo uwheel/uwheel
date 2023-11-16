@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use awheel::{aggregator::all::AllAggregator, time, Entry, RwWheel};
+use awheel::{aggregator::all::AllAggregator, time_internal as time, Entry, RwWheel};
 use clap::{ArgEnum, Parser};
 use duckdb::Result;
 use minstant::Instant;
@@ -45,14 +45,14 @@ fn main() -> Result<()> {
     let events_per_min = args.events_per_min;
 
     println!("Running with {:#?}", args);
-    let (_watermark, batches) = DataGenerator::generate_query_data(events_per_min);
+    let (_watermark, batches) = DataGenerator::generate_query_data(1000, events_per_min);
 
     let mut wheel: RwWheel<AllAggregator> = RwWheel::new(0);
     for batch in batches {
         for record in batch {
             wheel.insert(Entry::new(record.fare_amount, record.do_time));
         }
-        use awheel::time::NumericalDuration;
+        use awheel::time_internal::NumericalDuration;
         wheel.advance(60.seconds());
     }
     println!("Finished preparing awheel");

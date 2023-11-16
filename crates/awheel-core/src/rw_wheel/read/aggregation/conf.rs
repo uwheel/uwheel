@@ -5,12 +5,12 @@ use alloc::{vec, vec::Vec};
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Copy, Default, Clone, Debug)]
 pub enum RetentionPolicy {
-    #[default]
     /// The default retention policy which does not keep data around
     Drop,
     /// A no limit policy where data is always kept around
     ///
     /// Be careful using this in a low granularity wheel (e.g., milli, seconds)
+    #[default]
     Keep,
     /// A policy that retains data but starts evicting at the given limit
     KeepWithLimit(usize),

@@ -41,6 +41,7 @@ pub use rw_wheel::{
     Options,
     RwWheel,
 };
+pub use time::{macros::datetime, OffsetDateTime};
 
 /// A type containing error variants that may arise when using a wheel
 #[derive(Debug)]

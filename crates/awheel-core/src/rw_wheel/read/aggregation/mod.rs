@@ -518,6 +518,12 @@ impl<A: Aggregator> AggregationWheel<A> {
         })
     }
 
+    /// Returns the number of queryable slots
+    #[inline]
+    pub fn total_slots(&self) -> usize {
+        self.slots.len()
+    }
+
     /// Combines partial aggregates within the given range into a new partial aggregate
     ///
     /// # Panics

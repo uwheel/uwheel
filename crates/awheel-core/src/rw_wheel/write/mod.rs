@@ -65,9 +65,6 @@ impl<A: Aggregator> WriteAheadWheel<A> {
         self.tail = self.wrap_add(self.tail, 1);
         self.slot(tail).take()
     }
-    pub(super) fn watermark_mut(&mut self) -> &mut u64 {
-        &mut self.watermark
-    }
 
     /// Check whether this wheel can write ahead by ´addend` slots
     pub(crate) fn can_write_ahead(&self, addend: u64) -> bool {

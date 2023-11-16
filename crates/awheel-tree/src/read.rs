@@ -3,7 +3,7 @@ use super::Key;
 use awheel_core::{
     aggregator::Aggregator,
     rw_wheel::{read::aggregation::combine_or_insert, write::WriteAheadWheel},
-    time,
+    time_internal as time,
     ReadWheel,
 };
 use core::{borrow::Borrow, ops::RangeBounds};

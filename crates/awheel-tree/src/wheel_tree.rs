@@ -2,8 +2,9 @@ use super::Key;
 use awheel_core::{
     aggregator::Aggregator,
     delta::DeltaState,
-    rw_wheel::read::{aggregation::combine_or_insert, Eager},
-    time,
+    rw_wheel::read::aggregation::combine_or_insert,
+    time_internal::Duration,
+    OffsetDateTime,
     ReadWheel,
 };
 use concurrent_map::{ConcurrentMap, Minimum};
@@ -18,7 +19,7 @@ pub struct WheelTree<K: Key + Minimum, A: Aggregator + Clone>
 where
     A::PartialAggregate: Sync,
 {
-    inner: ConcurrentMap<K, ReadWheel<A, Eager>>,
+    inner: ConcurrentMap<K, ReadWheel<A>>,
 }
 impl<K: Key + Minimum, A: Aggregator + Clone + 'static> Default for WheelTree<K, A>
 where
@@ -40,7 +41,7 @@ where
     }
     /// Returns the ReadWheel for a given key
     #[inline]
-    pub fn get<Q>(&self, key: &Q) -> Option<ReadWheel<A, Eager>>
+    pub fn get<Q>(&self, key: &Q) -> Option<ReadWheel<A>>
     where
         K: Borrow<Q>,
         Q: ?Sized + Ord + PartialEq,
@@ -55,13 +56,15 @@ where
         K: Borrow<Q>,
         Q: ?Sized + Ord + PartialEq,
     {
-        let mut res: Option<A::PartialAggregate> = None;
-        for (_, rw) in self.inner.range(range) {
-            if let Some(landmark) = rw.landmark() {
-                combine_or_insert::<A>(&mut res, landmark);
-            }
-        }
-        res
+        self.inner
+            .range(range)
+            .fold(None, |mut acc, (_, wheel)| match wheel.landmark() {
+                Some(landmark) => {
+                    combine_or_insert::<A>(&mut acc, landmark);
+                    acc
+                }
+                None => acc,
+            })
     }
     /// Returns the lowered aggregate result of a landmark window across a range of keys
     #[inline]
@@ -73,29 +76,49 @@ where
     {
         self.landmark_range(range).map(|partial| A::lower(partial))
     }
-    /// Returns the partial aggregate in the given time interval across a range of keys
-    #[inline]
-    pub fn interval_range<Q, R>(&self, dur: time::Duration, range: R) -> Option<A::PartialAggregate>
+
+    pub fn range_with_time_filter<Q, R>(
+        &self,
+        range: R,
+        start: OffsetDateTime,
+        end: OffsetDateTime,
+    ) -> Option<A::PartialAggregate>
     where
         R: RangeBounds<Q>,
         K: Borrow<Q>,
         Q: ?Sized + Ord + PartialEq,
     {
-        let mut res: Option<A::PartialAggregate> = None;
-        for (_, rw) in self.inner.range(range) {
-            if let Some(partial_agg) = rw.interval(dur) {
-                combine_or_insert::<A>(&mut res, partial_agg);
+        self.inner.range(range).fold(None, |mut acc, (_, wheel)| {
+            match wheel.as_ref().combine_range(start, end) {
+                Some(agg) => {
+                    combine_or_insert::<A>(&mut acc, agg);
+                    acc
+                }
+                None => acc,
             }
-        }
-        res
+        })
+    }
+    /// Returns the partial aggregate in the given time interval across a range of keys
+    #[inline]
+    pub fn interval_range<Q, R>(&self, dur: Duration, range: R) -> Option<A::PartialAggregate>
+    where
+        R: RangeBounds<Q>,
+        K: Borrow<Q>,
+        Q: ?Sized + Ord + PartialEq,
+    {
+        self.inner
+            .range(range)
+            .fold(None, |mut acc, (_, wheel)| match wheel.interval(dur) {
+                Some(agg) => {
+                    combine_or_insert::<A>(&mut acc, agg);
+                    acc
+                }
+                None => acc,
+            })
     }
     /// Returns the aggregate in the given time interval across a range of keys
     #[inline]
-    pub fn interval_range_and_lower<Q, R>(
-        &self,
-        dur: time::Duration,
-        range: R,
-    ) -> Option<A::Aggregate>
+    pub fn interval_range_and_lower<Q, R>(&self, dur: Duration, range: R) -> Option<A::Aggregate>
     where
         R: RangeBounds<Q>,
         K: Borrow<Q>,
@@ -103,6 +126,14 @@ where
     {
         self.interval_range(dur, range)
             .map(|partial| A::lower(partial))
+    }
+
+    /// Inserts a wheel into the tree by the given key
+    ///
+    /// Note that this wheel may be updated from a different thread.
+    #[inline]
+    pub fn insert(&self, key: K, wheel: ReadWheel<A>) {
+        self.inner.insert(key, wheel);
     }
 
     /// Merges a set of deltas into a wheel specified by key
@@ -119,21 +150,56 @@ where
 
 #[cfg(test)]
 mod tests {
-    use awheel_core::{aggregator::sum::U64SumAggregator, time::NumericalDuration};
+    use awheel_core::{
+        aggregator::sum::U64SumAggregator,
+        datetime,
+        time_internal::NumericalDuration,
+    };
 
     use super::*;
 
     #[test]
     fn wheel_tree_test() {
         let wheel_tree: WheelTree<usize, U64SumAggregator> = WheelTree::default();
+        let watermark = 1699488000000;
 
-        wheel_tree.merge_delta(1, DeltaState::new(0, vec![Some(10), None, Some(15)]));
-        wheel_tree.merge_delta(2, DeltaState::new(0, vec![Some(20), None, Some(1)]));
+        wheel_tree.merge_delta(
+            1,
+            DeltaState::new(watermark, vec![Some(10), None, Some(15), None]),
+        );
+        wheel_tree.merge_delta(
+            2,
+            DeltaState::new(watermark, vec![Some(20), None, Some(1), None]),
+        );
 
         assert_eq!(wheel_tree.landmark_range(0..3), Some(46));
-        assert_eq!(wheel_tree.interval_range(3.seconds(), 0..3), Some(46));
-        assert_eq!(wheel_tree.interval_range(1.seconds(), 0..3), Some(16));
-        assert_eq!(wheel_tree.get(&1).unwrap().interval(3.seconds()), Some(25));
-        assert_eq!(wheel_tree.get(&1).unwrap().interval(2.seconds()), Some(15));
+        assert_eq!(wheel_tree.interval_range(3.seconds(), 0..3), Some(16));
+        assert_eq!(wheel_tree.interval_range(1.seconds(), 0..3), Some(0));
+        assert_eq!(wheel_tree.get(&1).unwrap().interval(3.seconds()), Some(15));
+
+        let start = datetime!(2023-11-09 00:00:00 UTC);
+        let end = datetime!(2023-11-09 00:00:02 UTC);
+        assert_eq!(
+            wheel_tree.range_with_time_filter(0..=1, start, end),
+            Some(10)
+        );
+
+        assert_eq!(
+            wheel_tree.range_with_time_filter(0..=2, start, end),
+            Some(30)
+        );
+
+        let start = datetime!(2023-11-09 00:00:00 UTC);
+        let end = datetime!(2023-11-09 00:00:04 UTC);
+
+        assert_eq!(
+            wheel_tree.range_with_time_filter(0..=1, start, end),
+            Some(25)
+        );
+
+        assert_eq!(
+            wheel_tree.range_with_time_filter(0..=2, start, end),
+            Some(25 + 21)
+        );
     }
 }

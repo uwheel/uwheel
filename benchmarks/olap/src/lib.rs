@@ -1,4 +1,6 @@
-use awheel::time;
+use std::{cmp, time::SystemTime};
+
+use awheel::{time_internal as time, OffsetDateTime};
 use duckdb::{params, Connection, DropBehavior, Result};
 
 const MAX_FARE: u64 = 1000;
@@ -9,6 +11,12 @@ const MAX_TIMESTAMP_DIFF_MS: u64 = 60000;
 pub fn get_random_int_key() -> u32 {
     fastrand::u32(0..1000000)
 }
+
+// 2023-10-01 00:00:00
+pub const START_DATE: u64 = 1696111200;
+pub const START_DATE_MS: u64 = START_DATE * 1000;
+// 2023-10-08 00:00:00
+pub const END_DATE: u64 = 1696716000;
 
 // NYC Taxi
 pub fn get_random_fare_amount() -> f64 {
@@ -21,7 +29,8 @@ pub fn generate_timestamp(watermark: u64) -> u64 {
 
 // generate random pickup location
 pub fn pu_location_id() -> u64 {
-    fastrand::u64(1..263)
+    // fastrand::u64(1..263)
+    fastrand::u64(1..5) // For testing purposes
 }
 pub fn rate_code_id() -> u64 {
     fastrand::u64(1..=6)
@@ -81,12 +90,15 @@ impl DataGenerator {
         batches
     }
 
-    pub fn generate_query_data(events_per_sec: usize) -> (u64, Vec<Vec<RideData>>) {
-        let fifty_two_days_as_seconds = awheel::time::Duration::days(52).whole_seconds();
+    pub fn generate_query_data(
+        start_date: u64,
+        events_per_sec: usize,
+    ) -> (u64, Vec<Vec<RideData>>) {
+        let seven_days_as_seconds = time::Duration::days(7).whole_seconds();
 
-        let mut watermark = 1000u64;
+        let mut watermark = start_date;
         let mut batches = Vec::new();
-        for _sec in 0..fifty_two_days_as_seconds {
+        for _sec in 0..seven_days_as_seconds {
             let mut batch = Vec::with_capacity(events_per_sec);
             for _ in 0..events_per_sec {
                 let ride = RideData::with_timestamp(watermark);
@@ -116,6 +128,11 @@ impl DataGenerator {
         batches
     }
 }
+
+// #[derive(Clone)]
+// pub enum QueryV {
+//     Q1
+// }
 
 #[derive(Clone)]
 pub enum QueryType {
@@ -169,132 +186,247 @@ impl QueryType {
 #[derive(Clone)]
 pub struct Query {
     pub query_type: QueryType,
-    pub interval: QueryInterval,
+    pub interval: TimeInterval,
 }
 impl Query {
+    // #[inline]
+    // pub fn olap() -> Self {
+    //     Self {
+    //         query_type: QueryType::olap(),
+    //         interval: QueryInterval::generate_olap(),
+    //     }
+    // }
+    // #[inline]
+    // pub fn mix() -> Self {
+    //     Self {
+    //         query_type: QueryType::new(),
+    //         interval: QueryInterval::generate_olap(),
+    //     }
+    // }
     #[inline]
-    pub fn olap() -> Self {
+    pub fn q1() -> Self {
         Self {
             query_type: QueryType::olap(),
-            interval: QueryInterval::generate_olap(),
+            interval: TimeInterval::Landmark,
         }
     }
+
     #[inline]
-    pub fn mix() -> Self {
-        Self {
-            query_type: QueryType::new(),
-            interval: QueryInterval::generate_olap(),
-        }
-    }
-    #[inline]
-    pub fn olap_high_intervals() -> Self {
+    pub fn q2() -> Self {
         Self {
             query_type: QueryType::olap(),
-            interval: QueryInterval::generate_olap(),
+            interval: TimeInterval::generate_hours(),
         }
     }
+
     #[inline]
-    pub fn olap_range_low_intervals() -> Self {
+    pub fn q3() -> Self {
+        Self {
+            query_type: QueryType::point(),
+            interval: TimeInterval::Landmark,
+        }
+    }
+
+    #[inline]
+    pub fn q4() -> Self {
+        Self {
+            query_type: QueryType::point(),
+            interval: TimeInterval::generate_seconds(),
+        }
+    }
+
+    #[inline]
+    pub fn q5() -> Self {
         Self {
             query_type: QueryType::range(),
-            interval: QueryInterval::generate_stream(),
+            interval: TimeInterval::Landmark,
         }
     }
+
     #[inline]
-    pub fn olap_range_high_intervals() -> Self {
+    pub fn q6() -> Self {
         Self {
             query_type: QueryType::range(),
-            interval: QueryInterval::generate_olap(),
+            interval: TimeInterval::generate_seconds(),
         }
     }
-    #[inline]
-    pub fn olap_low_intervals() -> Self {
-        Self {
-            query_type: QueryType::olap(),
-            interval: QueryInterval::generate_stream(),
-        }
-    }
-    #[inline]
-    pub fn point_queries_high_intervals() -> Self {
-        Self {
-            query_type: QueryType::point(),
-            interval: QueryInterval::generate_olap(),
-        }
-    }
-    #[inline]
-    pub fn random_queries_low_intervals() -> Self {
-        Self {
-            query_type: QueryType::random(),
-            interval: QueryInterval::generate_stream(),
-        }
-    }
-    #[inline]
-    pub fn random_queries_high_intervals() -> Self {
-        Self {
-            query_type: QueryType::random(),
-            interval: QueryInterval::generate_olap(),
-        }
-    }
-    #[inline]
-    pub fn point_queries_low_intervals() -> Self {
-        Self {
-            query_type: QueryType::point(),
-            interval: QueryInterval::generate_stream(),
-        }
-    }
-    #[inline]
-    pub fn stream() -> Self {
-        Self {
-            query_type: QueryType::point(),
-            interval: QueryInterval::generate_stream(),
-        }
-    }
+
+    // #[inline]
+    // pub fn olap_high_intervals() -> Self {
+    //     Self {
+    //         query_type: QueryType::olap(),
+    //         interval: QueryInterval::generate_olap(),
+    //     }
+    // }
+    // #[inline]
+    // pub fn olap_range_low_intervals() -> Self {
+    //     Self {
+    //         query_type: QueryType::range(),
+    //         interval: QueryInterval::generate_stream(),
+    //     }
+    // }
+    // #[inline]
+    // pub fn olap_range_high_intervals() -> Self {
+    //     Self {
+    //         query_type: QueryType::range(),
+    //         interval: QueryInterval::generate_olap(),
+    //     }
+    // }
+    // #[inline]
+    // pub fn olap_low_intervals() -> Self {
+    //     Self {
+    //         query_type: QueryType::olap(),
+    //         interval: QueryInterval::generate_stream(),
+    //     }
+    // }
+    // #[inline]
+    // pub fn point_queries_high_intervals() -> Self {
+    //     Self {
+    //         query_type: QueryType::point(),
+    //         interval: QueryInterval::generate_olap(),
+    //     }
+    // }
+    // #[inline]
+    // pub fn random_queries_low_intervals() -> Self {
+    //     Self {
+    //         query_type: QueryType::random(),
+    //         interval: QueryInterval::generate_stream(),
+    //     }
+    // }
+    // #[inline]
+    // pub fn random_queries_high_intervals() -> Self {
+    //     Self {
+    //         query_type: QueryType::random(),
+    //         interval: QueryInterval::generate_olap(),
+    //     }
+    // }
+    // #[inline]
+    // pub fn point_queries_low_intervals() -> Self {
+    //     Self {
+    //         query_type: QueryType::point(),
+    //         interval: QueryInterval::generate_stream(),
+    //     }
+    // }
+    // #[inline]
+    // pub fn stream() -> Self {
+    //     Self {
+    //         query_type: QueryType::point(),
+    //         interval: QueryInterval::generate_stream(),
+    //     }
+    // }
 }
 
 pub struct QueryGenerator;
 impl QueryGenerator {
-    pub fn generate_olap(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::olap()).collect()
+    // pub fn generate_olap(total: usize) -> Vec<Query> {
+    //     (0..total).map(|_| Query::olap()).collect()
+    // }
+    pub fn generate_q1(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q1()).collect()
     }
-    pub fn generate_low_interval_point_queries(total: usize) -> Vec<Query> {
-        (0..total)
-            .map(|_| Query::point_queries_low_intervals())
-            .collect()
+    pub fn generate_q2(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q2()).collect()
     }
-    pub fn generate_high_interval_point_queries(total: usize) -> Vec<Query> {
-        (0..total)
-            .map(|_| Query::point_queries_high_intervals())
-            .collect()
-    }
-    pub fn generate_low_interval_olap(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::olap_low_intervals()).collect()
-    }
-    pub fn generate_high_interval_olap(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::olap_high_intervals()).collect()
-    }
-    pub fn generate_streaming(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::stream()).collect()
+    // pub fn generate_q1_high_interval(total: usize) -> Vec<Query> {
+    // (0..total).map(|_| Query::q1()).collect()
+    // }
+    pub fn generate_q3(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q3()).collect()
     }
 
-    pub fn generate_low_interval_range_queries(total: usize) -> Vec<Query> {
-        (0..total)
-            .map(|_| Query::olap_range_low_intervals())
-            .collect()
+    pub fn generate_q4(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q4()).collect()
     }
-    pub fn generate_high_interval_range_queries(total: usize) -> Vec<Query> {
-        (0..total)
-            .map(|_| Query::olap_range_high_intervals())
-            .collect()
+    pub fn generate_q5(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q5()).collect()
     }
-    pub fn generate_low_interval_random_queries(total: usize) -> Vec<Query> {
-        (0..total)
-            .map(|_| Query::random_queries_low_intervals())
-            .collect()
+    pub fn generate_q6(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q6()).collect()
     }
-    pub fn generate_high_interval_random_queries(total: usize) -> Vec<Query> {
-        (0..total)
-            .map(|_| Query::random_queries_high_intervals())
-            .collect()
+    // pub fn generate_q3_high_interval(total: usize) -> Vec<Query> {
+    //     (0..total)
+    //         .map(|_| Query::point_queries_high_intervals())
+    //         .collect()
+    // }
+    // pub fn generate_streaming(total: usize) -> Vec<Query> {
+    //     (0..total).map(|_| Query::stream()).collect()
+    // }
+
+    // pub fn generate_q5_low_interval(total: usize) -> Vec<Query> {
+    //     (0..total)
+    //         .map(|_| Query::olap_range_low_intervals())
+    //         .collect()
+    // }
+    // pub fn generate_q5_high_interval(total: usize) -> Vec<Query> {
+    //     (0..total)
+    //         .map(|_| Query::olap_range_high_intervals())
+    //         .collect()
+    // }
+    // pub fn generate_low_interval_random_queries(total: usize) -> Vec<Query> {
+    //     (0..total)
+    //         .map(|_| Query::random_queries_low_intervals())
+    //         .collect()
+    // }
+    // pub fn generate_high_interval_random_queries(total: usize) -> Vec<Query> {
+    //     (0..total)
+    //         .map(|_| Query::random_queries_high_intervals())
+    //         .collect()
+    // }
+}
+
+#[derive(Clone)]
+pub enum TimeFilter {
+    Seconds(u64, u64),
+    Minutes(u64, u64),
+    Hours(u64, u64),
+    Days(u64, u64),
+    Landmark,
+}
+impl TimeFilter {
+    pub fn random() -> Self {
+        let gran = fastrand::usize(0..6);
+        if gran == 0 {
+            let (start, end) = generate_seconds_range();
+            TimeFilter::Seconds(start, end)
+        } else if gran == 1 {
+            let (start, end) = generate_minutes_range();
+            TimeFilter::Minutes(start, end)
+        } else if gran == 2 {
+            let (start, end) = generate_hours_range();
+            TimeFilter::Hours(start, end)
+        } else if gran == 3 {
+            let (start, end) = generate_days_range();
+            TimeFilter::Days(start, end)
+        } else {
+            TimeFilter::Landmark
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum TimeInterval {
+    Range(u64, u64),
+    Landmark,
+}
+
+impl TimeInterval {
+    pub fn generate_stream() -> Self {
+        let gran = fastrand::usize(0..2);
+        let (start, end) = if gran == 0 {
+            generate_seconds_range()
+        } else {
+            generate_minutes_range()
+        };
+        Self::Range(start, end)
+    }
+
+    pub fn generate_seconds() -> Self {
+        let (start, end) = generate_seconds_range();
+        Self::Range(start, end)
+    }
+    pub fn generate_minutes() -> Self {
+        let (start, end) = generate_minutes_range();
+        Self::Range(start, end)
     }
 }
 
@@ -310,8 +442,8 @@ pub enum QueryInterval {
 
 impl QueryInterval {
     pub fn max_seconds() -> u64 {
-        time::Duration::weeks(52).whole_seconds() as u64
-        //time::Duration::days(7).whole_seconds() as u64
+        // time::Duration::weeks(52).whole_seconds() as u64
+        time::Duration::days(7).whole_seconds() as u64
     }
     pub fn generate_stream() -> Self {
         let gran = fastrand::usize(0..2);
@@ -445,5 +577,159 @@ pub fn duckdb_setup(disk: bool) -> (duckdb::Connection, &'static str) {
             fare_amount FLOAT8 not null,
         );";
     db.execute_batch(create_table_sql).unwrap();
+    // Optional Create index on timestamp - seems to lower performance though..
+    // let index_sql = "create index idx_timestamp ON rides(do_time);";
+    // db.execute_batch(index_sql).unwrap();
     (db, id)
+}
+
+pub fn generate_time_range(granularity: u32) -> (u64, u64) {
+    // Specify the date range (2023-10-01 to 2023-10-07)
+    let start_date = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(START_DATE); // October 1, 2023
+    let end_date = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(END_DATE); // October 7, 2023
+    use std::time::UNIX_EPOCH;
+
+    // Convert dates to Unix timestamps
+    let start_timestamp = start_date.duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let end_timestamp = end_date.duration_since(UNIX_EPOCH).unwrap().as_secs();
+    // Randomly generate a start time within the specified date range
+    let random_start = fastrand::u64(start_timestamp..end_timestamp);
+    let random_start_minutes = random_start / 60;
+    // let random_start = rand::thread_rng().gen_range(start_timestamp..end_timestamp);
+
+    // Construct time range based on granularity
+    match granularity {
+        0 => (random_start, random_start + 3600), // seconds
+        1 => (random_start_minutes, random_start_minutes + 60), // minutes
+        2 => (random_start / 3600, (random_start + 3600) / 3600), // hours
+        3 => (random_start / 86400, (random_start + 3600) / 86400), // days
+        _ => panic!("Invalid granularity"),
+    }
+}
+
+pub fn generate_seconds_range() -> (u64, u64) {
+    // Specify the date range (2023-10-01 to 2023-10-07)
+    let start_date = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(START_DATE);
+    let end_date = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(END_DATE);
+
+    // Convert dates to Unix timestamps
+    let start_timestamp = start_date
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let end_timestamp = end_date
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // Randomly generate a start time within the specified date range
+    let random_start = fastrand::u64(start_timestamp..end_timestamp);
+
+    // Generate a random duration between 1 and (604800 - random_start_seconds) seconds
+    let max_duration = end_timestamp - random_start;
+    let duration_seconds = fastrand::u64(1..=max_duration);
+
+    (random_start, random_start + duration_seconds)
+}
+pub fn generate_minutes_range() -> (u64, u64) {
+    // Specify the date range (2023-10-01 to 2023-10-07)
+    let start_date = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(START_DATE); // October 1, 2023
+    let end_date = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(END_DATE); // October 7, 2023
+
+    // Convert dates to Unix timestamps
+    let start_timestamp = start_date
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let end_timestamp = end_date
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // Randomly generate a start time within the specified date range
+    let random_start_minutes = fastrand::u64(start_timestamp..end_timestamp) / 60;
+
+    // Set seconds to 00 for the start time
+    let start_time_seconds = random_start_minutes * 60;
+
+    // Generate a random duration between 1 and (10080 - random_start_minutes) minutes
+    let max_duration = (end_timestamp / 60) - random_start_minutes;
+
+    let duration_minutes = fastrand::u64(1..=max_duration);
+    let end_time_seconds = start_time_seconds + duration_minutes * 60;
+
+    let end_time_seconds = cmp::min(end_time_seconds, end_timestamp);
+
+    (start_time_seconds, end_time_seconds)
+}
+
+pub fn generate_hours_range() -> (u64, u64) {
+    // Specify the date range (2023-10-01 to 2023-10-07)
+    let start_date = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(START_DATE); // October 1, 2023
+    let end_date = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(END_DATE); // October 7, 2023
+
+    // Convert dates to Unix timestamps
+    let start_timestamp = start_date
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let end_timestamp = end_date
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // Randomly generate a start time within the specified date range
+    let random_start_hours = fastrand::u64(start_timestamp..end_timestamp) / 3600;
+
+    // Set seconds to 00 for the start time
+    let start_time_seconds = random_start_hours * 3600;
+
+    // Generate a random duration between 1 and (10080 - random_start_minutes) minutes
+    let max_duration = (end_timestamp / 3600) - random_start_hours;
+
+    let duration_hours = fastrand::u64(0..=max_duration);
+    let end_time_seconds = start_time_seconds + duration_hours * 3600;
+
+    let end_time_seconds = std::cmp::min(end_time_seconds, end_timestamp);
+
+    (start_time_seconds, end_time_seconds)
+}
+
+pub fn generate_days_range() -> (u64, u64) {
+    // Specify the date range (2023-10-01 to 2023-10-07)
+    let start_date = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(START_DATE);
+    let end_date = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(END_DATE);
+
+    // Convert dates to Unix timestamps
+    let start_timestamp = start_date
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let end_timestamp = end_date
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // Randomly generate a start time within the specified date range
+    let random_start_days = fastrand::u64(start_timestamp..end_timestamp) / 86400;
+
+    // Set seconds to 00 for the start time
+    let start_time_seconds = random_start_days * 86400;
+
+    // Generate a random duration between 1 and (10080 - random_start_minutes) minutes
+    let max_duration = (end_timestamp / 86400) - random_start_days;
+
+    let duration_days = fastrand::u64(0..=max_duration);
+    let end_time_seconds = start_time_seconds + duration_days * 86400;
+
+    let end_time_seconds = std::cmp::min(end_time_seconds, end_timestamp);
+
+    (start_time_seconds, end_time_seconds)
+}
+
+pub fn into_offset_date_time_start_end(start: u64, end: u64) -> (OffsetDateTime, OffsetDateTime) {
+    (
+        OffsetDateTime::from_unix_timestamp(start as i64).unwrap(),
+        OffsetDateTime::from_unix_timestamp(end as i64).unwrap(),
+    )
 }
