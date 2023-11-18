@@ -212,10 +212,34 @@ impl Query {
     }
 
     #[inline]
-    pub fn q2() -> Self {
+    pub fn q2_seconds() -> Self {
+        Self {
+            query_type: QueryType::olap(),
+            interval: TimeInterval::generate_seconds(),
+        }
+    }
+
+    #[inline]
+    pub fn q2_minutes() -> Self {
+        Self {
+            query_type: QueryType::olap(),
+            interval: TimeInterval::generate_minutes(),
+        }
+    }
+
+    #[inline]
+    pub fn q2_hours() -> Self {
         Self {
             query_type: QueryType::olap(),
             interval: TimeInterval::generate_hours(),
+        }
+    }
+
+    #[inline]
+    pub fn q2_random() -> Self {
+        Self {
+            query_type: QueryType::olap(),
+            interval: TimeInterval::generate_random(),
         }
     }
 
@@ -228,10 +252,34 @@ impl Query {
     }
 
     #[inline]
-    pub fn q4() -> Self {
+    pub fn q4_seconds() -> Self {
         Self {
             query_type: QueryType::point(),
             interval: TimeInterval::generate_seconds(),
+        }
+    }
+
+    #[inline]
+    pub fn q4_minutes() -> Self {
+        Self {
+            query_type: QueryType::point(),
+            interval: TimeInterval::generate_minutes(),
+        }
+    }
+
+    #[inline]
+    pub fn q4_hours() -> Self {
+        Self {
+            query_type: QueryType::point(),
+            interval: TimeInterval::generate_hours(),
+        }
+    }
+
+    #[inline]
+    pub fn q4_random() -> Self {
+        Self {
+            query_type: QueryType::point(),
+            interval: TimeInterval::generate_random(),
         }
     }
 
@@ -244,13 +292,36 @@ impl Query {
     }
 
     #[inline]
-    pub fn q6() -> Self {
+    pub fn q6_seconds() -> Self {
         Self {
             query_type: QueryType::range(),
             interval: TimeInterval::generate_seconds(),
         }
     }
 
+    #[inline]
+    pub fn q6_minutes() -> Self {
+        Self {
+            query_type: QueryType::range(),
+            interval: TimeInterval::generate_minutes(),
+        }
+    }
+
+    #[inline]
+    pub fn q6_hours() -> Self {
+        Self {
+            query_type: QueryType::range(),
+            interval: TimeInterval::generate_hours(),
+        }
+    }
+
+    #[inline]
+    pub fn q6_random() -> Self {
+        Self {
+            query_type: QueryType::range(),
+            interval: TimeInterval::generate_random(),
+        }
+    }
     // #[inline]
     // pub fn olap_high_intervals() -> Self {
     //     Self {
@@ -318,60 +389,59 @@ impl Query {
 
 pub struct QueryGenerator;
 impl QueryGenerator {
-    // pub fn generate_olap(total: usize) -> Vec<Query> {
-    //     (0..total).map(|_| Query::olap()).collect()
-    // }
     pub fn generate_q1(total: usize) -> Vec<Query> {
         (0..total).map(|_| Query::q1()).collect()
     }
-    pub fn generate_q2(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q2()).collect()
+    pub fn generate_q2_seconds(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q2_seconds()).collect()
     }
-    // pub fn generate_q1_high_interval(total: usize) -> Vec<Query> {
-    // (0..total).map(|_| Query::q1()).collect()
-    // }
+    pub fn generate_q2_minutes(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q2_minutes()).collect()
+    }
+    pub fn generate_q2_hours(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q2_hours()).collect()
+    }
+    pub fn generate_q2_random(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q2_random()).collect()
+    }
+
     pub fn generate_q3(total: usize) -> Vec<Query> {
         (0..total).map(|_| Query::q3()).collect()
     }
 
-    pub fn generate_q4(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q4()).collect()
+    pub fn generate_q4_seconds(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q4_seconds()).collect()
     }
+    pub fn generate_q4_minutes(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q4_minutes()).collect()
+    }
+
+    pub fn generate_q4_hours(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q4_hours()).collect()
+    }
+    pub fn generate_q4_random(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q4_random()).collect()
+    }
+
     pub fn generate_q5(total: usize) -> Vec<Query> {
         (0..total).map(|_| Query::q5()).collect()
     }
-    pub fn generate_q6(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q6()).collect()
-    }
-    // pub fn generate_q3_high_interval(total: usize) -> Vec<Query> {
-    //     (0..total)
-    //         .map(|_| Query::point_queries_high_intervals())
-    //         .collect()
-    // }
-    // pub fn generate_streaming(total: usize) -> Vec<Query> {
-    //     (0..total).map(|_| Query::stream()).collect()
-    // }
 
-    // pub fn generate_q5_low_interval(total: usize) -> Vec<Query> {
-    //     (0..total)
-    //         .map(|_| Query::olap_range_low_intervals())
-    //         .collect()
-    // }
-    // pub fn generate_q5_high_interval(total: usize) -> Vec<Query> {
-    //     (0..total)
-    //         .map(|_| Query::olap_range_high_intervals())
-    //         .collect()
-    // }
-    // pub fn generate_low_interval_random_queries(total: usize) -> Vec<Query> {
-    //     (0..total)
-    //         .map(|_| Query::random_queries_low_intervals())
-    //         .collect()
-    // }
-    // pub fn generate_high_interval_random_queries(total: usize) -> Vec<Query> {
-    //     (0..total)
-    //         .map(|_| Query::random_queries_high_intervals())
-    //         .collect()
-    // }
+    pub fn generate_q6_seconds(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q6_seconds()).collect()
+    }
+
+    pub fn generate_q6_minutes(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q6_minutes()).collect()
+    }
+
+    pub fn generate_q6_hours(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q6_hours()).collect()
+    }
+
+    pub fn generate_q6_random(total: usize) -> Vec<Query> {
+        (0..total).map(|_| Query::q6_random()).collect()
+    }
 }
 
 #[derive(Clone)]
@@ -427,6 +497,20 @@ impl TimeInterval {
     pub fn generate_minutes() -> Self {
         let (start, end) = generate_minutes_range();
         Self::Range(start, end)
+    }
+    pub fn generate_hours() -> Self {
+        let (start, end) = generate_hours_range();
+        Self::Range(start, end)
+    }
+    pub fn generate_random() -> Self {
+        let gran = fastrand::usize(0..3);
+        if gran == 0 {
+            Self::generate_seconds()
+        } else if gran == 1 {
+            Self::generate_minutes()
+        } else {
+            Self::generate_hours()
+        }
     }
 }
 
@@ -535,6 +619,9 @@ pub fn duckdb_query_sum(query: &str, db: &Connection) -> Result<()> {
         Ok(sum)
     })?;
     for res in _sum_res {
+        #[cfg(feature = "debug")]
+        dbg!(&res);
+
         assert!(res.is_ok());
     }
     Ok(())
@@ -556,7 +643,7 @@ pub fn duckdb_query_all(query: &str, db: &Connection) -> Result<()> {
     Ok(())
 }
 
-pub fn duckdb_setup(disk: bool) -> (duckdb::Connection, &'static str) {
+pub fn duckdb_setup(disk: bool, threads: usize) -> (duckdb::Connection, &'static str) {
     let (db, id) = if disk {
         (
             duckdb::Connection::open("duckdb_ingestion.db").unwrap(),
@@ -577,10 +664,26 @@ pub fn duckdb_setup(disk: bool) -> (duckdb::Connection, &'static str) {
             fare_amount FLOAT8 not null,
         );";
     db.execute_batch(create_table_sql).unwrap();
-    // Optional Create index on timestamp - seems to lower performance though..
-    // let index_sql = "create index idx_timestamp ON rides(do_time);";
-    // db.execute_batch(index_sql).unwrap();
+
+    duckdb_set_threads(threads, &db);
+
+    #[cfg(feature = "duckdb_index")]
+    {
+        // Index on timestamp we are querying
+        let index_sql = "create index idx_timestamp ON rides(do_time);";
+        db.execute_batch(index_sql).unwrap();
+
+        // Index on key for point queries
+        let index_sql = "create index idx_location ON rides(pu_location_id);";
+        db.execute_batch(index_sql).unwrap();
+    }
+
     (db, id)
+}
+
+pub fn duckdb_set_threads(threads: usize, conn: &duckdb::Connection) {
+    let thread_str = format!("SET threads TO {};", threads);
+    conn.execute_batch(&thread_str).unwrap();
 }
 
 pub fn generate_time_range(granularity: u32) -> (u64, u64) {

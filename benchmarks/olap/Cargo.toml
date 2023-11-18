@@ -4,16 +4,21 @@ version = "0.1.0"
 edition.workspace = true
 
 [features]
-default = []
+default = ["duckdb_index"]
+debug = []
+duckdb_index = []
+simd = ["awheel/simd"]
 
 [dependencies]
 duckdb.workspace = true
-awheel = { workspace = true, features = ["tree", "sync", "simd", "stats"] }
+awheel = { workspace = true, features = ["tree", "sync", "stats"] }
 clap.workspace = true
 fastrand.workspace = true
 hdrhistogram.workspace = true
 minstant.workspace = true
 sketches-ddsketch.workspace = true
+serde_json = "1.0.107"
+serde.workspace = true
 
 [dev-dependencies]
 fastrand.workspace = true
