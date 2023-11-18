@@ -1,4 +1,4 @@
-use crate::{tree::Tree, *};
+use crate::tree::Tree;
 
 use awheel::{
     aggregator::sum::U64SumAggregator,
@@ -7,103 +7,30 @@ use awheel::{
     window::{state::State, stats::Stats, util::PairType, WindowExt},
 };
 
-pub struct BFingerFourWheel {
-    range: Duration,
-    slide: Duration,
-    watermark: u64,
-    next_window_end: u64,
-    fiba: UniquePtr<crate::bfinger_four::FiBA_SUM_4>,
-    stats: Stats,
-}
-impl BFingerFourWheel {
-    pub fn new(watermark: u64, range: Duration, slide: Duration) -> Self {
-        Self {
-            range,
-            slide,
-            watermark,
-            next_window_end: watermark + range.whole_milliseconds() as u64,
-            fiba: crate::bfinger_four::create_fiba_4_with_sum(),
-            stats: Default::default(),
-        }
-    }
-}
-impl WindowExt<U64SumAggregator> for BFingerFourWheel {
-    fn advance(
-        &mut self,
-        _duration: awheel::time::Duration,
-    ) -> Vec<(
-        u64,
-        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
-    )> {
-        Vec::new()
-    }
-    fn advance_to(
-        &mut self,
-        watermark: u64,
-    ) -> Vec<(
-        u64,
-        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
-    )> {
-        let diff = watermark.saturating_sub(self.watermark);
-        let seconds = Duration::milliseconds(diff as i64).whole_seconds() as u64;
-        profile_scope!(&self.stats.advance_ns);
-        let mut res = Vec::new();
-
-        for _tick in 0..seconds {
-            self.watermark += 1000;
-            if self.watermark == self.next_window_end {
-                let from = self.watermark - self.range.whole_milliseconds() as u64;
-                let to = self.watermark;
-                {
-                    profile_scope!(&self.stats.window_computation_ns);
-                    let window = self.fiba.range(from, to - 1);
-                    res.push((self.watermark, Some(window)));
-                }
-                profile_scope!(&self.stats.cleanup_ns);
-                let evict_point = (self.watermark - self.range.whole_milliseconds() as u64)
-                    + self.slide.whole_milliseconds() as u64;
-                self.fiba.pin_mut().bulk_evict(&(evict_point - 1));
-                self.next_window_end = self.watermark + self.slide.whole_milliseconds() as u64;
-            }
-        }
-        res
-    }
-    #[inline]
-    fn insert(
-        &mut self,
-        entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
-    ) {
-        profile_scope!(&self.stats.insert_ns);
-        if entry.timestamp >= self.watermark {
-            let diff = entry.timestamp - self.watermark;
-            let seconds = std::time::Duration::from_millis(diff).as_secs();
-            let ts = self.watermark + (seconds * 1000);
-            self.fiba.pin_mut().insert(&ts, &entry.data);
-        }
-    }
-    fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
-        unimplemented!();
-    }
-    fn stats(&self) -> &Stats {
-        self.stats.size_bytes.set(self.fiba.size());
-        &self.stats
-    }
+#[derive(Debug, Clone, Copy)]
+pub enum Slicing {
+    /// Uses same slicing as wheels (i.e. 1 second)
+    Wheel,
+    /// Uses the slice size of the Window slide
+    Slide,
 }
 
 pub struct WindowTree<T: Tree<U64SumAggregator>> {
     tree: T,
     range: Duration,
     slide: Duration,
+    slicing: Slicing,
     watermark: u64,
     next_window_end: u64,
     stats: Stats,
 }
 
 impl<T: Tree<U64SumAggregator>> WindowTree<T> {
-    pub fn new(watermark: u64, range: Duration, slide: Duration) -> Self {
+    pub fn new(watermark: u64, range: Duration, slide: Duration, slicing: Slicing) -> Self {
         Self {
             range,
             slide,
+            slicing,
             watermark,
             next_window_end: watermark + range.whole_milliseconds() as u64,
             tree: T::default(),
@@ -173,104 +100,39 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for WindowTree<T> {
     ) {
         profile_scope!(&self.stats.insert_ns);
         if entry.timestamp >= self.watermark {
-            let diff = entry.timestamp - self.watermark;
-            let seconds = std::time::Duration::from_millis(diff).as_secs();
-            let ts = self.watermark + (seconds * 1000);
-            self.tree.insert(ts, entry.data);
-            // align per second
-        }
-    }
-    fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
-        unimplemented!();
-    }
-    fn stats(&self) -> &Stats {
-        &self.stats
-    }
-}
-
-pub struct BFingerEightWheel {
-    range: Duration,
-    slide: Duration,
-    watermark: u64,
-    next_window_end: u64,
-    fiba: UniquePtr<crate::bfinger_eight::FiBA_SUM_8>,
-    stats: Stats,
-}
-impl BFingerEightWheel {
-    pub fn new(watermark: u64, range: Duration, slide: Duration) -> Self {
-        Self {
-            range,
-            slide,
-            watermark,
-            next_window_end: watermark + range.whole_milliseconds() as u64,
-            fiba: crate::bfinger_eight::create_fiba_8_with_sum(),
-            stats: Default::default(),
-        }
-    }
-}
-impl WindowExt<U64SumAggregator> for BFingerEightWheel {
-    fn advance(
-        &mut self,
-        _duration: awheel::time::Duration,
-    ) -> Vec<(
-        u64,
-        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
-    )> {
-        Vec::new()
-    }
-    fn advance_to(
-        &mut self,
-        watermark: u64,
-    ) -> Vec<(
-        u64,
-        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
-    )> {
-        profile_scope!(&self.stats.advance_ns);
-
-        let diff = watermark.saturating_sub(self.watermark);
-        let seconds = Duration::milliseconds(diff as i64).whole_seconds() as u64;
-        profile_scope!(&self.stats.advance_ns);
-        let mut res = Vec::new();
-
-        for _tick in 0..seconds {
-            self.watermark += 1000;
-            if self.watermark == self.next_window_end {
-                let from = self.watermark - self.range.whole_milliseconds() as u64;
-                let to = self.watermark;
-                {
-                    profile_scope!(&self.stats.window_computation_ns);
-                    let window = self.fiba.range(from, to - 1);
-                    res.push((self.watermark, Some(window)));
+            let ts = match self.slicing {
+                Slicing::Wheel => {
+                    // align per second (same as wheel)
+                    let diff = entry.timestamp - self.watermark;
+                    let seconds = std::time::Duration::from_millis(diff).as_secs();
+                    self.watermark + (seconds * 1000)
                 }
-                profile_scope!(&self.stats.cleanup_ns);
-                let evict_point = (self.watermark - self.range.whole_milliseconds() as u64)
-                    + self.slide.whole_milliseconds() as u64;
-                self.fiba.pin_mut().bulk_evict(&(evict_point - 1));
-                self.next_window_end = self.watermark + self.slide.whole_milliseconds() as u64;
-            }
-        }
-        res
-    }
-    #[inline]
-    fn insert(
-        &mut self,
-        entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
-    ) {
-        profile_scope!(&self.stats.insert_ns);
-        if entry.timestamp >= self.watermark {
-            let diff = entry.timestamp - self.watermark;
-            let seconds = std::time::Duration::from_millis(diff).as_secs();
-            let ts = self.watermark + (seconds * 1000);
-            // align per second
-            self.fiba.pin_mut().insert(&ts, &entry.data);
+                Slicing::Slide => align_ts_to_slice(
+                    entry.timestamp,
+                    self.slide.whole_milliseconds() as u64,
+                    self.watermark,
+                ),
+            };
+
+            self.tree.insert(ts, entry.data);
         }
     }
     fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
     fn stats(&self) -> &Stats {
-        self.stats.size_bytes.set(self.fiba.size());
         &self.stats
+    }
+}
+
+#[inline]
+pub fn align_ts_to_slice(timestamp: u64, interval: u64, watermark: u64) -> u64 {
+    let difference = timestamp % interval;
+    let aligned_timestamp = timestamp - difference;
+    if aligned_timestamp <= watermark {
+        watermark
+    } else {
+        aligned_timestamp
     }
 }
 
@@ -603,7 +465,6 @@ mod tests {
     }
 
     fn window_10_sec_range_3_sec_slide(mut wheel: impl WindowExt<U64SumAggregator>) {
-        // Based on Figure 4 in https://asterios.katsifodimos.com/assets/publications/window-semantics-encyclopediaBigDAta18.pdf
         for i in 1..=22 {
             wheel.insert(Entry::new(i, i * 1000 - 1));
         }

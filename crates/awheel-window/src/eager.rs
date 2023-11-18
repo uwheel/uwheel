@@ -295,7 +295,7 @@ impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
 
                         // If we are working with uneven pairs, we need to adjust range.
                         let next_rotation_distance = if self.state.pair_type.is_uneven() {
-                            self.range as u64 - 1000
+                            self.range as u64
                         } else {
                             self.range as u64
                         };

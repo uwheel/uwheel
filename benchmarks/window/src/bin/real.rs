@@ -7,7 +7,7 @@ use std::sync::{
     Arc,
 };
 use std::{cmp, fs::File};
-use window::{PlottingOutput, Window};
+use window::{external_impls::Slicing, PlottingOutput, Window};
 
 use awheel::{
     aggregator::sum::U64SumAggregator,
@@ -17,13 +17,7 @@ use awheel::{
 };
 use chrono::{DateTime, NaiveDateTime};
 use serde::Deserialize;
-use window::{
-    align_to_closest_thousand,
-    external_impls::{self, PairsTree, WindowTree},
-    tree,
-    BenchResult,
-    Run,
-};
+use window::{align_to_closest_thousand, external_impls::WindowTree, tree, BenchResult, Run};
 
 use window::{BIG_RANGE_WINDOWS, SMALL_RANGE_WINDOWS};
 
@@ -304,23 +298,33 @@ fn sum_aggregation(
             qps: None,
         });
 
-        let fiba_4: WindowTree<tree::FiBA4> = WindowTree::new(watermark, range, slide);
+        let fiba_4: WindowTree<tree::FiBA4> =
+            WindowTree::new(watermark, range, slide, Slicing::Wheel);
         let (runtime, stats, _fiba4_results) = run(fiba_4, &events, watermark, watermark_freq);
-        dbg!("Finished FiBA Bfinger 4");
+        dbg!("Finished FiBA Bfinger4");
         runs.push(Run {
-            id: "FiBA Bfinger 4".to_string(),
+            id: "FiBA Bfinger4".to_string(),
             total_insertions,
             runtime,
             stats,
             qps: None,
         });
-        assert_eq!(eager_results, _fiba4_results);
 
-        let fiba_8: WindowTree<tree::FiBA8> = WindowTree::new(watermark, range, slide);
+        pretty_assertions::assert_eq!(eager_results, _fiba4_results);
+        /*
+        dbg!(&find_first_mismatch(
+            &lazy_results,
+            &eager_results,
+            &_fiba4_results
+        ));
+        */
+
+        let fiba_8: WindowTree<tree::FiBA8> =
+            WindowTree::new(watermark, range, slide, Slicing::Wheel);
         let (runtime, stats, _fiba8_results) = run(fiba_8, &events, watermark, watermark_freq);
-        dbg!("Finished FiBA Bfinger 8");
+        dbg!("Finished FiBA Bfinger8");
         runs.push(Run {
-            id: "FiBA Bfinger 8".to_string(),
+            id: "FiBA Bfinger8".to_string(),
             total_insertions,
             runtime,
             stats,
@@ -328,6 +332,41 @@ fn sum_aggregation(
         });
         assert_eq!(_fiba4_results, _fiba8_results);
 
+        let fiba_4: WindowTree<tree::FiBA4> =
+            WindowTree::new(watermark, range, slide, Slicing::Slide);
+        let (runtime, stats, _fiba4_results) = run(fiba_4, &events, watermark, watermark_freq);
+        dbg!("Finished FiBA CG Bfinger4");
+        runs.push(Run {
+            id: "FiBA CG Bfinger4".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+            qps: None,
+        });
+
+        pretty_assertions::assert_eq!(eager_results, _fiba4_results);
+        /*
+        dbg!(&find_first_mismatch(
+            &lazy_results,
+            &eager_results,
+            &_fiba4_results
+        ));
+        */
+
+        let fiba_8: WindowTree<tree::FiBA8> =
+            WindowTree::new(watermark, range, slide, Slicing::Slide);
+        let (runtime, stats, _fiba8_results) = run(fiba_8, &events, watermark, watermark_freq);
+        dbg!("Finished FiBA CG Bfinger8");
+        runs.push(Run {
+            id: "FiBA CG Bfinger8".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+            qps: None,
+        });
+        assert_eq!(_fiba4_results, _fiba8_results);
+
+        /*
         let pairs_fiba_4: PairsTree<tree::FiBA4> =
             external_impls::PairsTree::new(watermark, range, slide);
         let (runtime, stats, _pairs_fiba_results) =
@@ -353,6 +392,7 @@ fn sum_aggregation(
             stats,
             qps: None,
         });
+        */
 
         dbg!(window);
 
@@ -561,7 +601,7 @@ fn run<A: Aggregator<Input = u64, Aggregate = u64>>(
     let mut watermark = watermark;
     let mut generator = WatermarkGenerator::new(watermark, 2000);
     let mut counter = 0;
-    let mut results = Vec::new();
+    let mut _results = Vec::new();
 
     let full = Instant::now();
     for event in events {
@@ -577,21 +617,24 @@ fn run<A: Aggregator<Input = u64, Aggregate = u64>>(
             }
             counter = 0;
             for (_timestamp, _result) in window.advance_to(watermark) {
-                results.push((_timestamp, _result));
+                #[cfg(feature = "debug")]
+                _results.push((_timestamp, _result));
             }
         }
     }
     watermark = align_to_closest_thousand(generator.generate_watermark());
     for (_timestamp, _result) in window.advance_to(watermark) {
-        results.push((_timestamp, _result));
+        #[cfg(feature = "debug")]
+        _results.push((_timestamp, _result));
     }
+    dbg!(watermark);
 
     let runtime = full.elapsed();
-    (runtime, window.stats().clone(), results)
+    (runtime, window.stats().clone(), _results)
 }
 
-/*
 // For debugging purposes
+/*
 fn find_first_mismatch<T: PartialEq + Copy>(
     vec1: &[T],
     vec2: &[T],
