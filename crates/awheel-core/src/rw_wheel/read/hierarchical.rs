@@ -19,7 +19,10 @@ use super::{
 };
 use crate::{
     aggregator::Aggregator,
-    rw_wheel::read::{aggregation::WheelSlot, Mode},
+    rw_wheel::read::{
+        aggregation::{combine_or_insert, WheelSlot},
+        Mode,
+    },
     time_internal::{self, Duration},
 };
 
@@ -145,6 +148,7 @@ pub const WEEKS: usize = 52;
 /// Default capacity of year slots
 pub const YEARS: usize = 10;
 
+#[derive(Debug)]
 struct Granularities {
     pub second: Option<usize>,
     pub minute: Option<usize>,
@@ -417,8 +421,154 @@ where
         start: OffsetDateTime,
         end: OffsetDateTime,
     ) -> Option<A::Aggregate> {
-        self.combine_range(start, end).map(A::lower)
+        // self.combine_range(start, end).map(|(agg, _)| A::lower(agg))
+        unimplemented!();
     }
+
+    #[inline]
+    fn generate_query_nodes(
+        start: OffsetDateTime,
+        end: OffsetDateTime,
+    ) -> Vec<(OffsetDateTime, OffsetDateTime)> {
+        let mut nodes = Vec::new();
+        let mut current_start = start;
+        let new_curr_end = |current_start: OffsetDateTime, end: &OffsetDateTime| {
+            let second = current_start.second();
+            let minute = current_start.minute();
+            let hour = current_start.hour();
+            let day = current_start.day();
+            let next_days = time::Duration::days(31 - day as i64);
+            let next_hours = time::Duration::hours(24 - hour as i64);
+            let next_minutes = time::Duration::minutes(60 - minute as i64);
+            let next_seconds = time::Duration::seconds(60 - second as i64);
+
+            let dur = *end - current_start;
+
+            if second > 0 {
+                // we in second gran, need to jump to next min.
+                if current_start + next_seconds > *end {
+                    current_start + time::Duration::seconds(dur.whole_seconds())
+                } else {
+                    current_start + next_seconds
+                }
+            } else if minute > 0 {
+                if current_start + next_minutes > *end {
+                    let m = current_start + time::Duration::minutes(dur.whole_minutes());
+                    // dbg!(m);
+                    if m == current_start {
+                        current_start + time::Duration::seconds(dur.whole_seconds() as i64)
+                    } else {
+                        m
+                    }
+                } else {
+                    current_start + next_minutes
+                }
+            } else if hour > 0 {
+                // we in hour gran, need to jump to next day.
+                if current_start + next_hours > *end {
+                    // get hours to jump to next point
+                    let whole_hours = dur.whole_hours();
+                    let whole_minutes = dur.whole_minutes();
+                    let h = if whole_hours > 0 {
+                        current_start + time::Duration::hours(dur.whole_hours())
+                    } else if whole_minutes > 0 {
+                        current_start + time::Duration::minutes(dur.whole_minutes())
+                    } else {
+                        current_start + time::Duration::seconds(dur.whole_seconds())
+                    };
+                    // let h = current_start + time::Duration::minutes(dur.whole_minutes());
+
+                    if h == current_start {
+                        let sh =
+                            current_start + time::Duration::minutes(dur.whole_minutes() as i64);
+                        // dbg!(sh);
+                        if sh == current_start {
+                            *end
+                        } else {
+                            sh
+                        }
+                    } else {
+                        // dbg!(h);
+                        h
+                    }
+                } else {
+                    current_start + next_hours
+                }
+            } else if day > 0 {
+                if current_start + next_days > *end {
+                    let d = current_start + time::Duration::days(dur.whole_days());
+                    if d == current_start {
+                        let sd = current_start + time::Duration::hours(dur.whole_hours() as i64);
+                        // dbg!(sh);
+                        if sd == current_start {
+                            *end
+                        } else {
+                            sd
+                        }
+                    } else {
+                        // dbg!(h);
+                        d
+                    }
+                } else {
+                    current_start + next_days
+                }
+                // current_start + time::Duration::days(dur.whole_days())
+                // let d = current_start + time::Duration::seconds(dur.whole_seconds());
+                // if current_start + next_days > *end {
+                //     // get hours to jump to next point
+                //     let d = current_start + time::Duration::seconds(dur.whole_seconds());
+                //     if d == current_start {
+                //         current_start + time::Duration::hours(dur.whole_hours() as i64)
+                //     } else {
+                //         d
+                //     }
+                // } else {
+                //     current_start + next_days
+                // }
+            } else {
+                unimplemented!("Dimensions weeks, years not supported yet");
+            }
+        };
+
+        // while we have not reached the end, keep building query nodes.
+        while current_start < end {
+            let current_end = new_curr_end(current_start, &end);
+            nodes.push((current_start, current_end));
+            current_start = current_end;
+        }
+        // dbg!(&nodes);
+        // TODO: fix sorting of nodes
+        // nodes.sort_unstable_by(|a, b| a.0.time().cmp(&b.0.time()));
+        nodes
+    }
+    /// Combines partial aggregates within the given date range
+    #[inline]
+    pub fn combine_range_smart(
+        &self,
+        start: OffsetDateTime,
+        end: OffsetDateTime,
+    ) -> Option<A::PartialAggregate> {
+        assert!(
+            end >= start,
+            "End date needs to be equal or larger than start date"
+        );
+        // Generate query nodes and execute
+        // TODO:
+        // let mut total_ops = 0;
+        let nodes = Self::generate_query_nodes(start, end);
+        dbg!(start, end);
+        dbg!(&nodes);
+        nodes.into_iter().fold(None, |mut acc, node| {
+            match self.combine_range(node.0, node.1) {
+                Some(agg) => {
+                    combine_or_insert::<A>(&mut acc, agg);
+                    acc
+                }
+                None => acc,
+            }
+        })
+    }
+
     /// Combines partial aggregates within the given date range
     #[inline]
     pub fn combine_range(
@@ -443,7 +593,7 @@ where
         if is_seconds {
             // We have the number of seconds in the range
             let seconds = (end - start).whole_seconds();
-            // dbg!(seconds);
+            dbg!(seconds);
             if let Some(wheel) = self.seconds_wheel.as_ref() {
                 // dbg!(wheel.total_slots());
                 let watermark = watermark_date(wheel.watermark());
@@ -458,6 +608,7 @@ where
         } else if is_minutes {
             // We have the number of minutes in the range
             let minutes = (end - start).whole_minutes();
+            dbg!(minutes);
             if let Some(wheel) = self.minutes_wheel.as_ref() {
                 let watermark = watermark_date(wheel.watermark());
                 // start must be lower than watermark
@@ -471,6 +622,7 @@ where
             }
         } else if is_hours {
             let hours = (end - start).whole_hours();
+            dbg!(hours);
             if let Some(wheel) = self.hours_wheel.as_ref() {
                 let watermark = watermark_date(wheel.watermark());
                 let watermark_start_diff: usize = (watermark - start).whole_hours() as usize;
@@ -482,6 +634,7 @@ where
             }
         } else if is_days {
             let days = (end - start).whole_days();
+            dbg!(days);
             if let Some(wheel) = self.days_wheel.as_ref() {
                 let watermark = watermark_date(wheel.watermark());
                 let watermark_start_diff: usize = (watermark - start).whole_days() as usize;
@@ -1134,6 +1287,14 @@ mod tests {
         let end = datetime!(2023-11-09 00:00:04 UTC);
         let agg = haw.combine_range(start, end);
         assert_eq!(agg, Some(60));
+        let agg = haw.combine_range_smart(start, end);
+        assert_eq!(agg, Some(60));
+
+        // let start = datetime!(2023-11-24 10:15:23 UTC);
+        // let end = datetime!(2023-11-24 13:20:50 UTC);
+
+        // let a = haw.combine_range_smart(start, end);
+        // let a = haw.generate_query_nodes(start, end);
     }
 
     #[test]
@@ -1174,11 +1335,13 @@ mod tests {
         let end = datetime!(2023-11-09 01:00 UTC);
 
         assert_eq!(haw.combine_range(start, end), Some(3600));
+        assert_eq!(haw.combine_range_smart(start, end), Some(3600));
 
         let start = datetime!(2023-11-09 00:00 UTC);
         let end = datetime!(2023-11-09 03:00 UTC);
 
         assert_eq!(haw.combine_range(start, end), Some(10800));
+        assert_eq!(haw.combine_range_smart(start, end), Some(10800));
     }
 
     #[test]
@@ -1198,10 +1361,12 @@ mod tests {
         let end = datetime!(2023 - 11 - 10 00:00:00 UTC);
 
         assert_eq!(haw.combine_range(start, end), Some(3600 * 24));
+        assert_eq!(haw.combine_range_smart(start, end), Some(3600 * 24));
 
         let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
         let end = datetime!(2023 - 11 - 12 00:00:00 UTC);
 
         assert_eq!(haw.combine_range(start, end), Some(259200));
+        assert_eq!(haw.combine_range_smart(start, end), Some(259200));
     }
 }

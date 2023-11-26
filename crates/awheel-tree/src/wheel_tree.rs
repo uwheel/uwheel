@@ -9,6 +9,7 @@ use awheel_core::{
 };
 use concurrent_map::{ConcurrentMap, Minimum};
 use core::{borrow::Borrow, ops::RangeBounds};
+use std::ops::Bound;
 
 /// A concurrent Wheel-Tree data structure
 ///
@@ -19,6 +20,7 @@ pub struct WheelTree<K: Key + Minimum, A: Aggregator + Clone>
 where
     A::PartialAggregate: Sync,
 {
+    star: ReadWheel<A>,
     inner: ConcurrentMap<K, ReadWheel<A>>,
 }
 impl<K: Key + Minimum, A: Aggregator + Clone + 'static> Default for WheelTree<K, A>
@@ -36,6 +38,7 @@ where
 {
     pub(super) fn new() -> Self {
         Self {
+            star: ReadWheel::new(0),
             inner: ConcurrentMap::new(),
         }
     }
@@ -56,15 +59,19 @@ where
         K: Borrow<Q>,
         Q: ?Sized + Ord + PartialEq,
     {
-        self.inner
-            .range(range)
-            .fold(None, |mut acc, (_, wheel)| match wheel.landmark() {
-                Some(landmark) => {
-                    combine_or_insert::<A>(&mut acc, landmark);
-                    acc
-                }
-                None => acc,
-            })
+        match (range.start_bound(), range.end_bound()) {
+            (Bound::Unbounded, Bound::Unbounded) => self.star.landmark(),
+            _ => self
+                .inner
+                .range(range)
+                .fold(None, |mut acc, (_, wheel)| match wheel.landmark() {
+                    Some(landmark) => {
+                        combine_or_insert::<A>(&mut acc, landmark);
+                        acc
+                    }
+                    None => acc,
+                }),
+        }
     }
     /// Returns the lowered aggregate result of a landmark window across a range of keys
     #[inline]
@@ -88,16 +95,47 @@ where
         K: Borrow<Q>,
         Q: ?Sized + Ord + PartialEq,
     {
-        self.inner.range(range).fold(None, |mut acc, (_, wheel)| {
-            match wheel.as_ref().combine_range(start, end) {
-                Some(agg) => {
-                    combine_or_insert::<A>(&mut acc, agg);
-                    acc
+        match (range.start_bound(), range.end_bound()) {
+            (Bound::Unbounded, Bound::Unbounded) => self.star.as_ref().combine_range(start, end),
+            _ => self.inner.range(range).fold(None, |mut acc, (_, wheel)| {
+                match wheel.as_ref().combine_range(start, end) {
+                    Some(agg) => {
+                        combine_or_insert::<A>(&mut acc, agg);
+                        acc
+                    }
+                    None => acc,
                 }
-                None => acc,
-            }
-        })
+            }),
+        }
     }
+
+    pub fn range_with_time_filter_smart<Q, R>(
+        &self,
+        range: R,
+        start: OffsetDateTime,
+        end: OffsetDateTime,
+    ) -> Option<A::PartialAggregate>
+    where
+        R: RangeBounds<Q>,
+        K: Borrow<Q>,
+        Q: ?Sized + Ord + PartialEq,
+    {
+        match (range.start_bound(), range.end_bound()) {
+            (Bound::Unbounded, Bound::Unbounded) => {
+                self.star.as_ref().combine_range_smart(start, end)
+            }
+            _ => self.inner.range(range).fold(None, |mut acc, (_, wheel)| {
+                match wheel.as_ref().combine_range_smart(start, end) {
+                    Some(agg) => {
+                        combine_or_insert::<A>(&mut acc, agg);
+                        acc
+                    }
+                    None => acc,
+                }
+            }),
+        }
+    }
+
     /// Returns the partial aggregate in the given time interval across a range of keys
     #[inline]
     pub fn interval_range<Q, R>(&self, dur: Duration, range: R) -> Option<A::PartialAggregate>
@@ -134,6 +172,10 @@ where
     #[inline]
     pub fn insert(&self, key: K, wheel: ReadWheel<A>) {
         self.inner.insert(key, wheel);
+    }
+
+    pub fn insert_star(&mut self, wheel: ReadWheel<A>) {
+        self.star = wheel;
     }
 
     /// Merges a set of deltas into a wheel specified by key
