@@ -418,8 +418,8 @@ where
     #[inline]
     pub fn combine_range_and_lower(
         &self,
-        start: OffsetDateTime,
-        end: OffsetDateTime,
+        _start: OffsetDateTime,
+        _end: OffsetDateTime,
     ) -> Option<A::Aggregate> {
         // self.combine_range(start, end).map(|(agg, _)| A::lower(agg))
         unimplemented!();
@@ -496,7 +496,20 @@ where
                 }
             } else if day > 0 {
                 if current_start + next_days > *end {
-                    let d = current_start + time::Duration::days(dur.whole_days());
+                    let whole_days = dur.whole_days();
+                    let whole_hours = dur.whole_hours();
+                    let whole_minutes = dur.whole_minutes();
+                    let d = if whole_days > 0 {
+                        current_start + time::Duration::days(dur.whole_days())
+                    } else if whole_hours > 0 {
+                        current_start + time::Duration::hours(dur.whole_hours())
+                    } else if whole_minutes > 0 {
+                        current_start + time::Duration::minutes(dur.whole_minutes())
+                    } else {
+                        current_start + time::Duration::seconds(dur.whole_seconds())
+                    };
+
+                    // let d = current_start + time::Duration::days(dur.whole_days());
                     if d == current_start {
                         let sd = current_start + time::Duration::hours(dur.whole_hours() as i64);
                         // dbg!(sh);
@@ -512,19 +525,6 @@ where
                 } else {
                     current_start + next_days
                 }
-                // current_start + time::Duration::days(dur.whole_days())
-                // let d = current_start + time::Duration::seconds(dur.whole_seconds());
-                // if current_start + next_days > *end {
-                //     // get hours to jump to next point
-                //     let d = current_start + time::Duration::seconds(dur.whole_seconds());
-                //     if d == current_start {
-                //         current_start + time::Duration::hours(dur.whole_hours() as i64)
-                //     } else {
-                //         d
-                //     }
-                // } else {
-                //     current_start + next_days
-                // }
             } else {
                 unimplemented!("Dimensions weeks, years not supported yet");
             }
@@ -536,9 +536,28 @@ where
             nodes.push((current_start, current_end));
             current_start = current_end;
         }
-        // dbg!(&nodes);
-        // TODO: fix sorting of nodes
-        // nodes.sort_unstable_by(|a, b| a.0.time().cmp(&b.0.time()));
+
+        // Sort query nodes based on lowest granularity in order to execute nodes in order
+        // nodes.sort_unstable_by(|a, b| {
+        //     let granularity_score = |start: &OffsetDateTime, end: &OffsetDateTime| {
+        //         let (sh, sm, ss) = start.time().as_hms();
+        //         let (eh, em, es) = end.time().as_hms();
+        //         if ss > 0 || es > 0 {
+        //             0
+        //         } else if sm > 0 || em > 0 {
+        //             1
+        //         } else if sh > 0 || eh > 0 {
+        //             2
+        //         } else {
+        //             // day rank (00:00:00 - 00:00:00)
+        //             3
+        //         }
+        //     };
+        //     let a_score = granularity_score(&a.0, &a.1);
+        //     let b_score = granularity_score(&b.0, &b.1);
+        //     a_score.cmp(&b_score)
+        // });
+
         nodes
     }
     /// Combines partial aggregates within the given date range
@@ -553,11 +572,9 @@ where
             "End date needs to be equal or larger than start date"
         );
         // Generate query nodes and execute
-        // TODO:
-        // let mut total_ops = 0;
         let nodes = Self::generate_query_nodes(start, end);
-        dbg!(start, end);
-        dbg!(&nodes);
+        // dbg!(start, end);
+        // dbg!(&nodes);
         nodes.into_iter().fold(None, |mut acc, node| {
             match self.combine_range(node.0, node.1) {
                 Some(agg) => {
@@ -593,14 +610,12 @@ where
         if is_seconds {
             // We have the number of seconds in the range
             let seconds = (end - start).whole_seconds();
-            dbg!(seconds);
+            // dbg!(seconds);
             if let Some(wheel) = self.seconds_wheel.as_ref() {
-                // dbg!(wheel.total_slots());
                 let watermark = watermark_date(wheel.watermark());
                 let watermark_start_diff: usize = (watermark - start).whole_seconds() as usize;
                 let start_pos = watermark_start_diff - seconds as usize;
                 let end_pos = start_pos + seconds as usize;
-                // dbg!(start_pos, end_pos);
                 wheel.combine_range(start_pos..end_pos)
             } else {
                 panic!("sec wheel not initialized");
@@ -608,7 +623,7 @@ where
         } else if is_minutes {
             // We have the number of minutes in the range
             let minutes = (end - start).whole_minutes();
-            dbg!(minutes);
+            // dbg!(minutes);
             if let Some(wheel) = self.minutes_wheel.as_ref() {
                 let watermark = watermark_date(wheel.watermark());
                 // start must be lower than watermark
@@ -622,7 +637,7 @@ where
             }
         } else if is_hours {
             let hours = (end - start).whole_hours();
-            dbg!(hours);
+            // dbg!(hours);
             if let Some(wheel) = self.hours_wheel.as_ref() {
                 let watermark = watermark_date(wheel.watermark());
                 let watermark_start_diff: usize = (watermark - start).whole_hours() as usize;
@@ -634,7 +649,7 @@ where
             }
         } else if is_days {
             let days = (end - start).whole_days();
-            dbg!(days);
+            // dbg!(days);
             if let Some(wheel) = self.days_wheel.as_ref() {
                 let watermark = watermark_date(wheel.watermark());
                 let watermark_start_diff: usize = (watermark - start).whole_days() as usize;

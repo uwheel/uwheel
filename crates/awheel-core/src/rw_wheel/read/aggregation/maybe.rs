@@ -1,7 +1,3 @@
-use core::ops::RangeBounds;
-
-use time::OffsetDateTime;
-
 use super::{conf::WheelConf, AggregationWheel};
 use crate::{aggregator::Aggregator, rw_wheel::WheelExt};
 
@@ -34,13 +30,6 @@ impl<A: Aggregator> MaybeWheel<A> {
         self.inner.as_ref().and_then(|w| w.at(0)).copied()
     }
 
-    #[inline]
-    pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
-    where
-        R: RangeBounds<usize>,
-    {
-        self.inner.as_ref().and_then(|w| w.combine_range(range))
-    }
     #[inline]
     pub fn interval(&self, interval: usize) -> Option<A::PartialAggregate> {
         if let Some(wheel) = self.inner.as_ref() {

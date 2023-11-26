@@ -140,15 +140,6 @@ fn run(args: &Args) -> Run {
     let q2_queries_seconds = QueryGenerator::generate_q2_seconds(total_queries);
     let q2_queries_seconds_duckdb = q2_queries_seconds.clone();
 
-    // let q2_queries_minutes = QueryGenerator::generate_q2_minutes(total_queries);
-    // let q2_queries_minutes_duckdb = q2_queries_minutes.clone();
-
-    // let q2_queries_hours = QueryGenerator::generate_q2_hours(total_queries);
-    // let q2_queries_hours_duckdb = q2_queries_hours.clone();
-
-    // let q2_queries_random = QueryGenerator::generate_q2_random(total_queries);
-    // let q2_queries_random_duckdb = q2_queries_random.clone();
-
     // Generate Q3
 
     let q3_queries = QueryGenerator::generate_q3(total_queries);
@@ -159,15 +150,6 @@ fn run(args: &Args) -> Run {
     let q4_queries_seconds = QueryGenerator::generate_q4_seconds(total_queries);
     let q4_queries_seconds_duckdb = q4_queries_seconds.clone();
 
-    // let q4_queries_minutes = QueryGenerator::generate_q4_minutes(total_queries);
-    // let q4_queries_minutes_duckdb = q4_queries_minutes.clone();
-
-    // let q4_queries_hours = QueryGenerator::generate_q4_hours(total_queries);
-    // let q4_queries_hours_duckdb = q4_queries_hours.clone();
-
-    // let q4_queries_random = QueryGenerator::generate_q4_random(total_queries);
-    // let q4_queries_random_duckdb = q4_queries_random.clone();
-
     // Generate Q5
 
     let q5_queries = QueryGenerator::generate_q5(total_queries);
@@ -177,15 +159,6 @@ fn run(args: &Args) -> Run {
 
     let q6_queries_seconds = QueryGenerator::generate_q6_seconds(total_queries);
     let q6_queries_seconds_duckdb = q6_queries_seconds.clone();
-
-    // let q6_queries_minutes = QueryGenerator::generate_q6_minutes(total_queries);
-    // let q6_queries_minutes_duckdb = q6_queries_minutes.clone();
-
-    // let q6_queries_hours = QueryGenerator::generate_q6_hours(total_queries);
-    // let q6_queries_hours_duckdb = q6_queries_hours.clone();
-
-    // let q6_queries_random = QueryGenerator::generate_q6_random(total_queries);
-    // let q6_queries_random_duckdb = q6_queries_random.clone();
 
     let total_entries = batches.len() * events_per_sec;
     println!("Running with total entries {}", total_entries);
@@ -202,24 +175,11 @@ fn run(args: &Args) -> Run {
     dbg!(watermark);
 
     let mut q1_results = QueryDescription::from("q1");
-    let mut q2_seconds_results = QueryDescription::from("q2_seconds");
-    // let mut q2_minutes_results = QueryDescription::from("q2_minutes");
-    // let mut q2_hours_results = QueryDescription::from("q2_hours");
-    // let mut q2_random_results = QueryDescription::from("q2_random");
-
+    let mut q2_seconds_results = QueryDescription::from("q2");
     let mut q3_results = QueryDescription::from("q3");
-
-    let mut q4_seconds_results = QueryDescription::from("q4_seconds");
-    // let mut q4_minutes_results = QueryDescription::from("q4_minutes");
-    // let mut q4_hours_results = QueryDescription::from("q4_hours");
-    // let mut q4_random_results = QueryDescription::from("q4_random");
-
+    let mut q4_seconds_results = QueryDescription::from("q4");
     let mut q5_results = QueryDescription::from("q5");
-
-    let mut q6_seconds_results = QueryDescription::from("q6_seconds");
-    // let mut q6_minutes_results = QueryDescription::from("q6_minutes");
-    // let mut q6_hours_results = QueryDescription::from("q6_hours");
-    // let mut q6_random_results = QueryDescription::from("q6_random");
+    let mut q6_seconds_results = QueryDescription::from("q6");
 
     let duckdb_id_fmt = |threads: usize| format!("duckdb-threads-{}", threads);
 
@@ -411,7 +371,6 @@ fn run(args: &Args) -> Run {
         // advance all wheels by 7 days
         for wheel in wheels.values_mut() {
             wheel.advance(7.days());
-            // dbg!(wheel.read().as_ref().current_time_in_cycle());
         }
 
         // advance star wheel
@@ -443,10 +402,7 @@ fn run(args: &Args) -> Run {
     ));
     println!("WheelTree Q2 Seconds {:?}", wheel_q2_seconds.0);
 
-    // println!("WheelTree Q2 Minutes {:?}", wheel_q2_minutes.0);
-
     let wheel_q3 = awheel_run("WheelDB Q3", watermark, &tree, q3_queries);
-    // println!("WheelTree Q3 {:?}", wheel_q3.0);
     q3_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q3));
 
     let wheel_q4_seconds = awheel_run("WheelDB Q4", watermark, &tree, q4_queries_seconds);
@@ -455,9 +411,6 @@ fn run(args: &Args) -> Run {
         &wheel_q4_seconds,
     ));
     println!("WheelTree Q4 {:?}", wheel_q4_seconds.0);
-    // println!("WheelTree Q4 {:?}", wheel_q4.0);
-
-    // println!("WheelTree Q4 {:?}", wheel_q4.0);
 
     let wheel_q5 = awheel_run("WheelTree Q5", watermark, &tree, q5_queries);
     q5_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q5));
@@ -498,19 +451,9 @@ where
                 let _res = match query.interval {
                     TimeInterval::Range(start, end) => {
                         let (start, end) = into_offset_date_time_start_end(start, end);
-                        // let res_1 = wheel
-                        //     .get(&pu_location_id)
-                        //     .map(|w| w.as_ref().combine_range(start, end));
-
-                        // let res_2 = wheel
-                        //     .get(&pu_location_id)
-                        //     .map(|w| w.as_ref().combine_range_smart(start, end));
-                        // assert_eq!(res_1, res_2);
-                        // res_1
                         wheel
                             .get(&pu_location_id)
-                            // .map(|w| w.as_ref().combine_range_smart(start, end))
-                            .map(|w| w.as_ref().combine_range(start, end))
+                            .map(|w| w.as_ref().combine_range_smart(start, end))
                     }
                     TimeInterval::Landmark => wheel.get(&pu_location_id).map(|rw| rw.landmark()),
                 };
@@ -524,8 +467,7 @@ where
                 let _res = match query.interval {
                     TimeInterval::Range(start, end) => {
                         let (start, end) = into_offset_date_time_start_end(start, end);
-                        // wheel.range_with_time_filter_smart(range, start, end)
-                        wheel.range_with_time_filter(range, start, end)
+                        wheel.range_with_time_filter_smart(range, start, end)
                     }
                     TimeInterval::Landmark => wheel.landmark_range(range),
                 };
@@ -538,8 +480,7 @@ where
                 let _res = match query.interval {
                     TimeInterval::Range(start, end) => {
                         let (start, end) = into_offset_date_time_start_end(start, end);
-                        // wheel.range_with_time_filter_smart(.., start, end)
-                        wheel.range_with_time_filter(.., start, end)
+                        wheel.range_with_time_filter_smart(.., start, end)
                     }
                     TimeInterval::Landmark => wheel.landmark_range(..),
                 };

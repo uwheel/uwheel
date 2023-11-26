@@ -17,6 +17,7 @@ pub const START_DATE: u64 = 1696111200;
 pub const START_DATE_MS: u64 = START_DATE * 1000;
 // 2023-10-08 00:00:00
 pub const END_DATE: u64 = 1696716000;
+pub const END_DATE_SHORT: u64 = 1696204800;
 
 // NYC Taxi
 pub fn get_random_fare_amount() -> f64 {
@@ -30,7 +31,7 @@ pub fn generate_timestamp(watermark: u64) -> u64 {
 // generate random pickup location
 pub fn pu_location_id() -> u64 {
     // fastrand::u64(1..263)
-    fastrand::u64(1..5) // For testing purposes
+    fastrand::u64(1..10) // For testing purposes
 }
 pub fn rate_code_id() -> u64 {
     fastrand::u64(1..=6)
