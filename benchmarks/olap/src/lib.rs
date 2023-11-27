@@ -4,6 +4,7 @@ use awheel::{time_internal as time, OffsetDateTime};
 use duckdb::{params, Connection, DropBehavior, Result};
 
 const MAX_FARE: u64 = 1000;
+pub const MAX_KEYS: u64 = 263;
 
 // max 60 seconds ahead of watermark
 const MAX_TIMESTAMP_DIFF_MS: u64 = 60000;
@@ -30,7 +31,7 @@ pub fn generate_timestamp(watermark: u64) -> u64 {
 
 // generate random pickup location
 pub fn pu_location_id() -> u64 {
-    // fastrand::u64(1..263)
+    // fastrand::u64(1..MAX_KEYS)
     fastrand::u64(1..10) // For testing purposes
 }
 pub fn rate_code_id() -> u64 {
@@ -94,12 +95,11 @@ impl DataGenerator {
     pub fn generate_query_data(
         start_date: u64,
         events_per_sec: usize,
+        total_seconds: usize,
     ) -> (u64, Vec<Vec<RideData>>) {
-        let seven_days_as_seconds = time::Duration::days(7).whole_seconds();
-
         let mut watermark = start_date;
         let mut batches = Vec::new();
-        for _sec in 0..seven_days_as_seconds {
+        for _sec in 0..total_seconds {
             let mut batch = Vec::with_capacity(events_per_sec);
             for _ in 0..events_per_sec {
                 let ride = RideData::with_timestamp(watermark);
@@ -213,34 +213,10 @@ impl Query {
     }
 
     #[inline]
-    pub fn q2_seconds() -> Self {
+    pub fn q2_seconds(watermark: u64) -> Self {
         Self {
             query_type: QueryType::olap(),
-            interval: TimeInterval::generate_seconds(),
-        }
-    }
-
-    #[inline]
-    pub fn q2_minutes() -> Self {
-        Self {
-            query_type: QueryType::olap(),
-            interval: TimeInterval::generate_minutes(),
-        }
-    }
-
-    #[inline]
-    pub fn q2_hours() -> Self {
-        Self {
-            query_type: QueryType::olap(),
-            interval: TimeInterval::generate_hours(),
-        }
-    }
-
-    #[inline]
-    pub fn q2_random() -> Self {
-        Self {
-            query_type: QueryType::olap(),
-            interval: TimeInterval::generate_random(),
+            interval: TimeInterval::generate_seconds(watermark),
         }
     }
 
@@ -253,34 +229,10 @@ impl Query {
     }
 
     #[inline]
-    pub fn q4_seconds() -> Self {
+    pub fn q4_seconds(watermark: u64) -> Self {
         Self {
             query_type: QueryType::point(),
-            interval: TimeInterval::generate_seconds(),
-        }
-    }
-
-    #[inline]
-    pub fn q4_minutes() -> Self {
-        Self {
-            query_type: QueryType::point(),
-            interval: TimeInterval::generate_minutes(),
-        }
-    }
-
-    #[inline]
-    pub fn q4_hours() -> Self {
-        Self {
-            query_type: QueryType::point(),
-            interval: TimeInterval::generate_hours(),
-        }
-    }
-
-    #[inline]
-    pub fn q4_random() -> Self {
-        Self {
-            query_type: QueryType::point(),
-            interval: TimeInterval::generate_random(),
+            interval: TimeInterval::generate_seconds(watermark),
         }
     }
 
@@ -293,36 +245,13 @@ impl Query {
     }
 
     #[inline]
-    pub fn q6_seconds() -> Self {
+    pub fn q6_seconds(watermark: u64) -> Self {
         Self {
             query_type: QueryType::range(),
-            interval: TimeInterval::generate_seconds(),
+            interval: TimeInterval::generate_seconds(watermark),
         }
     }
 
-    #[inline]
-    pub fn q6_minutes() -> Self {
-        Self {
-            query_type: QueryType::range(),
-            interval: TimeInterval::generate_minutes(),
-        }
-    }
-
-    #[inline]
-    pub fn q6_hours() -> Self {
-        Self {
-            query_type: QueryType::range(),
-            interval: TimeInterval::generate_hours(),
-        }
-    }
-
-    #[inline]
-    pub fn q6_random() -> Self {
-        Self {
-            query_type: QueryType::range(),
-            interval: TimeInterval::generate_random(),
-        }
-    }
     // #[inline]
     // pub fn olap_high_intervals() -> Self {
     //     Self {
@@ -393,55 +322,24 @@ impl QueryGenerator {
     pub fn generate_q1(total: usize) -> Vec<Query> {
         (0..total).map(|_| Query::q1()).collect()
     }
-    pub fn generate_q2_seconds(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q2_seconds()).collect()
-    }
-    pub fn generate_q2_minutes(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q2_minutes()).collect()
-    }
-    pub fn generate_q2_hours(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q2_hours()).collect()
-    }
-    pub fn generate_q2_random(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q2_random()).collect()
+    pub fn generate_q2_seconds(total: usize, watermark: u64) -> Vec<Query> {
+        (0..total).map(|_| Query::q2_seconds(watermark)).collect()
     }
 
     pub fn generate_q3(total: usize) -> Vec<Query> {
         (0..total).map(|_| Query::q3()).collect()
     }
 
-    pub fn generate_q4_seconds(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q4_seconds()).collect()
-    }
-    pub fn generate_q4_minutes(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q4_minutes()).collect()
-    }
-
-    pub fn generate_q4_hours(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q4_hours()).collect()
-    }
-    pub fn generate_q4_random(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q4_random()).collect()
+    pub fn generate_q4_seconds(total: usize, watermark: u64) -> Vec<Query> {
+        (0..total).map(|_| Query::q4_seconds(watermark)).collect()
     }
 
     pub fn generate_q5(total: usize) -> Vec<Query> {
         (0..total).map(|_| Query::q5()).collect()
     }
 
-    pub fn generate_q6_seconds(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q6_seconds()).collect()
-    }
-
-    pub fn generate_q6_minutes(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q6_minutes()).collect()
-    }
-
-    pub fn generate_q6_hours(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q6_hours()).collect()
-    }
-
-    pub fn generate_q6_random(total: usize) -> Vec<Query> {
-        (0..total).map(|_| Query::q6_random()).collect()
+    pub fn generate_q6_seconds(total: usize, watermark: u64) -> Vec<Query> {
+        (0..total).map(|_| Query::q6_seconds(watermark)).collect()
     }
 }
 
@@ -453,26 +351,6 @@ pub enum TimeFilter {
     Days(u64, u64),
     Landmark,
 }
-impl TimeFilter {
-    pub fn random() -> Self {
-        let gran = fastrand::usize(0..6);
-        if gran == 0 {
-            let (start, end) = generate_seconds_range();
-            TimeFilter::Seconds(start, end)
-        } else if gran == 1 {
-            let (start, end) = generate_minutes_range();
-            TimeFilter::Minutes(start, end)
-        } else if gran == 2 {
-            let (start, end) = generate_hours_range();
-            TimeFilter::Hours(start, end)
-        } else if gran == 3 {
-            let (start, end) = generate_days_range();
-            TimeFilter::Days(start, end)
-        } else {
-            TimeFilter::Landmark
-        }
-    }
-}
 
 #[derive(Clone)]
 pub enum TimeInterval {
@@ -481,37 +359,9 @@ pub enum TimeInterval {
 }
 
 impl TimeInterval {
-    pub fn generate_stream() -> Self {
-        let gran = fastrand::usize(0..2);
-        let (start, end) = if gran == 0 {
-            generate_seconds_range()
-        } else {
-            generate_minutes_range()
-        };
+    pub fn generate_seconds(watermark: u64) -> Self {
+        let (start, end) = generate_seconds_range(watermark);
         Self::Range(start, end)
-    }
-
-    pub fn generate_seconds() -> Self {
-        let (start, end) = generate_seconds_range();
-        Self::Range(start, end)
-    }
-    pub fn generate_minutes() -> Self {
-        let (start, end) = generate_minutes_range();
-        Self::Range(start, end)
-    }
-    pub fn generate_hours() -> Self {
-        let (start, end) = generate_hours_range();
-        Self::Range(start, end)
-    }
-    pub fn generate_random() -> Self {
-        let gran = fastrand::usize(0..3);
-        if gran == 0 {
-            Self::generate_seconds()
-        } else if gran == 1 {
-            Self::generate_minutes()
-        } else {
-            Self::generate_hours()
-        }
     }
 }
 
@@ -711,10 +561,10 @@ pub fn generate_time_range(granularity: u32) -> (u64, u64) {
     }
 }
 
-pub fn generate_seconds_range() -> (u64, u64) {
-    // Specify the date range (2023-10-01 to 2023-10-07)
+pub fn generate_seconds_range(watermark: u64) -> (u64, u64) {
+    // Specify the date range (2023-10-01 to watermark)
     let start_date = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(START_DATE);
-    let end_date = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(END_DATE);
+    let end_date = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(watermark / 1000);
 
     // Convert dates to Unix timestamps
     let start_timestamp = start_date

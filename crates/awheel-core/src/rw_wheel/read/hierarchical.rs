@@ -567,6 +567,9 @@ where
         start: OffsetDateTime,
         end: OffsetDateTime,
     ) -> Option<A::PartialAggregate> {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.combine_range);
+
         assert!(
             end >= start,
             "End date needs to be equal or larger than start date"

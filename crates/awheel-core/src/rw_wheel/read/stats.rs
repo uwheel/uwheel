@@ -11,6 +11,8 @@ pub struct Stats {
     pub interval: Sketch,
     /// A sketch for recording latencies of landmark queries
     pub landmark: Sketch,
+    /// A sketch for recording latencies of combine range queries
+    pub combine_range: Sketch,
 }
 
 impl core::fmt::Debug for Stats {
@@ -19,6 +21,7 @@ impl core::fmt::Debug for Stats {
             .field("tick", &self.tick.percentiles())
             .field("interval", &self.interval.percentiles())
             .field("landmark", &self.landmark.percentiles())
+            .field("combine_range", &self.combine_range.percentiles())
             .finish()
     }
 }

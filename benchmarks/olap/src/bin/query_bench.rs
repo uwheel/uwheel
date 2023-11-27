@@ -1,6 +1,6 @@
 use awheel::{
     aggregator::{sum::F64SumAggregator, Aggregator},
-    time_internal::NumericalDuration,
+    time_internal::Duration as Durationz,
     tree::wheel_tree::WheelTree,
     Entry,
     Options,
@@ -11,12 +11,7 @@ use duckdb::Result;
 use hdrhistogram::Histogram;
 use minstant::Instant;
 use olap::*;
-use std::{
-    collections::{HashMap, HashSet},
-    fs::File,
-    thread::available_parallelism,
-    time::Duration,
-};
+use std::{collections::HashMap, fs::File, time::Duration};
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
 pub enum Workload {
@@ -26,7 +21,7 @@ pub enum Workload {
     Sum,
 }
 
-const EVENTS_PER_SEC: [usize; 1] = [1];
+const INTERVALS: [Durationz; 3] = [Durationz::days(1), Durationz::days(2), Durationz::days(4)];
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -44,17 +39,9 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    let mut args = Args::parse();
-
+    let args = Args::parse();
     println!("Running with {:#?}", args);
-
-    let mut runs = Vec::new();
-    for events_per_sec in EVENTS_PER_SEC {
-        args.events_per_sec = events_per_sec;
-        let run = run(&args);
-        // result.print();
-        runs.push(run);
-    }
+    let runs = run(&args);
     let output = PlottingOutput::from(args.queries, runs);
     output.flush_to_file().unwrap();
 
@@ -87,13 +74,15 @@ impl PlottingOutput {
 
 #[derive(Debug, serde::Serialize)]
 pub struct Run {
+    watermark: u64,
     events_per_second: u64,
     queries: Vec<QueryDescription>,
 }
 
 impl Run {
-    pub fn from(events_per_second: u64, queries: Vec<QueryDescription>) -> Self {
+    pub fn from(watermark: u64, events_per_second: u64, queries: Vec<QueryDescription>) -> Self {
         Self {
+            watermark,
             events_per_second,
             queries,
         }
@@ -119,245 +108,85 @@ impl QueryDescription {
     }
 }
 
-fn run(args: &Args) -> Run {
+fn run(args: &Args) -> Vec<Run> {
     let total_queries = args.queries;
     let events_per_sec = args.events_per_sec;
     let workload = args.workload;
     let _iterations = args.iterations;
     let start_date = START_DATE_MS;
-
-    // Generate the data to be inserted to DuckDB & WheelDB
-    let (watermark, batches) = DataGenerator::generate_query_data(start_date, events_per_sec);
-    let duckdb_batches = batches.clone();
-
-    // Generate Q1
-
-    let q1_queries = QueryGenerator::generate_q1(total_queries);
-    let q1_queries_duckdb = q1_queries.clone();
-
-    // Generate Q2
-
-    let q2_queries_seconds = QueryGenerator::generate_q2_seconds(total_queries);
-    let q2_queries_seconds_duckdb = q2_queries_seconds.clone();
-
-    // Generate Q3
-
-    let q3_queries = QueryGenerator::generate_q3(total_queries);
-    let q3_queries_duckdb = q3_queries.clone();
-
-    // Generate Q4
-
-    let q4_queries_seconds = QueryGenerator::generate_q4_seconds(total_queries);
-    let q4_queries_seconds_duckdb = q4_queries_seconds.clone();
-
-    // Generate Q5
-
-    let q5_queries = QueryGenerator::generate_q5(total_queries);
-    let q5_queries_duckdb = q5_queries.clone();
-
-    // Generate Q6
-
-    let q6_queries_seconds = QueryGenerator::generate_q6_seconds(total_queries);
-    let q6_queries_seconds_duckdb = q6_queries_seconds.clone();
-
-    let total_entries = batches.len() * events_per_sec;
-    println!("Running with total entries {}", total_entries);
-
-    let max_parallelism = available_parallelism().unwrap().get();
+    let mut current_date = start_date;
+    let max_parallelism = 8;
+    let total_landmark_queries = 1000;
 
     // Prepare DuckDB
-    let (mut duckdb, id) = duckdb_setup(args.disk, max_parallelism);
-    for batch in duckdb_batches {
-        duckdb_append_batch(batch, &mut duckdb).unwrap();
-    }
-    println!("Finished preparing {}", id,);
+    let (mut duckdb, _id) = duckdb_setup(args.disk, max_parallelism);
 
-    dbg!(watermark);
+    // Prepare WheelDB
 
-    let mut q1_results = QueryDescription::from("q1");
-    let mut q2_seconds_results = QueryDescription::from("q2");
-    let mut q3_results = QueryDescription::from("q3");
-    let mut q4_seconds_results = QueryDescription::from("q4");
-    let mut q5_results = QueryDescription::from("q5");
-    let mut q6_seconds_results = QueryDescription::from("q6");
+    let mut wheels = HashMap::with_capacity(MAX_KEYS as usize);
+    let opts = Options::default().with_write_ahead(604800usize.next_power_of_two());
+    let mut star = RwWheel::<F64SumAggregator>::with_options(start_date, opts);
 
-    let duckdb_id_fmt = |threads: usize| format!("duckdb-threads-{}", threads);
+    let mut tree: WheelTree<u64, F64SumAggregator> = WheelTree::default();
 
-    let duckdb_q1 = duckdb_run(
-        "DuckDB Q1",
-        watermark,
-        workload,
-        &duckdb,
-        &q1_queries_duckdb,
-    );
-
-    q1_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q1));
-
-    println!("DuckDB Q1 {:?}", duckdb_q1.0);
-
-    let duckdb_q2_seconds = duckdb_run(
-        "DuckDB Q2 Seconds",
-        watermark,
-        workload,
-        &duckdb,
-        &q2_queries_seconds_duckdb,
-    );
-
-    q2_seconds_results.add(Stats::from(
-        duckdb_id_fmt(max_parallelism),
-        &duckdb_q2_seconds,
-    ));
-
-    println!("DuckDB Q2 Seconds {:?}", duckdb_q2_seconds.0);
-
-    let duckdb_q3 = duckdb_run(
-        "DuckDB Q3",
-        watermark,
-        workload,
-        &duckdb,
-        &q3_queries_duckdb,
-    );
-    println!("DuckDB Q3 {:?}", duckdb_q3.0);
-    q3_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q3));
-
-    let duckdb_q4_seconds = duckdb_run(
-        "DuckDB Q4 Seconds",
-        watermark,
-        workload,
-        &duckdb,
-        &q4_queries_seconds_duckdb,
-    );
-
-    q4_seconds_results.add(Stats::from(
-        duckdb_id_fmt(max_parallelism),
-        &duckdb_q4_seconds,
-    ));
-
-    let duckdb_q5 = duckdb_run(
-        "DuckDB Q5",
-        watermark,
-        workload,
-        &duckdb,
-        &q5_queries_duckdb,
-    );
-    q5_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q5));
-
-    let duckdb_q6_seconds = duckdb_run(
-        "DuckDB Q6 Seconds",
-        watermark,
-        workload,
-        &duckdb,
-        &q6_queries_seconds_duckdb,
-    );
-
-    q6_seconds_results.add(Stats::from(
-        duckdb_id_fmt(max_parallelism),
-        &duckdb_q6_seconds,
-    ));
-
-    // ADJUST threads to 1
-    let max_parallelism = 1;
-    duckdb_set_threads(max_parallelism, &duckdb);
-
-    let duckdb_q1 = duckdb_run(
-        "DuckDB Q1",
-        watermark,
-        workload,
-        &duckdb,
-        &q1_queries_duckdb,
-    );
-
-    q1_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q1));
-
-    println!("DuckDB Q1 {:?}", duckdb_q1.0);
-
-    let duckdb_q2_seconds = duckdb_run(
-        "DuckDB Q2 Seconds",
-        watermark,
-        workload,
-        &duckdb,
-        &q2_queries_seconds_duckdb,
-    );
-
-    q2_seconds_results.add(Stats::from(
-        duckdb_id_fmt(max_parallelism),
-        &duckdb_q2_seconds,
-    ));
-
-    println!("DuckDB Q2 Seconds {:?}", duckdb_q2_seconds.0);
-
-    let duckdb_q3 = duckdb_run(
-        "DuckDB Q3",
-        watermark,
-        workload,
-        &duckdb,
-        &q3_queries_duckdb,
-    );
-    println!("DuckDB Q3 {:?}", duckdb_q3.0);
-    q3_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q3));
-
-    let duckdb_q4_seconds = duckdb_run(
-        "DuckDB Q4 Seconds",
-        watermark,
-        workload,
-        &duckdb,
-        &q4_queries_seconds_duckdb,
-    );
-
-    q4_seconds_results.add(Stats::from(
-        duckdb_id_fmt(max_parallelism),
-        &duckdb_q4_seconds,
-    ));
-
-    let duckdb_q5 = duckdb_run(
-        "DuckDB Q5",
-        watermark,
-        workload,
-        &duckdb,
-        &q5_queries_duckdb,
-    );
-    q5_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q5));
-
-    let duckdb_q6_seconds = duckdb_run(
-        "DuckDB Q6 Seconds",
-        watermark,
-        workload,
-        &duckdb,
-        &q6_queries_seconds_duckdb,
-    );
-
-    q6_seconds_results.add(Stats::from(
-        duckdb_id_fmt(max_parallelism),
-        &duckdb_q6_seconds,
-    ));
-
-    fn get_unique_ids(data: &Vec<Vec<RideData>>) -> Vec<u64> {
-        let mut unique_ids = HashSet::new();
-
-        for ride_data_vec in data {
-            for ride_data in ride_data_vec {
-                unique_ids.insert(ride_data.pu_location_id);
-            }
-        }
-
-        unique_ids.into_iter().collect()
+    for id in 0..MAX_KEYS {
+        let wheel = RwWheel::<F64SumAggregator>::with_options(start_date, opts);
+        // populate the tree with the Read Wheel
+        tree.insert_star(wheel.read().clone());
+        wheels.insert(id, wheel);
     }
 
-    fn fill_tree<A: Aggregator<Input = f64> + Clone>(
-        start_time: u64,
-        batches: Vec<Vec<RideData>>,
-        tree: &mut WheelTree<u64, A>,
-    ) where
-        A::PartialAggregate: Sync,
-    {
-        let unique_ids = get_unique_ids(&batches);
-        let mut wheels = HashMap::with_capacity(unique_ids.len());
-        let opts = Options::default().with_write_ahead(604800usize.next_power_of_two());
-        let mut star = RwWheel::<A>::with_options(start_time, opts);
-        for id in unique_ids {
-            let wheel = RwWheel::<A>::with_options(start_time, opts);
-            wheels.insert(id, wheel);
+    let mut runs = Vec::new();
+
+    for interval in INTERVALS {
+        let interval_as_seconds = interval.whole_seconds() as usize;
+        let (watermark, batches) =
+            DataGenerator::generate_query_data(current_date, events_per_sec, interval_as_seconds);
+        println!(
+            "Running for between start {} and end {}",
+            start_date, watermark
+        );
+        let duckdb_batches = batches.clone();
+
+        // Generate Q1
+
+        let q1_queries = QueryGenerator::generate_q1(total_landmark_queries);
+        let q1_queries_duckdb = q1_queries.clone();
+
+        // Generate Q2
+
+        let q2_queries_seconds = QueryGenerator::generate_q2_seconds(total_queries, watermark);
+        let q2_queries_seconds_duckdb = q2_queries_seconds.clone();
+
+        // Generate Q3
+
+        let q3_queries = QueryGenerator::generate_q3(total_landmark_queries);
+        let q3_queries_duckdb = q3_queries.clone();
+
+        // Generate Q4
+
+        let q4_queries_seconds = QueryGenerator::generate_q4_seconds(total_queries, watermark);
+        let q4_queries_seconds_duckdb = q4_queries_seconds.clone();
+
+        // Generate Q5
+
+        let q5_queries = QueryGenerator::generate_q5(total_queries);
+        let q5_queries_duckdb = q5_queries.clone();
+
+        // Generate Q6
+
+        let q6_queries_seconds = QueryGenerator::generate_q6_seconds(total_queries, watermark);
+        let q6_queries_seconds_duckdb = q6_queries_seconds.clone();
+
+        println!("Inserting data to DuckDB and WheelDB, may take a while...");
+
+        // Insert data to DuckDB
+        for batch in duckdb_batches {
+            duckdb_append_batch(batch, &mut duckdb).unwrap();
         }
+
+        // Insert data to WheelDB
+
         for batch in batches {
             // 1 batch represents 1 second of data
             for record in batch {
@@ -368,69 +197,228 @@ fn run(args: &Args) -> Run {
             }
         }
 
-        // advance all wheels by 7 days
+        // advance all wheels by interval
         for wheel in wheels.values_mut() {
-            wheel.advance(7.days());
+            wheel.advance(interval);
         }
 
-        // advance star wheel
-        star.advance(7.days());
-        tree.insert_star(star.read().clone());
+        star.advance(interval);
+        println!("Now running queries");
 
-        // insert the filled wheels into the tree
-        for (id, wheel) in wheels {
-            tree.insert(id, wheel.read().clone());
-        }
+        dbg!(star.watermark());
+        dbg!(watermark);
+
+        let mut q1_results = QueryDescription::from("q1");
+        let mut q2_seconds_results = QueryDescription::from("q2");
+        let mut q3_results = QueryDescription::from("q3");
+        let mut q4_seconds_results = QueryDescription::from("q4");
+        let mut q5_results = QueryDescription::from("q5");
+        let mut q6_seconds_results = QueryDescription::from("q6");
+
+        let duckdb_id_fmt = |threads: usize| format!("duckdb-threads-{}", threads);
+
+        let duckdb_q1 = duckdb_run(
+            "DuckDB Q1",
+            watermark,
+            workload,
+            &duckdb,
+            &q1_queries_duckdb,
+        );
+
+        q1_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q1));
+
+        println!("DuckDB Q1 {:?}", duckdb_q1.0);
+
+        let duckdb_q2_seconds = duckdb_run(
+            "DuckDB Q2 Seconds",
+            watermark,
+            workload,
+            &duckdb,
+            &q2_queries_seconds_duckdb,
+        );
+
+        q2_seconds_results.add(Stats::from(
+            duckdb_id_fmt(max_parallelism),
+            &duckdb_q2_seconds,
+        ));
+
+        println!("DuckDB Q2 Seconds {:?}", duckdb_q2_seconds.0);
+
+        let duckdb_q3 = duckdb_run(
+            "DuckDB Q3",
+            watermark,
+            workload,
+            &duckdb,
+            &q3_queries_duckdb,
+        );
+        println!("DuckDB Q3 {:?}", duckdb_q3.0);
+        q3_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q3));
+
+        let duckdb_q4_seconds = duckdb_run(
+            "DuckDB Q4 Seconds",
+            watermark,
+            workload,
+            &duckdb,
+            &q4_queries_seconds_duckdb,
+        );
+
+        q4_seconds_results.add(Stats::from(
+            duckdb_id_fmt(max_parallelism),
+            &duckdb_q4_seconds,
+        ));
+
+        let duckdb_q5 = duckdb_run(
+            "DuckDB Q5",
+            watermark,
+            workload,
+            &duckdb,
+            &q5_queries_duckdb,
+        );
+        q5_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q5));
+
+        let duckdb_q6_seconds = duckdb_run(
+            "DuckDB Q6 Seconds",
+            watermark,
+            workload,
+            &duckdb,
+            &q6_queries_seconds_duckdb,
+        );
+
+        q6_seconds_results.add(Stats::from(
+            duckdb_id_fmt(max_parallelism),
+            &duckdb_q6_seconds,
+        ));
+
+        // ADJUST threads to 1
+        let max_parallelism = 1;
+        duckdb_set_threads(max_parallelism, &duckdb);
+
+        let duckdb_q1 = duckdb_run(
+            "DuckDB Q1",
+            watermark,
+            workload,
+            &duckdb,
+            &q1_queries_duckdb,
+        );
+
+        q1_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q1));
+
+        println!("DuckDB Q1 {:?}", duckdb_q1.0);
+
+        let duckdb_q2_seconds = duckdb_run(
+            "DuckDB Q2 Seconds",
+            watermark,
+            workload,
+            &duckdb,
+            &q2_queries_seconds_duckdb,
+        );
+
+        q2_seconds_results.add(Stats::from(
+            duckdb_id_fmt(max_parallelism),
+            &duckdb_q2_seconds,
+        ));
+
+        println!("DuckDB Q2 Seconds {:?}", duckdb_q2_seconds.0);
+
+        let duckdb_q3 = duckdb_run(
+            "DuckDB Q3",
+            watermark,
+            workload,
+            &duckdb,
+            &q3_queries_duckdb,
+        );
+        println!("DuckDB Q3 {:?}", duckdb_q3.0);
+        q3_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q3));
+
+        let duckdb_q4_seconds = duckdb_run(
+            "DuckDB Q4 Seconds",
+            watermark,
+            workload,
+            &duckdb,
+            &q4_queries_seconds_duckdb,
+        );
+
+        q4_seconds_results.add(Stats::from(
+            duckdb_id_fmt(max_parallelism),
+            &duckdb_q4_seconds,
+        ));
+
+        let duckdb_q5 = duckdb_run(
+            "DuckDB Q5",
+            watermark,
+            workload,
+            &duckdb,
+            &q5_queries_duckdb,
+        );
+        q5_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q5));
+
+        let duckdb_q6_seconds = duckdb_run(
+            "DuckDB Q6 Seconds",
+            watermark,
+            workload,
+            &duckdb,
+            &q6_queries_seconds_duckdb,
+        );
+
+        q6_seconds_results.add(Stats::from(
+            duckdb_id_fmt(max_parallelism),
+            &duckdb_q6_seconds,
+        ));
+
+        let wheeldb_id_fmt = |threads: usize| format!("wheeldb-threads-{}", threads);
+
+        let wheel_threads = 1;
+        println!("Preparing WheelDB");
+        // fill_tree(start_date, batches, &mut tree);
+        println!("Finished preparing WheelDB");
+
+        let wheel_q1 = awheel_run("WheelDB Q1", watermark, &tree, q1_queries);
+        println!("WheelTree Q1 {:?}", wheel_q1.0);
+        q1_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q1));
+
+        let wheel_q2_seconds =
+            awheel_run("WheelDB Q2 Seconds", watermark, &tree, q2_queries_seconds);
+        q2_seconds_results.add(Stats::from(
+            wheeldb_id_fmt(wheel_threads),
+            &wheel_q2_seconds,
+        ));
+        println!("WheelTree Q2 Seconds {:?}", wheel_q2_seconds.0);
+
+        let wheel_q3 = awheel_run("WheelDB Q3", watermark, &tree, q3_queries);
+        q3_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q3));
+
+        let wheel_q4_seconds = awheel_run("WheelDB Q4", watermark, &tree, q4_queries_seconds);
+        q4_seconds_results.add(Stats::from(
+            wheeldb_id_fmt(wheel_threads),
+            &wheel_q4_seconds,
+        ));
+        println!("WheelTree Q4 {:?}", wheel_q4_seconds.0);
+
+        let wheel_q5 = awheel_run("WheelTree Q5", watermark, &tree, q5_queries);
+        q5_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q5));
+        println!("WheelTree Q5 {:?}", wheel_q5.0);
+
+        let wheel_q6_seconds = awheel_run("WheelTree Q6", watermark, &tree, q6_queries_seconds);
+        q6_seconds_results.add(Stats::from(
+            wheeldb_id_fmt(wheel_threads),
+            &wheel_q6_seconds,
+        ));
+
+        // update watermark
+        current_date = watermark;
+
+        let queries = vec![
+            q1_results,
+            q2_seconds_results,
+            q3_results,
+            q4_seconds_results,
+            q5_results,
+            q6_seconds_results,
+        ];
+        let run = Run::from(watermark, events_per_sec as u64, queries);
+        runs.push(run);
     }
-
-    let wheeldb_id_fmt = |threads: usize| format!("wheeldb-threads-{}", threads);
-
-    let wheel_threads = 1;
-    let mut tree: WheelTree<u64, F64SumAggregator> = WheelTree::default();
-    println!("Preparing WheelDB");
-    fill_tree(start_date, batches, &mut tree);
-    println!("Finished preparing WheelDB");
-
-    let wheel_q1 = awheel_run("WheelDB Q1", watermark, &tree, q1_queries);
-    println!("WheelTree Q1 {:?}", wheel_q1.0);
-    q1_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q1));
-
-    let wheel_q2_seconds = awheel_run("WheelDB Q2 Seconds", watermark, &tree, q2_queries_seconds);
-    q2_seconds_results.add(Stats::from(
-        wheeldb_id_fmt(wheel_threads),
-        &wheel_q2_seconds,
-    ));
-    println!("WheelTree Q2 Seconds {:?}", wheel_q2_seconds.0);
-
-    let wheel_q3 = awheel_run("WheelDB Q3", watermark, &tree, q3_queries);
-    q3_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q3));
-
-    let wheel_q4_seconds = awheel_run("WheelDB Q4", watermark, &tree, q4_queries_seconds);
-    q4_seconds_results.add(Stats::from(
-        wheeldb_id_fmt(wheel_threads),
-        &wheel_q4_seconds,
-    ));
-    println!("WheelTree Q4 {:?}", wheel_q4_seconds.0);
-
-    let wheel_q5 = awheel_run("WheelTree Q5", watermark, &tree, q5_queries);
-    q5_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q5));
-    println!("WheelTree Q5 {:?}", wheel_q5.0);
-
-    let wheel_q6_seconds = awheel_run("WheelTree Q6", watermark, &tree, q6_queries_seconds);
-    q6_seconds_results.add(Stats::from(
-        wheeldb_id_fmt(wheel_threads),
-        &wheel_q6_seconds,
-    ));
-
-    let queries = vec![
-        q1_results,
-        q2_seconds_results,
-        q3_results,
-        q4_seconds_results,
-        q5_results,
-        q6_seconds_results,
-    ];
-    Run::from(events_per_sec as u64, queries)
+    runs
 }
 
 fn awheel_run<A: Aggregator + Clone>(
