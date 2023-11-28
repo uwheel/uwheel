@@ -425,6 +425,8 @@ where
         unimplemented!();
     }
 
+    // Generates query nodes given a start and end date
+    // TODO: refactor
     #[inline]
     fn generate_query_nodes(
         start: OffsetDateTime,
@@ -537,26 +539,32 @@ where
             current_start = current_end;
         }
 
+        // function that returns a score of the query node which is used during sorting
+        let granularity_score = |start: &OffsetDateTime, end: &OffsetDateTime| {
+            let (sh, sm, ss) = start.time().as_hms();
+            let (eh, em, es) = end.time().as_hms();
+            if ss > 0 || es > 0 {
+                // second rank
+                0
+            } else if sm > 0 || em > 0 {
+                // miute rank
+                1
+            } else if sh > 0 || eh > 0 {
+                // hour rank
+                2
+            } else {
+                // day rank (00:00:00 - 00:00:00)
+                3
+            }
+        };
+
         // Sort query nodes based on lowest granularity in order to execute nodes in order
-        // nodes.sort_unstable_by(|a, b| {
-        //     let granularity_score = |start: &OffsetDateTime, end: &OffsetDateTime| {
-        //         let (sh, sm, ss) = start.time().as_hms();
-        //         let (eh, em, es) = end.time().as_hms();
-        //         if ss > 0 || es > 0 {
-        //             0
-        //         } else if sm > 0 || em > 0 {
-        //             1
-        //         } else if sh > 0 || eh > 0 {
-        //             2
-        //         } else {
-        //             // day rank (00:00:00 - 00:00:00)
-        //             3
-        //         }
-        //     };
-        //     let a_score = granularity_score(&a.0, &a.1);
-        //     let b_score = granularity_score(&b.0, &b.1);
-        //     a_score.cmp(&b_score)
-        // });
+        // so that the execution visits wheels sequentially and not randomly.
+        nodes.sort_unstable_by(|a, b| {
+            let a_score = granularity_score(&a.0, &a.1);
+            let b_score = granularity_score(&b.0, &b.1);
+            a_score.cmp(&b_score)
+        });
 
         nodes
     }

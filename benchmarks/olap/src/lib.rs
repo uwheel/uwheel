@@ -4,7 +4,8 @@ use awheel::{time_internal as time, OffsetDateTime};
 use duckdb::{params, Connection, DropBehavior, Result};
 
 const MAX_FARE: u64 = 1000;
-pub const MAX_KEYS: u64 = 263;
+// pub const MAX_KEYS: u64 = 263;
+pub const MAX_KEYS: u64 = 10;
 
 // max 60 seconds ahead of watermark
 const MAX_TIMESTAMP_DIFF_MS: u64 = 60000;

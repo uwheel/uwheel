@@ -21,7 +21,12 @@ pub enum Workload {
     Sum,
 }
 
-const INTERVALS: [Durationz; 3] = [Durationz::days(1), Durationz::days(2), Durationz::days(4)];
+// const INTERVALS: [Durationz; 3] = [Durationz::days(1), Durationz::days(2), Durationz::days(4)];
+const INTERVALS: [Durationz; 3] = [
+    Durationz::hours(1),  // 2023-10-01 01:00:00
+    Durationz::hours(23), // 2023-10-02 00:00:00
+    Durationz::days(6),   // 2023-10-08 00:00:00
+];
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -42,7 +47,7 @@ fn main() -> Result<()> {
     let args = Args::parse();
     println!("Running with {:#?}", args);
     let runs = run(&args);
-    let output = PlottingOutput::from(args.queries, runs);
+    let output = PlottingOutput::from(args.events_per_sec, args.queries, runs);
     output.flush_to_file().unwrap();
 
     Ok(())
@@ -50,13 +55,14 @@ fn main() -> Result<()> {
 
 #[derive(Debug, serde::Serialize)]
 pub struct PlottingOutput {
+    events_per_second: usize,
     total_queries: usize,
     runs: Vec<Run>,
 }
 
 impl PlottingOutput {
     pub fn flush_to_file(&self) -> serde_json::Result<()> {
-        let path = format!("../results/olap_bench.json");
+        let path = format!("../results/olap_bench_{}_eps.json", self.events_per_second);
         let file = File::create(path).unwrap();
         serde_json::to_writer_pretty(file, self)?;
         Ok(())
@@ -64,8 +70,9 @@ impl PlottingOutput {
 }
 
 impl PlottingOutput {
-    pub fn from(total_queries: usize, runs: Vec<Run>) -> Self {
+    pub fn from(events_per_second: usize, total_queries: usize, runs: Vec<Run>) -> Self {
         Self {
+            events_per_second,
             total_queries,
             runs,
         }
