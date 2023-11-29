@@ -1,5 +1,5 @@
 use awheel::{
-    aggregator::{sum::F64SumAggregator, Aggregator},
+    aggregator::{sum::U64SumAggregator, Aggregator},
     time_internal::Duration as Durationz,
     tree::wheel_tree::WheelTree,
     Entry,
@@ -46,8 +46,9 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
     println!("Running with {:#?}", args);
+    println!("Using {} keys", MAX_KEYS);
     let runs = run(&args);
-    let output = PlottingOutput::from(args.events_per_sec, args.queries, runs);
+    let output = PlottingOutput::from(args.events_per_sec, args.queries, MAX_KEYS, runs);
     output.flush_to_file().unwrap();
 
     Ok(())
@@ -57,6 +58,7 @@ fn main() -> Result<()> {
 pub struct PlottingOutput {
     events_per_second: usize,
     total_queries: usize,
+    total_keys: u64,
     runs: Vec<Run>,
 }
 
@@ -70,10 +72,16 @@ impl PlottingOutput {
 }
 
 impl PlottingOutput {
-    pub fn from(events_per_second: usize, total_queries: usize, runs: Vec<Run>) -> Self {
+    pub fn from(
+        events_per_second: usize,
+        total_queries: usize,
+        total_keys: u64,
+        runs: Vec<Run>,
+    ) -> Self {
         Self {
             events_per_second,
             total_queries,
+            total_keys,
             runs,
         }
     }
@@ -83,14 +91,24 @@ impl PlottingOutput {
 pub struct Run {
     watermark: u64,
     events_per_second: u64,
+    wheeldb_memory_bytes: usize,
+    duckdb_memory: String,
     queries: Vec<QueryDescription>,
 }
 
 impl Run {
-    pub fn from(watermark: u64, events_per_second: u64, queries: Vec<QueryDescription>) -> Self {
+    pub fn from(
+        watermark: u64,
+        events_per_second: u64,
+        wheeldb_memory_bytes: usize,
+        duckdb_memory: String,
+        queries: Vec<QueryDescription>,
+    ) -> Self {
         Self {
             watermark,
             events_per_second,
+            wheeldb_memory_bytes,
+            duckdb_memory,
             queries,
         }
     }
@@ -123,7 +141,8 @@ fn run(args: &Args) -> Vec<Run> {
     let start_date = START_DATE_MS;
     let mut current_date = start_date;
     let max_parallelism = 8;
-    let total_landmark_queries = 1000;
+    // let total_landmark_queries = if total_queries == 1 { 1 } else { 1000 };
+    let total_landmark_queries = 1000; // Less variance in the landmark queries and it takes up time of the execution
 
     // Prepare DuckDB
     let (mut duckdb, _id) = duckdb_setup(args.disk, max_parallelism);
@@ -132,13 +151,14 @@ fn run(args: &Args) -> Vec<Run> {
 
     let mut wheels = HashMap::with_capacity(MAX_KEYS as usize);
     let opts = Options::default().with_write_ahead(604800usize.next_power_of_two());
-    let mut star = RwWheel::<F64SumAggregator>::with_options(start_date, opts);
+    let mut star = RwWheel::<U64SumAggregator>::with_options(start_date, opts);
 
-    let mut tree: WheelTree<u64, F64SumAggregator> = WheelTree::default();
+    let mut tree: WheelTree<u64, U64SumAggregator> = WheelTree::default();
 
     for id in 0..MAX_KEYS {
-        let wheel = RwWheel::<F64SumAggregator>::with_options(start_date, opts);
+        let wheel = RwWheel::<U64SumAggregator>::with_options(start_date, opts);
         // populate the tree with the Read Wheel
+        tree.insert(id, wheel.read().clone());
         tree.insert_star(wheel.read().clone());
         wheels.insert(id, wheel);
     }
@@ -185,6 +205,14 @@ fn run(args: &Args) -> Vec<Run> {
         let q6_queries_seconds = QueryGenerator::generate_q6_seconds(total_queries, watermark);
         let q6_queries_seconds_duckdb = q6_queries_seconds.clone();
 
+        // Generate Q7
+
+        let q7_queries = QueryGenerator::generate_q7(total_queries);
+        let q7_queries_duckdb = q7_queries.clone();
+
+        let q8_queries = QueryGenerator::generate_q8(total_queries, watermark);
+        let q8_queries_duckdb = q8_queries.clone();
+
         println!("Inserting data to DuckDB and WheelDB, may take a while...");
 
         // Insert data to DuckDB
@@ -205,6 +233,7 @@ fn run(args: &Args) -> Vec<Run> {
         }
 
         // advance all wheels by interval
+
         for wheel in wheels.values_mut() {
             wheel.advance(interval);
         }
@@ -221,6 +250,8 @@ fn run(args: &Args) -> Vec<Run> {
         let mut q4_seconds_results = QueryDescription::from("q4");
         let mut q5_results = QueryDescription::from("q5");
         let mut q6_seconds_results = QueryDescription::from("q6");
+        let mut q7_results = QueryDescription::from("q7");
+        let mut q8_results = QueryDescription::from("q8");
 
         let duckdb_id_fmt = |threads: usize| format!("duckdb-threads-{}", threads);
 
@@ -295,6 +326,29 @@ fn run(args: &Args) -> Vec<Run> {
             duckdb_id_fmt(max_parallelism),
             &duckdb_q6_seconds,
         ));
+
+        let duckdb_q7 = duckdb_run(
+            "DuckDB Q7",
+            watermark,
+            workload,
+            &duckdb,
+            &q7_queries_duckdb,
+        );
+
+        println!("DuckDB Q7 {:?}", duckdb_q7.0);
+
+        q7_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q7));
+
+        let duckdb_q8 = duckdb_run(
+            "DuckDB Q8",
+            watermark,
+            workload,
+            &duckdb,
+            &q8_queries_duckdb,
+        );
+
+        println!("DuckDB Q8 {:?}", duckdb_q8.0);
+        q8_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q8));
 
         // ADJUST threads to 1
         let max_parallelism = 1;
@@ -372,15 +426,34 @@ fn run(args: &Args) -> Vec<Run> {
             &duckdb_q6_seconds,
         ));
 
+        let duckdb_q7 = duckdb_run(
+            "DuckDB Q7",
+            watermark,
+            workload,
+            &duckdb,
+            &q7_queries_duckdb,
+        );
+        println!("DuckDB Q7 {:?}", duckdb_q7.0);
+
+        q7_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q7));
+
+        let duckdb_q8 = duckdb_run(
+            "DuckDB Q8",
+            watermark,
+            workload,
+            &duckdb,
+            &q8_queries_duckdb,
+        );
+
+        println!("DuckDB Q8 {:?}", duckdb_q8.0);
+        q8_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q8));
+
         let wheeldb_id_fmt = |threads: usize| format!("wheeldb-threads-{}", threads);
 
         let wheel_threads = 1;
-        println!("Preparing WheelDB");
-        // fill_tree(start_date, batches, &mut tree);
-        println!("Finished preparing WheelDB");
 
         let wheel_q1 = awheel_run("WheelDB Q1", watermark, &tree, q1_queries);
-        println!("WheelTree Q1 {:?}", wheel_q1.0);
+        println!("WheelDB Q1 {:?}", wheel_q1.0);
         q1_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q1));
 
         let wheel_q2_seconds =
@@ -389,7 +462,7 @@ fn run(args: &Args) -> Vec<Run> {
             wheeldb_id_fmt(wheel_threads),
             &wheel_q2_seconds,
         ));
-        println!("WheelTree Q2 Seconds {:?}", wheel_q2_seconds.0);
+        println!("WheelDB Q2 {:?}", wheel_q2_seconds.0);
 
         let wheel_q3 = awheel_run("WheelDB Q3", watermark, &tree, q3_queries);
         q3_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q3));
@@ -399,17 +472,31 @@ fn run(args: &Args) -> Vec<Run> {
             wheeldb_id_fmt(wheel_threads),
             &wheel_q4_seconds,
         ));
-        println!("WheelTree Q4 {:?}", wheel_q4_seconds.0);
+        println!("WheelDB Q4 {:?}", wheel_q4_seconds.0);
 
         let wheel_q5 = awheel_run("WheelTree Q5", watermark, &tree, q5_queries);
         q5_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q5));
-        println!("WheelTree Q5 {:?}", wheel_q5.0);
+        println!("WheelDB Q5 {:?}", wheel_q5.0);
 
         let wheel_q6_seconds = awheel_run("WheelTree Q6", watermark, &tree, q6_queries_seconds);
         q6_seconds_results.add(Stats::from(
             wheeldb_id_fmt(wheel_threads),
             &wheel_q6_seconds,
         ));
+
+        let wheel_q7 = awheel_run("WheelTree Q7", watermark, &tree, q7_queries);
+        q7_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q7));
+        println!("WheelDB Q7 {:?}", wheel_q7.0);
+
+        let wheel_q8 = awheel_run("WheelTree Q8", watermark, &tree, q8_queries);
+        q8_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q8));
+        println!("WheelDB Q8 {:?}", wheel_q8.0);
+
+        let wheeldb_memory_bytes = tree.memory_usage_bytes();
+        dbg!(wheeldb_memory_bytes);
+
+        let duck_info = duckdb_memory_usage(&duckdb);
+        let duckdb_memory_bytes = duck_info.memory_usage;
 
         // update watermark
         current_date = watermark;
@@ -421,8 +508,15 @@ fn run(args: &Args) -> Vec<Run> {
             q4_seconds_results,
             q5_results,
             q6_seconds_results,
+            q7_results,
         ];
-        let run = Run::from(watermark, events_per_sec as u64, queries);
+        let run = Run::from(
+            watermark,
+            events_per_sec as u64,
+            wheeldb_memory_bytes,
+            duckdb_memory_bytes,
+            queries,
+        );
         runs.push(run);
     }
     runs
@@ -435,13 +529,26 @@ fn awheel_run<A: Aggregator + Clone>(
     queries: Vec<Query>,
 ) -> (Duration, Histogram<u64>)
 where
-    A::PartialAggregate: Sync + PartialEq,
+    A::PartialAggregate: Sync + Ord + PartialEq,
 {
     let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
     let full = Instant::now();
     for query in queries {
         let now = Instant::now();
         match query.query_type {
+            QueryType::TopK => {
+                let _res = match query.interval {
+                    TimeInterval::Range(start, end) => {
+                        let (start, end) = into_offset_date_time_start_end(start, end);
+                        wheel.top_k_with_time_filter(10, start, end)
+                    }
+                    TimeInterval::Landmark => wheel.top_k_landmark(10),
+                };
+                #[cfg(feature = "debug")]
+                dbg!(_res);
+                // assert!(_res.is_some());
+                hist.record(now.elapsed().as_nanos() as u64).unwrap();
+            }
             QueryType::Keyed(pu_location_id) => {
                 let _res = match query.interval {
                     TimeInterval::Range(start, end) => {
@@ -499,7 +606,7 @@ fn duckdb_run(
     queries: &[Query],
 ) -> (Duration, Histogram<u64>) {
     let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
-    let base_str = match workload {
+    let mut base_str = match workload {
         Workload::All => "SELECT AVG(fare_amount), SUM(fare_amount), MIN(fare_amount), MAX(fare_amount), COUNT(fare_amount) FROM rides",
         Workload::Sum => "SELECT SUM(fare_amount) FROM rides",
     };
@@ -508,6 +615,17 @@ fn duckdb_run(
         .map(|query| {
             // Generate Key clause. If no key then leave as empty ""
             let key_clause = match query.query_type {
+                QueryType::TopK => {
+                    // modiy the base str
+                    base_str = "SELECT pu_location_id, SUM(fare_amount) FROM rides";
+
+                    if let TimeInterval::Landmark = query.interval {
+                        "".to_string()
+                    } else {
+                        "WHERE".to_string()
+                    }
+                }
+
                 QueryType::Keyed(pu_location_id) => {
                     if let TimeInterval::Landmark = query.interval {
                         format!("WHERE pu_location_id={}", pu_location_id)
@@ -538,8 +656,15 @@ fn duckdb_run(
                 }
                 TimeInterval::Landmark => "".to_string(),
             };
-            // Generate SQL str to be executed
-            let full_query = format!("{} {} {}", base_str, key_clause, interval);
+
+            let full_query = match query.query_type {
+                QueryType::TopK => {
+                    let order_by =
+                        "GROUP BY pu_location_id, fare_amount ORDER BY fare_amount DESC LIMIT 10";
+                    format!("{} {} {} {}", base_str, key_clause, interval, order_by)
+                }
+                _ => format!("{} {} {}", base_str, key_clause, interval),
+            };
             // println!("QUERY {}", full_query);
             full_query
         })

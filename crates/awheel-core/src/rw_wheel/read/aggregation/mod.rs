@@ -569,6 +569,12 @@ impl<A: Aggregator> AggregationWheel<A> {
         self.capacity - self.rotation_count
     }
 
+    fn size_bytesz(&self) -> Option<usize> {
+        // roll-up slots are stored on the heap, calculate how much bytes we are using for them..
+        let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.slots.len();
+        Some(mem::size_of::<Self>() + inner_slots)
+    }
+
     /// Clears the wheel
     pub fn clear(&mut self) {
         let mut new = Self::new(WheelConf {

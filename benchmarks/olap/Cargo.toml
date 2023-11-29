@@ -12,6 +12,7 @@ simd = ["awheel/simd"]
 [dependencies]
 duckdb.workspace = true
 awheel = { workspace = true, features = ["tree", "sync", "stats"] }
+dashmap = { version = "5.5.3", features = ["rayon"]}
 clap.workspace = true
 fastrand.workspace = true
 hdrhistogram.workspace = true

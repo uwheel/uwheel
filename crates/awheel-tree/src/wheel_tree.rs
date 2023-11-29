@@ -9,7 +9,16 @@ use awheel_core::{
 };
 use concurrent_map::{ConcurrentMap, Minimum};
 use core::{borrow::Borrow, ops::RangeBounds};
-use std::ops::Bound;
+use std::{
+    cmp::Ordering,
+    collections::{BinaryHeap, HashMap},
+    ops::Bound,
+};
+
+pub enum TopKQuery {
+    TimeFilter(OffsetDateTime, OffsetDateTime),
+    Landmark,
+}
 
 /// A concurrent Wheel-Tree data structure
 ///
@@ -96,9 +105,11 @@ where
         Q: ?Sized + Ord + PartialEq,
     {
         match (range.start_bound(), range.end_bound()) {
-            (Bound::Unbounded, Bound::Unbounded) => self.star.as_ref().combine_range(start, end),
+            (Bound::Unbounded, Bound::Unbounded) => {
+                self.star.as_ref().combine_range_smart(start, end)
+            }
             _ => self.inner.range(range).fold(None, |mut acc, (_, wheel)| {
-                match wheel.as_ref().combine_range(start, end) {
+                match wheel.as_ref().combine_range_smart(start, end) {
                     Some(agg) => {
                         combine_or_insert::<A>(&mut acc, agg);
                         acc
@@ -134,6 +145,77 @@ where
                 }
             }),
         }
+    }
+
+    /// Returns the amount of memory used
+    pub fn memory_usage_bytes(&self) -> usize {
+        let keys = self.inner.len();
+        let keys_size_bytes = std::mem::size_of::<K>() * keys;
+
+        let mut wheels_size_bytes = 0;
+        for (_, wheel) in self.inner.range(..) {
+            wheels_size_bytes += wheel.as_ref().size_bytes();
+        }
+        // add for star wheel as well
+        wheels_size_bytes += self.star.as_ref().size_bytes();
+
+        keys_size_bytes + wheels_size_bytes
+    }
+
+    /// Executes a Top-K query using a landmark query
+    pub fn top_k_landmark(&self, k: usize) -> Vec<(K, A::PartialAggregate)>
+    where
+        A::PartialAggregate: Ord + PartialEq,
+    {
+        self.top_k(k, TopKQuery::Landmark)
+    }
+
+    fn top_k(&self, k: usize, query: TopKQuery) -> Vec<(K, A::PartialAggregate)>
+    where
+        A::PartialAggregate: Ord + PartialEq,
+    {
+        let mut heap = BinaryHeap::with_capacity(k);
+        let mut partial_map = HashMap::with_capacity(self.inner.len());
+
+        // for each keyed-wheel run the time filter and collect results
+        for (key, wheel) in self.inner.range(..) {
+            let agg = match query {
+                TopKQuery::TimeFilter(start, end) => wheel.as_ref().combine_range_smart(start, end),
+                TopKQuery::Landmark => wheel.as_ref().landmark(),
+            };
+            partial_map.insert(key.clone(), agg.unwrap_or_default());
+        }
+        // iterate the partial map and create the top-k output
+        for (key, agg) in partial_map {
+            if heap.len() < k {
+                heap.push((key, agg));
+            } else if let Some(top) = heap.peek() {
+                if agg.cmp(&top.1) == Ordering::Greater {
+                    let _ = heap.pop();
+                    heap.push((key, agg));
+                }
+            }
+        }
+        let mut top_k: Vec<_> = heap.into_vec();
+        top_k.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+
+        // DESC order
+        top_k.reverse();
+
+        top_k
+    }
+
+    /// Executes a Top-K query with a given time filter
+    pub fn top_k_with_time_filter(
+        &self,
+        k: usize,
+        start: OffsetDateTime,
+        end: OffsetDateTime,
+    ) -> Vec<(K, A::PartialAggregate)>
+    where
+        A::PartialAggregate: Ord + PartialEq,
+    {
+        self.top_k(k, TopKQuery::TimeFilter(start, end))
     }
 
     /// Returns the partial aggregate in the given time interval across a range of keys

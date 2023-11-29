@@ -56,7 +56,7 @@ impl<A: Aggregator> MaybeWheel<A> {
     }
     pub fn size_bytes(&self) -> usize {
         if let Some(inner) = self.inner.as_ref() {
-            inner.size_bytes().unwrap() // safe as we know its implemented for AggregationWheel
+            inner.size_bytesz().unwrap() // safe as we know its implemented for AggregationWheel
         } else {
             0
         }

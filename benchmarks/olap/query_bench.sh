@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Low load
-cargo run --release --bin query_bench --  --queries 20000 --events-per-sec 1
+cargo run --release  --bin query_bench --  --queries 20000 --events-per-sec 1
 
 # High load
 cargo run --release --bin query_bench --  --queries 20000 --events-per-sec 10
