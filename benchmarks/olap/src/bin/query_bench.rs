@@ -21,12 +21,13 @@ pub enum Workload {
     Sum,
 }
 
-// const INTERVALS: [Durationz; 3] = [Durationz::days(1), Durationz::days(2), Durationz::days(4)];
-const INTERVALS: [Durationz; 3] = [
-    Durationz::hours(1),  // 2023-10-01 01:00:00
-    Durationz::hours(23), // 2023-10-02 00:00:00
-    Durationz::days(6),   // 2023-10-08 00:00:00
-];
+const INTERVALS: [Durationz; 2] = [Durationz::days(1), Durationz::days(6)];
+
+// const INTERVALS: [Durationz; 3] = [
+//     Durationz::hours(1),  // 2023-10-01 01:00:00
+//     Durationz::hours(23), // 2023-10-02 00:00:00
+//     Durationz::days(6),   // 2023-10-08 00:00:00
+// ];
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -159,7 +160,6 @@ fn run(args: &Args) -> Vec<Run> {
         let wheel = RwWheel::<U64SumAggregator>::with_options(start_date, opts);
         // populate the tree with the Read Wheel
         tree.insert(id, wheel.read().clone());
-        tree.insert_star(wheel.read().clone());
         wheels.insert(id, wheel);
     }
 
@@ -239,6 +239,8 @@ fn run(args: &Args) -> Vec<Run> {
         }
 
         star.advance(interval);
+
+        tree.insert_star(star.read().clone());
         println!("Now running queries");
 
         dbg!(star.watermark());
