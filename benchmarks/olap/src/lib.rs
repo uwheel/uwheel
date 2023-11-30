@@ -543,7 +543,7 @@ pub fn generate_seconds_range(watermark: u64) -> (u64, u64) {
     // Randomly generate a start time within the specified date range
     let random_start = fastrand::u64(start_timestamp..end_timestamp);
 
-    // Generate a random duration between 1 and (604800 - random_start_seconds) seconds
+    // Generate a random duration between 1 and (watermark - random_start_seconds) seconds
     let max_duration = end_timestamp - random_start;
     let duration_seconds = fastrand::u64(1..=max_duration);
 

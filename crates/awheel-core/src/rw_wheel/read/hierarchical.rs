@@ -418,11 +418,10 @@ where
     #[inline]
     pub fn combine_range_and_lower(
         &self,
-        _start: OffsetDateTime,
-        _end: OffsetDateTime,
+        start: OffsetDateTime,
+        end: OffsetDateTime,
     ) -> Option<A::Aggregate> {
-        // self.combine_range(start, end).map(|(agg, _)| A::lower(agg))
-        unimplemented!();
+        self.combine_range(start, end).map(A::lower)
     }
 
     // Generates query nodes given a start and end date
@@ -478,7 +477,6 @@ where
                     } else {
                         current_start + time::Duration::seconds(dur.whole_seconds())
                     };
-                    // let h = current_start + time::Duration::minutes(dur.whole_minutes());
 
                     if h == current_start {
                         let sh =

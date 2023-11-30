@@ -21,8 +21,9 @@ pub enum Workload {
     Sum,
 }
 
-const INTERVALS: [Durationz; 2] = [Durationz::days(1), Durationz::days(6)];
-
+// 2023-10-01 01:00:00 + 2023-10-08 00:00:00
+// 1hr, 7 days.
+const INTERVALS: [Durationz; 2] = [Durationz::hours(1), Durationz::hours(23 + 24 * 6)];
 // const INTERVALS: [Durationz; 3] = [
 //     Durationz::hours(1),  // 2023-10-01 01:00:00
 //     Durationz::hours(23), // 2023-10-02 00:00:00
@@ -142,7 +143,6 @@ fn run(args: &Args) -> Vec<Run> {
     let start_date = START_DATE_MS;
     let mut current_date = start_date;
     let max_parallelism = 8;
-    // let total_landmark_queries = if total_queries == 1 { 1 } else { 1000 };
     let total_landmark_queries = 1000; // Less variance in the landmark queries and it takes up time of the execution
 
     // Prepare DuckDB
@@ -270,7 +270,7 @@ fn run(args: &Args) -> Vec<Run> {
         println!("DuckDB Q1 {:?}", duckdb_q1.0);
 
         let duckdb_q2_seconds = duckdb_run(
-            "DuckDB Q2 Seconds",
+            "DuckDB Q2",
             watermark,
             workload,
             &duckdb,
@@ -282,7 +282,7 @@ fn run(args: &Args) -> Vec<Run> {
             &duckdb_q2_seconds,
         ));
 
-        println!("DuckDB Q2 Seconds {:?}", duckdb_q2_seconds.0);
+        println!("DuckDB Q2 {:?}", duckdb_q2_seconds.0);
 
         let duckdb_q3 = duckdb_run(
             "DuckDB Q3",
@@ -307,6 +307,8 @@ fn run(args: &Args) -> Vec<Run> {
             &duckdb_q4_seconds,
         ));
 
+        println!("DuckDB Q4 {:?}", duckdb_q4_seconds.0);
+
         let duckdb_q5 = duckdb_run(
             "DuckDB Q5",
             watermark,
@@ -315,6 +317,8 @@ fn run(args: &Args) -> Vec<Run> {
             &q5_queries_duckdb,
         );
         q5_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q5));
+
+        println!("DuckDB Q5 {:?}", duckdb_q5.0);
 
         let duckdb_q6_seconds = duckdb_run(
             "DuckDB Q6 Seconds",
@@ -381,7 +385,7 @@ fn run(args: &Args) -> Vec<Run> {
             &duckdb_q2_seconds,
         ));
 
-        println!("DuckDB Q2 Seconds {:?}", duckdb_q2_seconds.0);
+        println!("DuckDB Q2 {:?}", duckdb_q2_seconds.0);
 
         let duckdb_q3 = duckdb_run(
             "DuckDB Q3",
@@ -406,6 +410,8 @@ fn run(args: &Args) -> Vec<Run> {
             &duckdb_q4_seconds,
         ));
 
+        println!("DuckDB Q4 {:?}", duckdb_q4_seconds.0);
+
         let duckdb_q5 = duckdb_run(
             "DuckDB Q5",
             watermark,
@@ -414,6 +420,8 @@ fn run(args: &Args) -> Vec<Run> {
             &q5_queries_duckdb,
         );
         q5_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q5));
+
+        println!("DuckDB Q5 {:?}", duckdb_q5.0);
 
         let duckdb_q6_seconds = duckdb_run(
             "DuckDB Q6 Seconds",
@@ -469,6 +477,7 @@ fn run(args: &Args) -> Vec<Run> {
         let wheel_q3 = awheel_run("WheelDB Q3", watermark, &tree, q3_queries);
         q3_results.add(Stats::from(wheeldb_id_fmt(wheel_threads), &wheel_q3));
 
+        println!("WheelDB Q3 {:?}", wheel_q3.0);
         let wheel_q4_seconds = awheel_run("WheelDB Q4", watermark, &tree, q4_queries_seconds);
         q4_seconds_results.add(Stats::from(
             wheeldb_id_fmt(wheel_threads),
@@ -511,6 +520,7 @@ fn run(args: &Args) -> Vec<Run> {
             q5_results,
             q6_seconds_results,
             q7_results,
+            q8_results,
         ];
         let run = Run::from(
             watermark,
@@ -529,11 +539,14 @@ fn awheel_run<A: Aggregator + Clone>(
     _watermark: u64,
     wheel: &WheelTree<u64, A>,
     queries: Vec<Query>,
-) -> (Duration, Histogram<u64>)
+) -> (Duration, Histogram<u64>, Histogram<u64>, Histogram<u64>)
 where
     A::PartialAggregate: Sync + Ord + PartialEq,
 {
     let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
+    let mut point_query_hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
+    let mut aggregation_hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
+
     let full = Instant::now();
     for query in queries {
         let now = Instant::now();
@@ -552,15 +565,28 @@ where
                 hist.record(now.elapsed().as_nanos() as u64).unwrap();
             }
             QueryType::Keyed(pu_location_id) => {
-                let _res = match query.interval {
+                // Record latency for seeking a Wheel
+                let point_now = Instant::now();
+                let wheel_opt = wheel.get(&pu_location_id);
+                point_query_hist
+                    .record(point_now.elapsed().as_nanos() as u64)
+                    .unwrap();
+
+                // run the actual query
+                let _res = wheel_opt.map(|wheel| match query.interval {
                     TimeInterval::Range(start, end) => {
                         let (start, end) = into_offset_date_time_start_end(start, end);
-                        wheel
-                            .get(&pu_location_id)
-                            .map(|w| w.as_ref().combine_range_smart(start, end))
+                        // Record latency of the wheel aggregation
+                        let aggregation_now = Instant::now();
+                        let result = wheel.as_ref().combine_range_smart(start, end);
+                        aggregation_hist
+                            .record(aggregation_now.elapsed().as_nanos() as u64)
+                            .unwrap();
+                        result
                     }
-                    TimeInterval::Landmark => wheel.get(&pu_location_id).map(|rw| rw.landmark()),
-                };
+                    TimeInterval::Landmark => wheel.landmark(),
+                });
+
                 #[cfg(feature = "debug")]
                 dbg!(_res);
                 // assert!(_res.is_some());
@@ -597,7 +623,7 @@ where
         };
     }
     let runtime = full.elapsed();
-    (runtime, hist)
+    (runtime, hist, point_query_hist, aggregation_hist)
 }
 
 fn duckdb_run(
@@ -606,12 +632,13 @@ fn duckdb_run(
     workload: Workload,
     db: &duckdb::Connection,
     queries: &[Query],
-) -> (Duration, Histogram<u64>) {
+) -> (Duration, Histogram<u64>, Histogram<u64>, Histogram<u64>) {
     let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
     let mut base_str = match workload {
         Workload::All => "SELECT AVG(fare_amount), SUM(fare_amount), MIN(fare_amount), MAX(fare_amount), COUNT(fare_amount) FROM rides",
         Workload::Sum => "SELECT SUM(fare_amount) FROM rides",
     };
+    // Prepare SQL queries
     let sql_queries: Vec<String> = queries
         .into_iter()
         .map(|query| {
@@ -679,27 +706,42 @@ fn duckdb_run(
             Workload::All => duckdb_query_all(&sql_query, db).unwrap(),
             Workload::Sum => duckdb_query_sum(&sql_query, db).unwrap(),
         }
-        //duckdb_query(&sql_query, db).unwrap();
         hist.record(now.elapsed().as_nanos() as u64).unwrap();
     }
     let runtime = full.elapsed();
-    (runtime, hist)
+    (
+        runtime,
+        hist,
+        hdrhistogram::Histogram::<u64>::new(4).unwrap(), // empty unused for DuckDB..
+        hdrhistogram::Histogram::<u64>::new(4).unwrap(), // empty unused for DuckDB..
+    )
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct Stats {
     id: String,
     latency: Latency,
+    point_query_latency: Latency,
+    wheel_agg_latency: Latency,
     runtime: f64,
 }
 
 impl Stats {
-    pub fn from(id: impl Into<String>, metrics: &(Duration, Histogram<u64>)) -> Self {
-        let latency = Latency::from(&metrics.1);
+    pub fn from(
+        id: impl Into<String>,
+        metrics: &(Duration, Histogram<u64>, Histogram<u64>, Histogram<u64>),
+    ) -> Self {
         let runtime = metrics.0.as_secs_f64();
+        let latency = Latency::from(&metrics.1);
+
+        // only applicable for WheelDB
+        let point_query_latency = Latency::from(&metrics.2);
+        let wheel_agg_latency = Latency::from(&metrics.3);
         Self {
             id: id.into(),
             latency,
+            point_query_latency,
+            wheel_agg_latency,
             runtime,
         }
     }
