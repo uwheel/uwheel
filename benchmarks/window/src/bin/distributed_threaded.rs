@@ -4,8 +4,7 @@
 use awheel::{
     aggregator::sum::U64SumAggregator,
     delta::DeltaState,
-    time,
-    time::{Duration, NumericalDuration},
+    time_internal::{Duration, NumericalDuration},
     window::distributed::{DistributedWindow, DistributedWindowExt},
     Entry,
     RwWheel,

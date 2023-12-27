@@ -4,7 +4,7 @@ pub mod external_impls;
 pub mod timestamp_generator;
 pub mod tree;
 
-use awheel::{time::Duration, window::stats::Stats};
+use awheel::{time_internal::Duration, window::stats::Stats};
 pub use timestamp_generator::{align_to_closest_thousand, TimestampGenerator};
 
 pub use cxx::UniquePtr;

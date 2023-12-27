@@ -105,11 +105,9 @@ where
         Q: ?Sized + Ord + PartialEq,
     {
         match (range.start_bound(), range.end_bound()) {
-            (Bound::Unbounded, Bound::Unbounded) => {
-                self.star.as_ref().combine_range_smart(start, end)
-            }
+            (Bound::Unbounded, Bound::Unbounded) => self.star.as_ref().combine_range(start, end),
             _ => self.inner.range(range).fold(None, |mut acc, (_, wheel)| {
-                match wheel.as_ref().combine_range_smart(start, end) {
+                match wheel.as_ref().combine_range(start, end) {
                     Some(agg) => {
                         combine_or_insert::<A>(&mut acc, agg);
                         acc
@@ -132,11 +130,9 @@ where
         Q: ?Sized + Ord + PartialEq,
     {
         match (range.start_bound(), range.end_bound()) {
-            (Bound::Unbounded, Bound::Unbounded) => {
-                self.star.as_ref().combine_range_smart(start, end)
-            }
+            (Bound::Unbounded, Bound::Unbounded) => self.star.as_ref().combine_range(start, end),
             _ => self.inner.range(range).fold(None, |mut acc, (_, wheel)| {
-                match wheel.as_ref().combine_range_smart(start, end) {
+                match wheel.as_ref().combine_range(start, end) {
                     Some(agg) => {
                         combine_or_insert::<A>(&mut acc, agg);
                         acc
@@ -180,7 +176,7 @@ where
         // for each keyed-wheel run the time filter and collect results
         for (key, wheel) in self.inner.range(..) {
             let agg = match query {
-                TopKQuery::TimeFilter(start, end) => wheel.as_ref().combine_range_smart(start, end),
+                TopKQuery::TimeFilter(start, end) => wheel.as_ref().combine_range(start, end),
                 TopKQuery::Landmark => wheel.as_ref().landmark(),
             };
             partial_map.insert(key.clone(), agg.unwrap_or_default());

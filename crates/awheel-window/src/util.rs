@@ -1,6 +1,6 @@
 use awheel_core::{
     aggregator::{Aggregator, InverseExt},
-    time::Duration,
+    time_internal::Duration,
 };
 
 use super::WindowExt;
@@ -208,7 +208,7 @@ pub fn window_wheel<A: Aggregator + InverseExt>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use awheel_core::time::NumericalDuration;
+    use awheel_core::NumericalDuration;
 
     #[test]
     fn granularity_distance_cost_test() {

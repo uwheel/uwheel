@@ -158,6 +158,12 @@ struct Granularities {
     pub year: Option<usize>,
 }
 
+// A query node consisting of a start and end date
+struct QueryNode {
+    start: OffsetDateTime,
+    end: OffsetDateTime,
+}
+
 /// Hierarchical Aggregation Wheel
 ///
 /// Similarly to Hierarchical Wheel Timers, HAW exploits the hierarchical nature of time and utilise several aggregation wheels,
@@ -425,12 +431,11 @@ where
     }
 
     // Generates query nodes given a start and end date
+    //
+    // Each query node consists of a start and end date aligned by a lowest time unit (e.g, seconds, minutes, ..).
     // TODO: refactor
     #[inline]
-    fn generate_query_nodes(
-        start: OffsetDateTime,
-        end: OffsetDateTime,
-    ) -> Vec<(OffsetDateTime, OffsetDateTime)> {
+    fn generate_query_nodes(start: OffsetDateTime, end: OffsetDateTime) -> Vec<QueryNode> {
         let mut nodes = Vec::new();
         let mut current_start = start;
         let new_curr_end = |current_start: OffsetDateTime, end: &OffsetDateTime| {
@@ -439,9 +444,9 @@ where
             let hour = current_start.hour();
             let day = current_start.day();
             let next_days = time::Duration::days(31 - day as i64);
-            let next_hours = time::Duration::hours(24 - hour as i64);
-            let next_minutes = time::Duration::minutes(60 - minute as i64);
-            let next_seconds = time::Duration::seconds(60 - second as i64);
+            let next_hours = time::Duration::hours(HOURS as i64 - hour as i64);
+            let next_minutes = time::Duration::minutes(MINUTES as i64 - minute as i64);
+            let next_seconds = time::Duration::seconds(SECONDS as i64 - second as i64);
 
             let dur = *end - current_start;
 
@@ -457,7 +462,7 @@ where
                     let m = current_start + time::Duration::minutes(dur.whole_minutes());
                     // dbg!(m);
                     if m == current_start {
-                        current_start + time::Duration::seconds(dur.whole_seconds() as i64)
+                        current_start + time::Duration::seconds(dur.whole_seconds())
                     } else {
                         m
                     }
@@ -479,8 +484,7 @@ where
                     };
 
                     if h == current_start {
-                        let sh =
-                            current_start + time::Duration::minutes(dur.whole_minutes() as i64);
+                        let sh = current_start + time::Duration::minutes(dur.whole_minutes());
                         // dbg!(sh);
                         if sh == current_start {
                             *end
@@ -511,7 +515,7 @@ where
 
                     // let d = current_start + time::Duration::days(dur.whole_days());
                     if d == current_start {
-                        let sd = current_start + time::Duration::hours(dur.whole_hours() as i64);
+                        let sd = current_start + time::Duration::hours(dur.whole_hours());
                         // dbg!(sh);
                         if sd == current_start {
                             *end
@@ -533,7 +537,10 @@ where
         // while we have not reached the end, keep building query nodes.
         while current_start < end {
             let current_end = new_curr_end(current_start, &end);
-            nodes.push((current_start, current_end));
+            nodes.push(QueryNode {
+                start: current_start,
+                end: current_end,
+            });
             current_start = current_end;
         }
 
@@ -559,8 +566,8 @@ where
         // Sort query nodes based on lowest granularity in order to execute nodes in order
         // so that the execution visits wheels sequentially and not randomly.
         nodes.sort_unstable_by(|a, b| {
-            let a_score = granularity_score(&a.0, &a.1);
-            let b_score = granularity_score(&b.0, &b.1);
+            let a_score = granularity_score(&a.start, &a.end);
+            let b_score = granularity_score(&b.start, &b.end);
             a_score.cmp(&b_score)
         });
 
@@ -568,7 +575,7 @@ where
     }
     /// Combines partial aggregates within the given date range
     #[inline]
-    pub fn combine_range_smart(
+    pub fn combine_range(
         &self,
         start: OffsetDateTime,
         end: OffsetDateTime,
@@ -580,12 +587,13 @@ where
             end >= start,
             "End date needs to be equal or larger than start date"
         );
-        // Generate query nodes and execute
+        // Generate query nodes
         let nodes = Self::generate_query_nodes(start, end);
         // dbg!(start, end);
         // dbg!(&nodes);
+        // Combine the result of each query node into a final partial aggregate
         nodes.into_iter().fold(None, |mut acc, node| {
-            match self.combine_range(node.0, node.1) {
+            match self.wheel_aggregation(node.start, node.end) {
                 Some(agg) => {
                     combine_or_insert::<A>(&mut acc, agg);
                     acc
@@ -595,9 +603,9 @@ where
         })
     }
 
-    /// Combines partial aggregates within the given date range
+    /// Combines partial aggregates within the given date range using the lowest time granularity
     #[inline]
-    pub fn combine_range(
+    pub fn wheel_aggregation(
         &self,
         start: OffsetDateTime,
         end: OffsetDateTime,
@@ -729,19 +737,6 @@ where
         R: RangeBounds<u64>,
     {
         // # Issue: https://github.com/Max-Meldrum/awheel/issues/87
-        unimplemented!();
-    }
-
-    /// Returns the partial aggregate in the given time range
-    pub fn time_range<R>(&self, _range: R) -> Option<A::PartialAggregate>
-    where
-        R: RangeBounds<u64>,
-    {
-        // # Issue: https://github.com/Max-Meldrum/awheel/issues/88
-
-        // assert_eq!(start > end, "start must be larger than end");
-        // 1. Have to check whether this HAW is configured to support the specified range
-        // 2. Next locate the wheel which can be used to answer this query (e.g., is the query in sec,min, hour granularity)
         unimplemented!();
     }
 
@@ -1311,14 +1306,6 @@ mod tests {
         let end = datetime!(2023-11-09 00:00:04 UTC);
         let agg = haw.combine_range(start, end);
         assert_eq!(agg, Some(60));
-        let agg = haw.combine_range_smart(start, end);
-        assert_eq!(agg, Some(60));
-
-        // let start = datetime!(2023-11-24 10:15:23 UTC);
-        // let end = datetime!(2023-11-24 13:20:50 UTC);
-
-        // let a = haw.combine_range_smart(start, end);
-        // let a = haw.generate_query_nodes(start, end);
     }
 
     #[test]
@@ -1359,13 +1346,11 @@ mod tests {
         let end = datetime!(2023-11-09 01:00 UTC);
 
         assert_eq!(haw.combine_range(start, end), Some(3600));
-        assert_eq!(haw.combine_range_smart(start, end), Some(3600));
 
         let start = datetime!(2023-11-09 00:00 UTC);
         let end = datetime!(2023-11-09 03:00 UTC);
 
         assert_eq!(haw.combine_range(start, end), Some(10800));
-        assert_eq!(haw.combine_range_smart(start, end), Some(10800));
     }
 
     #[test]
@@ -1385,12 +1370,10 @@ mod tests {
         let end = datetime!(2023 - 11 - 10 00:00:00 UTC);
 
         assert_eq!(haw.combine_range(start, end), Some(3600 * 24));
-        assert_eq!(haw.combine_range_smart(start, end), Some(3600 * 24));
 
         let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
         let end = datetime!(2023 - 11 - 12 00:00:00 UTC);
 
         assert_eq!(haw.combine_range(start, end), Some(259200));
-        assert_eq!(haw.combine_range_smart(start, end), Some(259200));
     }
 }

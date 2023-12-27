@@ -1,9 +1,10 @@
 use awheel::{
     aggregator::{Aggregator, PartialAggregateType},
-    time::NumericalDuration,
+    time_internal::NumericalDuration,
     Entry,
     RwWheel,
 };
+use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
 /// Our user-defined Aggregator capturing the AVG wind speed and temperature of a sensor device.
 #[derive(Clone, Debug, Default)]
@@ -17,7 +18,8 @@ pub struct RawData {
 }
 
 /// Partial Aggregate used (sum + count) in order to calculate AVG
-#[derive(Clone, PartialEq, Debug, Default, Copy)]
+#[derive(Clone, PartialEq, Debug, Default, Copy, AsBytes, FromZeroes, FromBytes)]
+#[repr(C)]
 pub struct PartialAvg {
     count: f64,
     sum: f64,
@@ -34,7 +36,8 @@ impl PartialAvg {
 }
 
 /// Partial Aggregate State for 2 attributes (Wind speed + Temperature)
-#[derive(Clone, PartialEq, Default, Debug, Copy)]
+#[derive(Clone, PartialEq, Default, Debug, Copy, AsBytes, FromZeroes, FromBytes)]
+#[repr(C)]
 pub struct PartialAggregate {
     wind_speed: PartialAvg,
     temperature: PartialAvg,

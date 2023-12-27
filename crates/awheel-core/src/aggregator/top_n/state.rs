@@ -2,8 +2,6 @@ use super::{entry::TopNEntry, map::TopNMap, KeyBounds};
 use crate::aggregator::{Aggregator, PartialAggregateType};
 use core::{cmp::Ordering, fmt::Debug, ops::Deref};
 
-// use zerocopy::{AsBytes, FromBytes, FromZeroes};
-
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
@@ -14,7 +12,6 @@ use serde_big_array::BigArray;
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Debug, Clone, Copy)]
-// #[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy)]
 pub struct TopNState<Key, const N: usize, A>
 where
     Key: KeyBounds,

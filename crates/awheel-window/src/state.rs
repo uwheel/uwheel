@@ -1,5 +1,5 @@
 use crate::util::{create_pair_type, PairType};
-use awheel_core::time::Duration;
+use awheel_core::time_internal::Duration;
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug)]

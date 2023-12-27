@@ -3,7 +3,7 @@ use crate::{tree::Tree, *};
 use awheel::{
     aggregator::sum::U64SumAggregator,
     stats::profile_scope,
-    time::Duration,
+    time_internal::Duration,
     window::{state::State, stats::Stats, util::PairType, WindowExt},
 };
 
@@ -30,7 +30,7 @@ impl BFingerFourWheel {
 impl WindowExt<U64SumAggregator> for BFingerFourWheel {
     fn advance(
         &mut self,
-        _duration: awheel::time::Duration,
+        _duration: Duration,
     ) -> Vec<(
         u64,
         Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
@@ -113,7 +113,7 @@ impl BFingerEightWheel {
 impl WindowExt<U64SumAggregator> for BFingerEightWheel {
     fn advance(
         &mut self,
-        _duration: awheel::time::Duration,
+        _duration: Duration,
     ) -> Vec<(
         u64,
         Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
@@ -209,7 +209,7 @@ impl<T: Tree<U64SumAggregator>> PairsTree<T> {
 impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
     fn advance(
         &mut self,
-        duration: awheel::time::Duration,
+        duration: Duration,
     ) -> Vec<(
         u64,
         Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
@@ -306,7 +306,7 @@ mod tests {
     use super::*;
     use awheel::{
         aggregator::sum::U64SumAggregator,
-        time::{Duration, NumericalDuration},
+        time_internal::{Duration, NumericalDuration},
         window::{
             eager::{self, Builder, EagerWindowWheel},
             lazy,

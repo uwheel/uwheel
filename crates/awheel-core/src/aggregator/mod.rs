@@ -25,9 +25,9 @@ pub mod min;
 #[cfg(feature = "sum")]
 pub mod sum;
 
-#[cfg(feature = "top_n")]
-/// Top-N Aggregation using a nested Aggregator which has a PartialAggregate that implements `Ord`
-pub mod top_n;
+// #[cfg(feature = "top_n")]
+// Top-N Aggregation using a nested Aggregator which has a PartialAggregate that implements `Ord`
+// pub mod top_n;
 
 /// Aggregation interface that library users must implement to use awheel
 pub trait Aggregator: Default + Debug + Clone + 'static {

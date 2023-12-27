@@ -10,7 +10,7 @@ use awheel_core::{
         write::DEFAULT_WRITE_AHEAD_SLOTS,
         WheelExt,
     },
-    time::{Duration, NumericalDuration},
+    time_internal::{Duration, NumericalDuration},
     Entry,
     Options,
     RwWheel,

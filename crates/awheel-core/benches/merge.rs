@@ -1,7 +1,5 @@
 use awheel_core::{
     aggregator::{
-        max::U64MaxAggregator,
-        min::U64MinAggregator,
         sum::{U32SumAggregator, U64SumAggregator},
         Aggregator,
     },
@@ -30,43 +28,43 @@ const TOTAL_WHEELS: usize = 10000;
 const SLOT_VALUE: usize = 10;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    // let mut group = c.benchmark_group("merge-many");
-    // let slots = 10000;
-    // for wheels in [1, 32, 64, 512, 1024].iter() {
-    //     group.bench_with_input(
-    //         BenchmarkId::from_parameter(format!("{}-wheels-sum-u64", wheels)),
-    //         wheels,
-    //         |b, &wheels| {
-    //             merge_many::<U64SumAggregator>(slots, wheels as u64, b);
-    //         },
-    //     );
-    //     #[cfg(feature = "rayon")]
-    //     group.bench_with_input(
-    //         BenchmarkId::from_parameter(format!("{}-wheels-par-sum-u64", wheels)),
-    //         wheels,
-    //         |b, &wheels| {
-    //             merge_many_par::<U64SumAggregator>(slots, wheels as u64, b);
-    //         },
-    //     );
+    let mut group = c.benchmark_group("merge-many");
+    let slots = 10000;
+    for wheels in [1, 32, 64, 512, 1024].iter() {
+        group.bench_with_input(
+            BenchmarkId::from_parameter(format!("{}-wheels-sum-u64", wheels)),
+            wheels,
+            |b, &wheels| {
+                merge_many::<U64SumAggregator>(slots, wheels as u64, b);
+            },
+        );
+        #[cfg(feature = "rayon")]
+        group.bench_with_input(
+            BenchmarkId::from_parameter(format!("{}-wheels-par-sum-u64", wheels)),
+            wheels,
+            |b, &wheels| {
+                merge_many_par::<U64SumAggregator>(slots, wheels as u64, b);
+            },
+        );
 
-    //     // group.bench_with_input(
-    //     //     BenchmarkId::from_parameter(format!("{}-partials-min-u64", wheels)),
-    //     //     wheels,
-    //     //     |b, &wheels| {
-    //     //         merge_many::<U64MinAggregator>(60, wheels as u64, b);
-    //     //     },
-    //     // );
+        // group.bench_with_input(
+        //     BenchmarkId::from_parameter(format!("{}-partials-min-u64", wheels)),
+        //     wheels,
+        //     |b, &wheels| {
+        //         merge_many::<U64MinAggregator>(60, wheels as u64, b);
+        //     },
+        // );
 
-    //     // group.bench_with_input(
-    //     //     BenchmarkId::from_parameter(format!("{}-partials--max-u64", wheels)),
-    //     //     wheels,
-    //     //     |b, &wheels| {
-    //     //         merge_many::<U64MaxAggregator>(60, wheels as u64, b);
-    //     //     },
-    //     // );
-    // }
+        // group.bench_with_input(
+        //     BenchmarkId::from_parameter(format!("{}-partials--max-u64", wheels)),
+        //     wheels,
+        //     |b, &wheels| {
+        //         merge_many::<U64MaxAggregator>(60, wheels as u64, b);
+        //     },
+        // );
+    }
 
-    // group.finish();
+    group.finish();
 
     let mut group = c.benchmark_group("merge");
     group.throughput(Throughput::Elements(TOTAL_WHEELS as u64));
@@ -191,28 +189,6 @@ fn merge_many_par<A: Aggregator<PartialAggregate = u64>>(
     );
 }
 
-fn merge_wheel<A: Aggregator<PartialAggregate = u64>>(partials: u64, bencher: &mut Bencher) {
-    bencher.iter_batched(
-        || {
-            let conf =
-                WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
-            let mut w1 = AggregationWheel::<A>::new(conf);
-            let mut w2 = AggregationWheel::<A>::new(conf);
-
-            for _i in 0..partials {
-                w1.insert_slot(WheelSlot::new(Some(fastrand::u64(100..1000)), None));
-                w1.tick();
-
-                w2.insert_slot(WheelSlot::new(Some(fastrand::u64(100..1000)), None));
-                w2.tick();
-            }
-            (w1, w2)
-        },
-        |(mut w1, w2)| black_box(w1.merge(&w2)),
-        BatchSize::PerIteration,
-    );
-}
-
 fn zero_copy_merge_wheel<A: Aggregator>(
     partials: u64,
     value: A::PartialAggregate,
@@ -244,7 +220,7 @@ fn zero_copy_merge_wheel<A: Aggregator>(
         },
         |(mut w1, wheels)| {
             for wheel in wheels {
-                black_box(w1.merge_from_ref(PartialArray::<'_, A>::from_bytes(&wheel)));
+                w1.merge_from_ref(PartialArray::<'_, A>::from_bytes(&wheel));
             }
             w1
         },
@@ -283,7 +259,7 @@ fn alloc_merge_wheel<A: Aggregator>(
         },
         |(mut w1, wheels)| {
             for wheel in wheels {
-                black_box(w1.merge_from_ref(MutablePartialArray::<A>::from_bytes(&wheel)));
+                w1.merge_from_ref(MutablePartialArray::<A>::from_bytes(&wheel));
             }
             w1
         },

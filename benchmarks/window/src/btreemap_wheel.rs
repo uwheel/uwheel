@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use awheel::{
     rw_wheel::read::aggregation::combine_or_insert,
     stats::profile_scope,
-    time::Duration,
+    time_internal::Duration,
     window::{stats::Stats, WindowExt},
     Aggregator,
 };
@@ -30,7 +30,7 @@ impl<A: Aggregator> BTreeMapWheel<A> {
     }
 }
 impl<A: Aggregator> WindowExt<A> for BTreeMapWheel<A> {
-    fn advance(&mut self, _duration: awheel::time::Duration) -> Vec<(u64, Option<A::Aggregate>)> {
+    fn advance(&mut self, _duration: Duration) -> Vec<(u64, Option<A::Aggregate>)> {
         Vec::new()
     }
     fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)> {

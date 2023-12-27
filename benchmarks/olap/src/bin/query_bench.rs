@@ -1,3 +1,4 @@
+#![allow(clippy::let_and_return)]
 use awheel::{
     aggregator::{sum::U64SumAggregator, Aggregator},
     time_internal::Duration as Durationz,
@@ -578,7 +579,7 @@ where
                         let (start, end) = into_offset_date_time_start_end(start, end);
                         // Record latency of the wheel aggregation
                         let aggregation_now = Instant::now();
-                        let result = wheel.as_ref().combine_range_smart(start, end);
+                        let result = wheel.as_ref().combine_range(start, end);
                         aggregation_hist
                             .record(aggregation_now.elapsed().as_nanos() as u64)
                             .unwrap();
@@ -640,7 +641,7 @@ fn duckdb_run(
     };
     // Prepare SQL queries
     let sql_queries: Vec<String> = queries
-        .into_iter()
+        .iter()
         .map(|query| {
             // Generate Key clause. If no key then leave as empty ""
             let key_clause = match query.query_type {

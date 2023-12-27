@@ -30,6 +30,8 @@ pub mod rw_wheel;
 /// Heavily borrowed from the [time](https://docs.rs/time/latest/time/) crate
 pub mod time_internal;
 
+pub use time_internal::{Duration, NumericalDuration};
+
 #[macro_use]
 #[doc(hidden)]
 mod macros;

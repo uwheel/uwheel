@@ -8,7 +8,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-use awheel_core::{aggregator::Aggregator, time::Duration, Entry, ReadWheel};
+use awheel_core::{aggregator::Aggregator, time_internal::Duration, Entry, ReadWheel};
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -53,10 +53,7 @@ pub trait WindowExt<A: Aggregator> {
 #[cfg(test)]
 mod tests {
     use crate::lazy::LazyWindowWheel;
-    use awheel_core::{
-        aggregator::sum::U64SumAggregator,
-        time::{Duration, NumericalDuration},
-    };
+    use awheel_core::{aggregator::sum::U64SumAggregator, Duration, NumericalDuration};
     use eager::{Builder, EagerWindowWheel};
 
     use super::*;

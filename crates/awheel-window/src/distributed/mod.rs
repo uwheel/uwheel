@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use awheel_core::{rw_wheel::read::Eager, time::Duration, Aggregator, ReadWheel};
+use awheel_core::{rw_wheel::read::Eager, time_internal::Duration, Aggregator, ReadWheel};
 
 use crate::{
     lazy::PairsWheel,
@@ -299,7 +299,7 @@ impl<A: Aggregator> DistributedWindowExt<A> for DistributedWindowOnly<A> {
 
 #[cfg(test)]
 mod tests {
-    use awheel_core::{aggregator::sum::U64SumAggregator, time::Duration, Entry, RwWheel};
+    use awheel_core::{aggregator::sum::U64SumAggregator, Duration, Entry, RwWheel};
 
     use super::*;
 
@@ -334,7 +334,7 @@ mod tests {
 
         // simulate distributed scenario
         for i in 0..3 {
-            use awheel_core::time::NumericalDuration;
+            use awheel_core::NumericalDuration;
             for (id, w) in &mut workers.iter_mut().enumerate() {
                 let delta = w.advance_and_emit_deltas(10.seconds());
                 // "send" deltas to the distributed window and merge

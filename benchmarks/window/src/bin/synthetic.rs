@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use awheel::{
     aggregator::sum::U64SumAggregator,
-    time::Duration,
+    time_internal::Duration,
     window::{
         eager,
         eager_window_query_cost,

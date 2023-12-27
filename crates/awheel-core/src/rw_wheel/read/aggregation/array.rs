@@ -13,7 +13,7 @@ pub struct PartialArray<'a, A: Aggregator> {
 
 impl<'a, A: Aggregator> AsRef<[A::PartialAggregate]> for PartialArray<'a, A> {
     fn as_ref(&self) -> &[A::PartialAggregate] {
-        &self.arr
+        self.arr
     }
 }
 
@@ -198,9 +198,6 @@ impl<A: Aggregator> MutablePartialArray<A> {
     pub fn merge_with_ref(&mut self, other: impl AsRef<[A::PartialAggregate]>) {
         A::merge_slices(&mut self.inner, other.as_ref());
     }
-    // pub fn merge_with_ref(&mut self, other: &PartialArray<'_, A>) {
-    // A::merge_slices(&mut self.inner, other.arr);
-    // }
 
     /// Returns a front-to-back iterator of roll-up slots
     #[inline]
@@ -269,7 +266,7 @@ impl<A: Aggregator> MutablePartialArray<A> {
         self.inner.get_mut(slot)
     }
 }
-impl<'a, A: Aggregator> AsRef<[A::PartialAggregate]> for MutablePartialArray<A> {
+impl<A: Aggregator> AsRef<[A::PartialAggregate]> for MutablePartialArray<A> {
     fn as_ref(&self) -> &[A::PartialAggregate] {
         &self.inner
     }

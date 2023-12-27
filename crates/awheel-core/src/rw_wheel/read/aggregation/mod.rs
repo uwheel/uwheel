@@ -1,12 +1,10 @@
 use crate::{aggregator::Aggregator, time_internal::Duration};
-#[cfg(feature = "std")]
-use std::collections::VecDeque;
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 #[cfg(not(feature = "std"))]
-use alloc::{collections::VecDeque, vec::Vec};
+use alloc::vec::Vec;
 use core::{
     assert,
     fmt::Debug,
@@ -17,11 +15,6 @@ use core::{
         Option::{None, Some},
     },
 };
-
-#[cfg(not(feature = "std"))]
-use alloc::collections::vec_deque;
-#[cfg(feature = "std")]
-use std::collections::vec_deque;
 
 #[cfg(feature = "profiler")]
 pub(crate) mod stats;
@@ -124,237 +117,6 @@ impl<A: Aggregator> WheelSlot<A> {
     }
 }
 
-/// A helper alias for an iterator over the Table
-type TableIter<'a, A> = vec_deque::Iter<'a, A>;
-
-/// A Table maintaining wheel slots which are event-time indexed
-#[allow(missing_docs)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
-#[derive(Clone, Default, Debug)]
-pub struct Table<A: Aggregator> {
-    _watermark: u64,
-    // chunks: Vec<Chunk>,
-    inner: VecDeque<WheelSlot<A>>,
-}
-
-impl<A: Aggregator> Table<A> {
-    /// Creates a new table with the given watermark
-    pub fn new(_watermark: u64) -> Self {
-        Self {
-            _watermark,
-            inner: Default::default(),
-        }
-    }
-    #[doc(hidden)]
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-    #[doc(hidden)]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-    #[doc(hidden)]
-    pub fn push_front(&mut self, slot: WheelSlot<A>) {
-        self.inner.push_front(slot);
-    }
-    #[doc(hidden)]
-    pub fn pop_back(&mut self) {
-        self.inner.pop_back();
-    }
-    /// Returns a front-to-back iterator of the Table
-    pub fn iter(&self) -> TableIter<'_, WheelSlot<A>> {
-        self.inner.iter()
-    }
-
-    /// Merges another Wheel Table into this one
-    pub fn merge(&mut self, other: &Self) {
-        assert_eq!(
-            self.inner.len(),
-            other.inner.len(),
-            "Both tables need to be the same length for merging"
-        );
-
-        for (self_slot, other_slot) in self.inner.iter_mut().zip(other.inner.iter()) {
-            // combine the rolled up aggregate
-            self_slot.total = A::combine(self_slot.total, other_slot.total);
-            // combine_or_insert::<A>(&mut self_slot.total, other_slot.total);
-        }
-
-        // match (
-        //     &mut self_slot.drill_down_slots,
-        //     &other_slot.drill_down_slots,
-        // ) {
-        //     (Some(slots), Some(other_slots)) => {
-        //         for (mut self_slot, other_slot) in
-        //             slots.iter_mut().zip(other_slots.clone().iter())
-        //         {
-        // if let Some(other_agg) = other_slot {
-        // combine_or_insert::<A>(self_slot, other_slot);
-        // }
-        // }
-        // match (&mut self_slot, other_slot) {
-        //     match (&mut self_slot, other_slot) {
-        //         // if both wheels contains drill down slots, then decode, combine and encode into self
-        //         (Some(self_encodes), Some(other_encodes)) => {
-        //             let mut new_aggs = Vec::new();
-
-        //             for (x, y) in self_encodes.iter_mut().zip(other_encodes) {
-        //                 new_aggs.push(A::combine(*x, *y));
-        //             }
-        //             *self_slot = Some(new_aggs);
-        //         }
-        //         // if other wheel but not self, just move to self
-        //         (None, Some(other_encodes)) => {
-        //             *self_slot = Some(other_encodes.to_vec());
-        //         }
-        //         _ => {
-        //             // do nothing
-        //         }
-        //     }
-        // }
-        //     }
-        //     (Some(_), None) => panic!("only lhs wheel was configured with drill-down"),
-        //     (None, Some(_)) => panic!("only rhs wheel was configured with drill-down"),
-        //     _ => (),
-        // }
-    }
-
-    // TODO: improve
-    #[doc(hidden)]
-    pub fn downsample<R>(&self, range: R, inner: R) -> Vec<Option<A::PartialAggregate>>
-    where
-        R: RangeBounds<usize>,
-    {
-        let Range { start, end } = into_range(&range, self.inner.len());
-        let slots = end - start;
-
-        // Locate which slots we are to combine together
-        let relevant_range = self.inner.iter().skip(start).take(slots);
-
-        let mut result: Vec<Option<A::PartialAggregate>> = Vec::new();
-
-        for slot in relevant_range {
-            if let Some(slots) = &slot.drill_down_slots {
-                let Range { start, end } = into_range(&inner, slots.len());
-                let partial = A::combine_slice(&slots[start..end]);
-                result.push(partial);
-            }
-        }
-
-        result
-    }
-
-    /// Returns combined partial aggregate based on a given range
-    #[inline]
-    pub fn range_query<R>(&self, range: R) -> Option<A::PartialAggregate>
-    where
-        R: RangeBounds<usize>,
-    {
-        // runs with a predicate that always returns true
-        self.range_query_with_filter(range, |_| true)
-    }
-
-    #[doc(hidden)]
-    #[inline]
-    pub fn range_query_with_filter<R>(
-        &self,
-        range: R,
-        filter: impl Fn(&A::PartialAggregate) -> bool,
-    ) -> Option<A::PartialAggregate>
-    where
-        R: RangeBounds<usize>,
-    {
-        let Range { start, end } = into_range(&range, self.inner.len());
-        let slots = end - start;
-
-        // Locate which slots we are to combine together
-        let relevant_range = self.inner.iter().skip(start).take(slots);
-
-        let mut accumulator: Option<A::PartialAggregate> = None;
-
-        for slot in relevant_range {
-            if filter(&slot.total) {
-                combine_or_insert::<A>(&mut accumulator, slot.total);
-            }
-        }
-
-        accumulator
-    }
-
-    /// Returns drill down slots from `slot` slots backwards from the head
-    ///
-    ///
-    /// - If given a position, returns the drill down slots based on that position,
-    ///   or `None` if out of bounds
-    /// - If `0` is specified, it will drill down the current head.
-    #[inline]
-    pub fn drill_down(&self, slot: usize) -> Option<&[A::PartialAggregate]> {
-        self.inner
-            .get(slot)
-            .and_then(|m| m.drill_down_slots.as_deref())
-    }
-
-    /// Returns drill down slots from `slot` slots backwards from the head and lowers the aggregates
-    ///
-    /// If `0` is specified, it will drill down the current head.
-    #[inline]
-    pub fn lower_drill_down(&self, slot: usize) -> Option<Vec<A::Aggregate>> {
-        self.drill_down(slot)
-            .map(|partial_aggs| partial_aggs.iter().map(|agg| A::lower(*agg)).collect())
-    }
-
-    /// Drill down and cut across 2 slots
-    ///
-    ///
-    /// # Panics
-    ///
-    /// Panics if the starting point is greater than the end point or if
-    /// the end point is greater than the length of the wheel.
-    #[inline]
-    pub fn drill_down_cut<AR, BR>(
-        &self,
-        a: DrillCut<AR>,
-        b: DrillCut<BR>,
-    ) -> Option<Vec<A::PartialAggregate>>
-    where
-        AR: RangeBounds<usize>,
-        BR: RangeBounds<usize>,
-    {
-        let a_drill = self.drill_down(a.slot);
-        let b_drill = self.drill_down(b.slot);
-        let mut res = Vec::new();
-        if let Some(a_slots) = a_drill {
-            res.extend_from_slice(&a_slots[into_range(&a.range, a_slots.len())]);
-        }
-        if let Some(b_slots) = b_drill {
-            res.extend_from_slice(&b_slots[into_range(&b.range, b_slots.len())]);
-        }
-
-        Some(res)
-    }
-    /// Drill down across 2 slots and lowers results
-    ///
-    ///
-    /// # Panics
-    ///
-    /// Panics if the starting point is greater than the end point or if
-    /// the end point is greater than the length of the wheel.
-    #[inline]
-    pub fn lower_drill_down_cut<AR, BR>(
-        &self,
-        a: DrillCut<AR>,
-        b: DrillCut<BR>,
-    ) -> Option<Vec<A::Aggregate>>
-    where
-        AR: RangeBounds<usize>,
-        BR: RangeBounds<usize>,
-    {
-        self.drill_down_cut(a, b)
-            .map(|partials| partials.into_iter().map(|pa| A::lower(pa)).collect())
-    }
-}
-
 /// Fixed-size wheel where each slot contains a possible partial aggregate
 ///
 /// The wheel maintains partial aggregates per slot, but also updates a `total` aggregate for each tick in the wheel.
@@ -384,8 +146,6 @@ pub struct AggregationWheel<A: Aggregator> {
     slots: MutablePartialArray<A>,
     /// Higher-order aggregates indexed by event time
     drill_down_slots: MutablePartialArray<A>,
-    /// Table that maintains wheel slots
-    table: Table<A>,
     /// Keeps track whether we have done a full rotation (rotation_count == num_slots)
     rotation_count: usize,
     #[cfg(test)]
@@ -406,7 +166,6 @@ impl<A: Aggregator> AggregationWheel<A> {
             slots: MutablePartialArray::with_capacity(num_slots),
             drill_down_slots: MutablePartialArray::default(),
             total: None,
-            table: Table::new(0), // insert watermark
             watermark: conf.watermark,
             tick_size_ms: conf.tick_size_ms,
             drill_down: conf.drill_down,
@@ -418,10 +177,6 @@ impl<A: Aggregator> AggregationWheel<A> {
             #[cfg(feature = "profiler")]
             stats: Stats::default(),
         }
-    }
-    /// Returns a reference to the wheel table
-    pub fn table(&self) -> &Table<A> {
-        &self.table
     }
 
     /// Returns the current watermark of the wheel
@@ -474,6 +229,13 @@ impl<A: Aggregator> AggregationWheel<A> {
     pub fn lower_interval(&self, subtrahend: usize) -> Option<A::Aggregate> {
         self.interval(subtrahend)
             .map(|partial_agg| A::lower(partial_agg))
+    }
+
+    /// Returns drill down slots from ´slot´ index
+    #[inline]
+    pub fn drill_down(&self, _slot: usize) -> Option<&[A::PartialAggregate]> {
+        None
+        // self.drill_down_slots.get(
     }
 
     /// Returns partial aggregate from `subtrahend` slots backwards from the head
@@ -555,7 +317,6 @@ impl<A: Aggregator> AggregationWheel<A> {
     fn clear_tail(&mut self) {
         if !self.slots.is_empty() && self.retention.should_drop() {
             self.slots.pop_back();
-            self.table.pop_back();
         }
     }
     /// Returns the current rotation position in the wheel
@@ -603,15 +364,6 @@ impl<A: Aggregator> AggregationWheel<A> {
         self.slots.push_front(entry);
     }
 
-    // /// Combines the partial at the current head
-    // pub fn combine_head(&mut self, entry: A::PartialAggregate) {
-    //     if let Some(ref mut head) = self.slotz.get(0) {
-    //         // head = A::combine(*head.clone(), entry);
-    //     }
-    //     // combine_or_insert::<A>(head, entry)
-    //     // self.slotz.push_front(entry);
-    // }
-
     #[inline]
     #[doc(hidden)]
     pub fn insert_slot(&mut self, mut slot: WheelSlot<A>) {
@@ -625,13 +377,9 @@ impl<A: Aggregator> AggregationWheel<A> {
                 slot.drill_down_slots = None;
             }
 
-            // push slot into the table
-            self.table.push_front(slot);
-
             // if there is a configured limit then check it
             if let RetentionPolicy::KeepWithLimit(limit) = self.retention {
                 if self.slots.len() > limit {
-                    self.table.pop_back();
                     self.slots.pop_back();
                 }
             }
@@ -656,7 +404,7 @@ impl<A: Aggregator> AggregationWheel<A> {
     }
 
     /// Merges the slots from a zero-copy partial array into this one
-    pub fn merge_from_array<'a>(&mut self, array: &PartialArray<'a, A>) {
+    pub fn merge_from_array(&mut self, array: &PartialArray<A>) {
         if let Some(total) = array.combine_range(..) {
             combine_or_insert::<A>(&mut self.total, total);
         }
@@ -664,7 +412,7 @@ impl<A: Aggregator> AggregationWheel<A> {
     }
 
     /// Merges the slots from a reference
-    pub fn merge_from_ref<'a>(&mut self, array: impl AsRef<[A::PartialAggregate]>) {
+    pub fn merge_from_ref(&mut self, array: impl AsRef<[A::PartialAggregate]>) {
         if let Some(total) = A::combine_slice(array.as_ref()) {
             combine_or_insert::<A>(&mut self.total, total);
         }
@@ -673,7 +421,7 @@ impl<A: Aggregator> AggregationWheel<A> {
     }
 
     /// Merges the slots from an array partial arrays into this wheel
-    pub fn merge_from_arrays<'a>(&mut self, arrays: &[PartialArray<'a, A>]) {
+    pub fn merge_from_arrays(&mut self, arrays: &[PartialArray<A>]) {
         for array in arrays {
             self.merge_from_array(array)
         }
@@ -950,21 +698,9 @@ impl<A: Aggregator> AggregationWheel<A> {
             retention: Default::default(),
             drill_down: drill_down != 0,
             drill_down_slots: Default::default(),
-            table: Default::default(),
             #[cfg(test)]
             total_ticks: 0,
         })
-
-        // Self {
-        //     capacity,
-        //     num_slots: 0,
-        //     slots,
-        //     watermark,
-        //     tick_size_ms,
-        //     drill_down,
-        //     drill_down_slots: Default::default(),
-
-        // }
     }
 }
 
@@ -1033,7 +769,7 @@ mod tests {
         }
         let bytes = array.as_bytes();
 
-        let partial_arr: PartialArray<'_, U64SumAggregator> = PartialArray::from_bytes(&bytes);
+        let partial_arr: PartialArray<'_, U64SumAggregator> = PartialArray::from_bytes(bytes);
         assert_eq!(partial_arr.combine_range(..), Some(4950));
     }
 
@@ -1075,7 +811,7 @@ mod tests {
         let bytes = wheel.as_bytes();
         let decoded: Option<AggregationWheel<U64SumAggregator>> =
             AggregationWheel::from_bytes(&bytes);
-        assert_eq!(decoded.is_some(), true);
+        assert!(decoded.is_some());
         assert_eq!(decoded.unwrap().combine_range(..), Some(499500));
 
         let slots = wheel.slots.as_bytes().to_vec();
