@@ -3,7 +3,7 @@ use awheel_core::{
     aggregator::Aggregator,
     delta::DeltaState,
     rw_wheel::read::aggregation::combine_or_insert,
-    time_internal::Duration,
+    Duration,
     OffsetDateTime,
     ReadWheel,
 };

@@ -76,7 +76,7 @@ impl<A: Aggregator> PairsWheel<A> {
     /// - If given a interval, returns the combined partial aggregate based on that interval,
     ///   or `None` if out of bounds
     #[inline]
-    pub fn interval(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
+    pub fn interval(&self, subtrahend: usize) -> (Option<A::PartialAggregate>, usize) {
         let tail = self.slot_idx_backward_from_head(subtrahend);
         let iter = Iter::<A>::new(&self.slots, tail, self.head);
         iter.combine()
@@ -181,11 +181,12 @@ impl<A: Aggregator> LazyWindowWheel<A> {
     }
     // Combines aggregates from the Pairs Wheel in worst-case [2r/s] or best-case [r/s]
     #[inline]
-    fn compute_window(&self) -> A::PartialAggregate {
+    fn compute_window(&self) -> (A::PartialAggregate, usize) {
         let pair_slots = pairs_space(self.range, self.slide);
         #[cfg(feature = "stats")]
         profile_scope!(&self.stats.window_computation_ns);
-        self.pairs_wheel.interval(pair_slots).unwrap_or_default()
+        let (agg, ops) = self.pairs_wheel.interval(pair_slots);
+        (agg.unwrap_or_default(), ops)
     }
 }
 
@@ -216,9 +217,15 @@ impl<A: Aggregator> WindowExt<A> for LazyWindowWheel<A> {
 
                 if self.wheel.read().watermark() == self.state.next_window_end {
                     // Window computation:
-                    let window = self.compute_window();
+                    let (window_agg, _ops) = self.compute_window();
 
-                    window_results.push((self.wheel.read().watermark(), Some(A::lower(window))));
+                    #[cfg(feature = "stats")]
+                    self.stats
+                        .window_combines
+                        .set(self.stats.window_combines.get() + _ops);
+
+                    window_results
+                        .push((self.wheel.read().watermark(), Some(A::lower(window_agg))));
 
                     #[cfg(feature = "stats")]
                     profile_scope!(&self.stats.cleanup_ns);
@@ -259,7 +266,12 @@ impl<A: Aggregator> WindowExt<A> for LazyWindowWheel<A> {
     #[cfg(feature = "stats")]
     fn stats(&self) -> &crate::stats::Stats {
         let agg_store_size = self.wheel.read().as_ref().size_bytes();
-        self.stats.size_bytes.set(agg_store_size);
+        let write_ahead_size = self.wheel.write().size_bytes().unwrap();
+        let pairs_wheel_size = self.pairs_wheel.size_bytes().unwrap();
+
+        let total = agg_store_size + write_ahead_size + pairs_wheel_size;
+
+        self.stats.size_bytes.set(total);
         &self.stats
     }
 }

@@ -110,7 +110,11 @@ macro_rules! sum_impl {
                 a: Self::PartialAggregate,
                 b: Self::PartialAggregate,
             ) -> Self::PartialAggregate {
-                a - b
+                if a > b {
+                    a - b
+                } else {
+                    0 as $pa
+                }
             }
         }
     };

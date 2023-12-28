@@ -1,4 +1,4 @@
-use awheel_stats::Stats;
+use awheel_stats::Sketch;
 use core::{cell::Cell, fmt};
 
 /// Stats for [AggregationWheel]
@@ -6,7 +6,7 @@ use core::{cell::Cell, fmt};
 #[derive(Clone, Default)]
 pub struct Stats {
     pub combine_ops: u64,
-    pub combine_range: Stats,
+    pub combine_range: Sketch,
     pub total_access: Cell<u64>,
     pub scans: Cell<u64>,
 }

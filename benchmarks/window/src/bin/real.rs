@@ -1,33 +1,100 @@
+use clap::{ArgEnum, Parser};
+use csv::ReaderBuilder;
 use minstant::Instant;
 #[cfg(feature = "sync")]
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use std::{cmp, collections::BTreeMap};
+use std::{cmp, fs::File};
+use window::{external_impls::Slicing, PlottingOutput, Window};
 
 use awheel::{
-    aggregator::{min::U64MinAggregator, sum::U64SumAggregator},
+    aggregator::sum::U64SumAggregator,
     window::{eager, lazy, stats::Stats, WindowExt},
     Aggregator,
     Entry,
 };
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime};
 use serde::Deserialize;
-use window::{
-    align_to_closest_thousand,
-    external_impls::{self, PairsTree},
-    tree,
-    BenchResult,
-    Run,
-};
+use window::{align_to_closest_thousand, external_impls::WindowTree, tree, BenchResult, Run};
 
-use window::EXECUTIONS;
+use window::{BIG_RANGE_WINDOWS, SMALL_RANGE_WINDOWS};
+
+#[cfg(feature = "mimalloc")]
+use mimalloc::MiMalloc;
+
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    #[clap(short, long, value_parser, default_value_t = 100)]
+    watermark_frequency: usize,
+    #[clap(arg_enum, value_parser, default_value_t = Dataset::CitiBike)]
+    data: Dataset,
+    #[clap(arg_enum, value_parser, default_value_t = WindowType::SmallRange)]
+    window_type: WindowType,
+}
+
+// DEBS 12 Event
+#[derive(Debug, Deserialize)]
+struct CDataPoint {
+    ts: String,
+    _index: u64,
+    mf01: u32,
+}
+
+// DEBS 13 Event
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct FootballEvent {
+    sid: u32,
+    ts: u64,
+}
 
 #[inline]
 pub fn datetime_to_u64(datetime: &str) -> u64 {
     let s = NaiveDateTime::parse_from_str(datetime, "%Y-%m-%d %H:%M:%S%.f").unwrap();
     s.timestamp_millis() as u64
+}
+
+pub fn debs_datetime_to_u64(datetime: &str) -> u64 {
+    // Parse the timestamp string into a Chrono DateTime object
+    let datetime = DateTime::parse_from_rfc3339(datetime).unwrap();
+    datetime.naive_local().timestamp_millis() as u64
+}
+
+fn events_per_second(events: &[Event]) -> f64 {
+    let start_time = events.first().map(|event| event.timestamp).unwrap_or(0);
+    let end_time = events
+        .last()
+        .map(|event| event.timestamp)
+        .unwrap_or(start_time);
+
+    let total_events = events.len();
+    let duration_seconds = (end_time - start_time) as f64 / 1000.0; // Convert milliseconds to seconds
+    total_events as f64 / duration_seconds
+}
+
+fn calculate_out_of_order_percentage(watermark: u64, events: &[Event]) -> f64 {
+    let mut out_of_order_count = 0;
+    let mut total_events = 0;
+    let mut current_max = watermark;
+
+    for &event in events.iter() {
+        total_events += 1;
+        if event.timestamp < current_max {
+            out_of_order_count += 1;
+        } else {
+            current_max = event.timestamp;
+        }
+    }
+
+    // Calculate the percentage of out-of-order events
+    (out_of_order_count as f64 / total_events as f64) * 100.0
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,18 +118,31 @@ struct CitiBikeTrip {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct CitiBikeEvent {
-    trip_duration: u64,
-    start_time: u64,
+struct Event {
+    data: u64,
+    timestamp: u64,
 }
 
-impl CitiBikeEvent {
+impl Event {
     pub fn from(trip: CitiBikeTrip) -> Self {
         Self {
-            trip_duration: trip.tripduration as u64,
-            start_time: datetime_to_u64(&trip.starttime),
+            data: trip.tripduration as u64,
+            timestamp: datetime_to_u64(&trip.starttime),
         }
     }
+}
+
+#[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
+pub enum Dataset {
+    CitiBike,
+    DEBS12,
+    DEBS13,
+}
+
+#[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
+pub enum WindowType {
+    SmallRange,
+    BigRange,
 }
 
 struct WatermarkGenerator {
@@ -87,22 +167,19 @@ impl WatermarkGenerator {
         self.current_max - self.max_ooo - 1
     }
 }
-fn nyc_citi_bike_bench_sum() {
-    let path = "../data/citibike-tripdata.csv";
-    let mut events = Vec::new();
-    let mut rdr = csv::Reader::from_path(path).unwrap();
-    for result in rdr.deserialize() {
-        let record: CitiBikeTrip = result.unwrap();
-        let event = CitiBikeEvent::from(record);
-        events.push(event);
-    }
 
-    let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
+fn sum_aggregation(
+    id: &str,
+    events: Vec<Event>,
+    watermark: u64,
+    watermark_freq: usize,
+    windows: Vec<Window>,
+) {
     let mut results = Vec::new();
 
-    for exec in EXECUTIONS {
-        let range = exec.range;
-        let slide = exec.slide;
+    for window in windows {
+        let range = window.range;
+        let slide = window.slide;
         let total_insertions = events.len() as u64;
 
         let mut runs = Vec::new();
@@ -115,13 +192,13 @@ fn nyc_citi_bike_bench_sum() {
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&lazy_wheel_64);
-        let (runtime, stats, lazy_results) = run(lazy_wheel_64, &events);
+        let (runtime, stats, lazy_results) = run(lazy_wheel_64, &events, watermark, watermark_freq);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
         let qps = handle.join().unwrap();
 
-        println!("Finished Lazy Wheel 64");
+        dbg!("Finished Lazy Wheel 64");
 
         runs.push(Run {
             id: "Lazy Wheel 64".to_string(),
@@ -133,35 +210,6 @@ fn nyc_citi_bike_bench_sum() {
             #[cfg(not(feature = "sync"))]
             qps: None,
         });
-
-        let lazy_wheel_256: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(256)
-            .with_watermark(watermark)
-            .build();
-
-        #[cfg(feature = "sync")]
-        let (gate, handle) = spawn_query_thread(&lazy_wheel_256);
-        let (runtime, stats, _lazy_results) = run(lazy_wheel_256, &events);
-        #[cfg(feature = "sync")]
-        gate.store(false, Ordering::Relaxed);
-        #[cfg(feature = "sync")]
-        let qps = handle.join().unwrap();
-
-        println!("Finished Lazy Wheel 256");
-
-        runs.push(Run {
-            id: "Lazy Wheel 256".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            #[cfg(feature = "sync")]
-            qps: Some(qps),
-            #[cfg(not(feature = "sync"))]
-            qps: None,
-        });
-
         let lazy_wheel_512: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
             .with_range(range)
             .with_slide(slide)
@@ -171,16 +219,17 @@ fn nyc_citi_bike_bench_sum() {
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&lazy_wheel_512);
-        let (runtime, stats, _lazy_results) = run(lazy_wheel_512, &events);
+        let (runtime, stats, _lazy_results) =
+            run(lazy_wheel_512, &events, watermark, watermark_freq);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
         let qps = handle.join().unwrap();
 
-        println!("Finished Lazy Wheel 512");
+        dbg!("Finished Lazy Wheel 512");
 
         runs.push(Run {
-            id: "Lazy Wheel 256".to_string(),
+            id: "Lazy Wheel 512".to_string(),
             total_insertions,
             runtime,
             stats,
@@ -200,7 +249,8 @@ fn nyc_citi_bike_bench_sum() {
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&eager_wheel_64);
-        let (runtime, stats, eager_results) = run(eager_wheel_64, &events);
+        let (runtime, stats, eager_results) =
+            run(eager_wheel_64, &events, watermark, watermark_freq);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
@@ -208,36 +258,9 @@ fn nyc_citi_bike_bench_sum() {
 
         assert_eq!(lazy_results, eager_results);
 
-        println!("Finished Eager Wheel W64");
+        dbg!("Finished Eager Wheel W64");
         runs.push(Run {
             id: "Eager Wheel W64".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            #[cfg(feature = "sync")]
-            qps: Some(qps),
-            #[cfg(not(feature = "sync"))]
-            qps: None,
-        });
-
-        let eager_wheel_256: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(256)
-            .with_watermark(watermark)
-            .build();
-
-        #[cfg(feature = "sync")]
-        let (gate, handle) = spawn_query_thread(&eager_wheel_256);
-        let (runtime, stats, _eager_results) = run(eager_wheel_256, &events);
-        #[cfg(feature = "sync")]
-        gate.store(false, Ordering::Relaxed);
-        #[cfg(feature = "sync")]
-        let qps = handle.join().unwrap();
-
-        println!("Finished Eager Wheel W256");
-        runs.push(Run {
-            id: "Eager Wheel W256".to_string(),
             total_insertions,
             runtime,
             stats,
@@ -256,13 +279,14 @@ fn nyc_citi_bike_bench_sum() {
 
         #[cfg(feature = "sync")]
         let (gate, handle) = spawn_query_thread(&eager_wheel_512);
-        let (runtime, stats, eager_results) = run(eager_wheel_512, &events);
+        let (runtime, stats, eager_results) =
+            run(eager_wheel_512, &events, watermark, watermark_freq);
         #[cfg(feature = "sync")]
         gate.store(false, Ordering::Relaxed);
         #[cfg(feature = "sync")]
         let qps = handle.join().unwrap();
 
-        println!("Finished Eager Wheel W512");
+        dbg!("Finished Eager Wheel W512");
         runs.push(Run {
             id: "Eager Wheel W512".to_string(),
             total_insertions,
@@ -274,10 +298,80 @@ fn nyc_citi_bike_bench_sum() {
             qps: None,
         });
 
+        let fiba_4: WindowTree<tree::FiBA4> =
+            WindowTree::new(watermark, range, slide, Slicing::Wheel);
+        let (runtime, stats, _fiba4_results) = run(fiba_4, &events, watermark, watermark_freq);
+        dbg!("Finished FiBA Bfinger4");
+        runs.push(Run {
+            id: "FiBA Bfinger4".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+            qps: None,
+        });
+
+        pretty_assertions::assert_eq!(eager_results, _fiba4_results);
+        /*
+        dbg!(&find_first_mismatch(
+            &lazy_results,
+            &eager_results,
+            &_fiba4_results
+        ));
+        */
+
+        let fiba_8: WindowTree<tree::FiBA8> =
+            WindowTree::new(watermark, range, slide, Slicing::Wheel);
+        let (runtime, stats, _fiba8_results) = run(fiba_8, &events, watermark, watermark_freq);
+        dbg!("Finished FiBA Bfinger8");
+        runs.push(Run {
+            id: "FiBA Bfinger8".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+            qps: None,
+        });
+        assert_eq!(_fiba4_results, _fiba8_results);
+
+        let fiba_4: WindowTree<tree::FiBA4> =
+            WindowTree::new(watermark, range, slide, Slicing::Slide);
+        let (runtime, stats, _fiba4_results) = run(fiba_4, &events, watermark, watermark_freq);
+        dbg!("Finished FiBA CG Bfinger4");
+        runs.push(Run {
+            id: "FiBA CG Bfinger4".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+            qps: None,
+        });
+
+        pretty_assertions::assert_eq!(eager_results, _fiba4_results);
+        /*
+        dbg!(&find_first_mismatch(
+            &lazy_results,
+            &eager_results,
+            &_fiba4_results
+        ));
+        */
+
+        let fiba_8: WindowTree<tree::FiBA8> =
+            WindowTree::new(watermark, range, slide, Slicing::Slide);
+        let (runtime, stats, _fiba8_results) = run(fiba_8, &events, watermark, watermark_freq);
+        dbg!("Finished FiBA CG Bfinger8");
+        runs.push(Run {
+            id: "FiBA CG Bfinger8".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+            qps: None,
+        });
+        assert_eq!(_fiba4_results, _fiba8_results);
+
+        /*
         let pairs_fiba_4: PairsTree<tree::FiBA4> =
             external_impls::PairsTree::new(watermark, range, slide);
-        let (runtime, stats, _pairs_fiba_results) = run(pairs_fiba_4, &events);
-        println!("Finished Pairs FiBA Bfinger 4 Wheel");
+        let (runtime, stats, _pairs_fiba_results) =
+            run(pairs_fiba_4, &events, watermark, watermark_freq);
+        dbg!("Finished Pairs FiBA Bfinger 4 Wheel");
         runs.push(Run {
             id: "Pairs FiBA Bfinger 4".to_string(),
             total_insertions,
@@ -285,12 +379,12 @@ fn nyc_citi_bike_bench_sum() {
             stats,
             qps: None,
         });
-        assert_eq!(eager_results, _pairs_fiba_results);
+        assert_eq!(_fiba8_results, _pairs_fiba_results);
 
         let pairs_fiba8: PairsTree<tree::FiBA8> =
             external_impls::PairsTree::new(watermark, range, slide);
-        let (runtime, stats, _) = run(pairs_fiba8, &events);
-        println!("Finished Pairs FiBA Bfinger 8 Wheel");
+        let (runtime, stats, _) = run(pairs_fiba8, &events, watermark, watermark_freq);
+        dbg!("Finished Pairs FiBA Bfinger 8 Wheel");
         runs.push(Run {
             id: "Pairs FiBA Bfinger 8".to_string(),
             total_insertions,
@@ -298,10 +392,14 @@ fn nyc_citi_bike_bench_sum() {
             stats,
             qps: None,
         });
+        */
 
+        dbg!(window);
+
+        /*
         let pairs_btreemap: PairsTree<BTreeMap<u64, _>> =
             external_impls::PairsTree::new(watermark, range, slide);
-        let (runtime, stats, btreemap_results) = run(pairs_btreemap, &events);
+        let (runtime, stats, btreemap_results) = run(pairs_btreemap, &events, watermark);
         println!("Finished Pairs BTreeMap");
         runs.push(Run {
             id: "Pairs BTreeMap".to_string(),
@@ -310,21 +408,25 @@ fn nyc_citi_bike_bench_sum() {
             stats,
             qps: None,
         });
+        */
         /*
         let mismatches =
             find_first_mismatch(&eager_results, &_pairs_fiba_results, &btreemap_results);
         dbg!(mismatches);
         */
-        assert_eq!(eager_results, btreemap_results);
-        assert_eq!(_pairs_fiba_results, btreemap_results);
+        //assert_eq!(eager_results, btreemap_results);
+        //assert_eq!(_pairs_fiba_results, btreemap_results);
 
-        let result = BenchResult::new(exec, runs);
+        let result = BenchResult::new(window, runs);
         result.print();
         results.push(result);
     }
 
     #[cfg(feature = "plot")]
-    window::plot_window("nyc_citi_bike", &results);
+    window::plot_window(id, &results);
+
+    let output = PlottingOutput::from(id, watermark_freq, results);
+    output.flush_to_file().unwrap();
 }
 
 #[cfg(feature = "sync")]
@@ -336,6 +438,7 @@ fn spawn_query_thread(
     let gate = Arc::new(AtomicBool::new(true));
     let inner_gate = gate.clone();
     let handle = std::thread::spawn(move || {
+        // TODO: this has to be updated to work with other datasets
         let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
         // wait with querying until the wheel has been advanced 24 hours
         loop {
@@ -370,130 +473,168 @@ fn spawn_query_thread(
     (gate, handle)
 }
 
-fn _nyc_citi_bike_bench_min() {
-    let path = "../data/citibike-tripdata.csv";
-    let mut events = Vec::new();
-    let mut rdr = csv::Reader::from_path(path).unwrap();
-    for result in rdr.deserialize() {
-        let record: CitiBikeTrip = result.unwrap();
-        let event = CitiBikeEvent::from(record);
-        events.push(event);
-    }
-
-    let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
-    let mut results = Vec::new();
-
-    for exec in EXECUTIONS {
-        let range = exec.range;
-        let slide = exec.slide;
-        let total_insertions = events.len() as u64;
-
-        let mut runs = Vec::new();
-        let lazy_wheel_64: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(64)
-            .with_watermark(watermark)
-            .build();
-
-        let (runtime, stats, _lazy_results) = run(lazy_wheel_64, &events);
-        println!("Finished Lazy Wheel 64");
-
-        runs.push(Run {
-            id: "Lazy Wheel 64".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            qps: None,
-        });
-
-        let lazy_wheel_256: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(256)
-            .with_watermark(watermark)
-            .build();
-
-        let (runtime, stats, _lazy_results) = run(lazy_wheel_256, &events);
-        println!("Finished Lazy Wheel 256");
-
-        runs.push(Run {
-            id: "Lazy Wheel 256".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            qps: None,
-        });
-
-        let lazy_wheel_512: lazy::LazyWindowWheel<U64MinAggregator> = lazy::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(512)
-            .with_watermark(watermark)
-            .build();
-
-        let (runtime, stats, _lazy_results) = run(lazy_wheel_512, &events);
-        println!("Finished Lazy Wheel 512");
-
-        runs.push(Run {
-            id: "Lazy Wheel 512".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            qps: None,
-        });
-
-        let result = BenchResult::new(exec, runs);
-        result.print();
-        results.push(result);
-    }
-}
-
 fn main() {
-    nyc_citi_bike_bench_sum();
-    // TODO: add non-inversible aggregation function
-    // nyc_citi_bike_bench_min();
+    let args = Args::parse();
+    let watermark_freq = args.watermark_frequency;
+    println!("Running with {:#?}", args);
+    let window_type = args.window_type;
+
+    let id_gen = |id: &str| {
+        let range = match window_type {
+            WindowType::SmallRange => "small_range",
+            WindowType::BigRange => "big_range",
+        };
+        format!("{}_{}", id, range)
+    };
+
+    let windows = match window_type {
+        WindowType::SmallRange => SMALL_RANGE_WINDOWS,
+        WindowType::BigRange => BIG_RANGE_WINDOWS,
+    };
+
+    match args.data {
+        Dataset::CitiBike => {
+            let path = "../data/citibike-tripdata.csv";
+            let mut events = Vec::new();
+            let mut rdr = csv::Reader::from_path(path).unwrap();
+            println!("Preparing NYC Citi Bike Data");
+            for result in rdr.deserialize() {
+                let record: CitiBikeTrip = result.unwrap();
+                let event = Event::from(record);
+                events.push(event);
+            }
+
+            let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
+            let ooo_events = calculate_out_of_order_percentage(watermark, &events);
+            println!("Out-of-order events {:.2}", ooo_events);
+            println!("Events/s {}", events_per_second(&events));
+            sum_aggregation(
+                &id_gen("nyc_citi_bike"),
+                events,
+                watermark,
+                watermark_freq,
+                windows.to_vec(),
+            );
+        }
+        Dataset::DEBS12 => {
+            let watermark = debs_datetime_to_u64("2012-02-22T16:46:00.0+00:00");
+            let path = "../data/debs12.csv";
+            let mut events: Vec<Event> = Vec::new();
+            let file = File::open(path).unwrap();
+            let mut rdr = ReaderBuilder::new()
+                .delimiter(b'\t')
+                .flexible(true)
+                .has_headers(false)
+                .from_reader(file);
+
+            println!("Preparing DEBS12 Data");
+            for result in rdr.deserialize() {
+                let data_point: CDataPoint = result.unwrap();
+                let event = Event {
+                    timestamp: debs_datetime_to_u64(&data_point.ts),
+                    data: data_point.mf01 as u64,
+                };
+                events.push(event);
+            }
+            let ooo_events = calculate_out_of_order_percentage(watermark, &events);
+            println!("Out-of-order events {:.2}", ooo_events);
+            println!("Events/s {}", events_per_second(&events));
+            sum_aggregation(
+                &id_gen("debs12"),
+                events,
+                watermark,
+                watermark_freq,
+                windows.to_vec(),
+            );
+        }
+        Dataset::DEBS13 => {
+            // let watermark = debs_datetime_to_u64("2012-02-22T16:46:00.0+00:00");
+            let watermark = pico_to_milli(10629342490369879);
+
+            let path = "../data/debs13.csv";
+            let mut events: Vec<Event> = Vec::new();
+
+            fn pico_to_milli(picoseconds: u64) -> u64 {
+                // Convert picoseconds to milliseconds (dividing by 1,000,000)
+                // let milliseconds = picoseconds / 1_000_000;
+                (picoseconds as f64 / 1e6).round() as u64
+            }
+
+            let file = File::open(path).unwrap();
+
+            let mut rdr = ReaderBuilder::new()
+                .flexible(true)
+                .has_headers(false)
+                .from_reader(file);
+            println!("Preparing DEBS13 Data");
+            for result in rdr.deserialize() {
+                let record: FootballEvent = result.unwrap();
+                let event = Event {
+                    timestamp: pico_to_milli(record.ts),
+                    data: 1, // a count-like sum aggregation
+                };
+                events.push(event);
+            }
+
+            let ooo_events = calculate_out_of_order_percentage(watermark, &events);
+            println!("Total events {}", events.len());
+            println!("Out-of-order events {:.2}", ooo_events);
+            println!("Events/s {}", events_per_second(&events));
+            sum_aggregation(
+                &id_gen("debs13"),
+                events,
+                watermark,
+                watermark_freq,
+                windows.to_vec(),
+            );
+        }
+    }
 }
 
 fn run<A: Aggregator<Input = u64, Aggregate = u64>>(
     mut window: impl WindowExt<A>,
-    events: &[CitiBikeEvent],
+    events: &[Event],
+    watermark: u64,
+    watermark_freq: usize,
 ) -> (std::time::Duration, Stats, Vec<(u64, Option<u64>)>) {
-    let mut watermark = datetime_to_u64("2018-08-01 00:00:00.0");
     dbg!(watermark);
+    let mut watermark = watermark;
     let mut generator = WatermarkGenerator::new(watermark, 2000);
     let mut counter = 0;
-    let mut results = Vec::new();
+    let mut _results = Vec::new();
 
     let full = Instant::now();
     for event in events {
-        generator.on_event(&event.start_time);
-        window.insert(Entry::new(event.trip_duration, event.start_time));
+        generator.on_event(&event.timestamp);
+        window.insert(Entry::new(event.data, event.timestamp));
 
         counter += 1;
 
-        if counter == 100 {
+        if counter == watermark_freq {
             let wm = align_to_closest_thousand(generator.generate_watermark());
             if wm > watermark {
                 watermark = wm;
             }
             counter = 0;
             for (_timestamp, _result) in window.advance_to(watermark) {
-                results.push((_timestamp, _result));
+                #[cfg(feature = "debug")]
+                _results.push((_timestamp, _result));
             }
         }
     }
     watermark = align_to_closest_thousand(generator.generate_watermark());
     for (_timestamp, _result) in window.advance_to(watermark) {
-        results.push((_timestamp, _result));
+        #[cfg(feature = "debug")]
+        _results.push((_timestamp, _result));
     }
+    dbg!(watermark);
 
     let runtime = full.elapsed();
-    (runtime, window.stats().clone(), results)
+    (runtime, window.stats().clone(), _results)
 }
 
-/*
 // For debugging purposes
+/*
 fn find_first_mismatch<T: PartialEq + Copy>(
     vec1: &[T],
     vec2: &[T],

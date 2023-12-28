@@ -33,6 +33,7 @@ pub enum Workload {
 const OUT_OF_ORDER_DISTANCE: [usize; 7] = [1, 2, 4, 8, 16, 32, 64];
 const EVENTS_PER_SECOND: [usize; 6] = [10, 100, 1000, 10000, 100000, 1000000];
 
+#[allow(dead_code)]
 struct Run {
     pub id: String,
     pub total_insertions: u64,

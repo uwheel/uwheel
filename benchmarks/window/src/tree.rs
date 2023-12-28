@@ -14,6 +14,7 @@ pub trait Tree<A: Aggregator>: Default {
     fn evict_range(&mut self, to: u64);
     fn evict(&mut self);
     fn size_bytes(&self) -> usize;
+    fn combine_ops(&self) -> usize;
 }
 
 impl<A: Aggregator> Tree<A> for BTreeMap<u64, A::PartialAggregate> {
@@ -60,6 +61,9 @@ impl<A: Aggregator> Tree<A> for BTreeMap<u64, A::PartialAggregate> {
         // Calculate the total memory usage estimation
         btree_map_size + key_value_size * self.len()
     }
+    fn combine_ops(&self) -> usize {
+        unimplemented!();
+    }
 }
 pub struct FiBA4 {
     fiba: UniquePtr<crate::bfinger_four::FiBA_SUM_4>,
@@ -93,7 +97,11 @@ impl Tree<U64SumAggregator> for FiBA4 {
         self.fiba.pin_mut().evict();
     }
     fn size_bytes(&self) -> usize {
-        self.fiba.size()
+        self.fiba.memory_usage()
+    }
+    #[inline]
+    fn combine_ops(&self) -> usize {
+        self.fiba.combine_operations()
     }
 }
 
@@ -129,6 +137,10 @@ impl Tree<U64SumAggregator> for FiBA8 {
         self.fiba.pin_mut().evict();
     }
     fn size_bytes(&self) -> usize {
-        self.fiba.size()
+        self.fiba.memory_usage()
+    }
+    #[inline]
+    fn combine_ops(&self) -> usize {
+        self.fiba.combine_operations()
     }
 }

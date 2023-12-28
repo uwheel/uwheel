@@ -31,19 +31,19 @@ impl<A: Aggregator> MaybeWheel<A> {
     }
 
     #[inline]
-    pub fn interval(&self, interval: usize) -> Option<A::PartialAggregate> {
+    pub fn interval(&self, interval: usize) -> (Option<A::PartialAggregate>, usize) {
         if let Some(wheel) = self.inner.as_ref() {
             wheel.interval(interval)
         } else {
-            None
+            (None, 0)
         }
     }
     #[inline]
-    pub fn interval_or_total(&self, interval: usize) -> Option<A::PartialAggregate> {
+    pub fn interval_or_total(&self, interval: usize) -> (Option<A::PartialAggregate>, usize) {
         if let Some(wheel) = self.inner.as_ref() {
             wheel.interval_or_total(interval)
         } else {
-            None
+            (None, 0)
         }
     }
     #[inline]

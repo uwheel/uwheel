@@ -4,9 +4,10 @@
 use awheel::{
     aggregator::sum::U64SumAggregator,
     delta::DeltaState,
-    time_internal::{Duration, NumericalDuration},
     window::distributed::{DistributedWindow, DistributedWindowExt},
+    Duration,
     Entry,
+    NumericalDuration,
     RwWheel,
 };
 use clap::Parser;

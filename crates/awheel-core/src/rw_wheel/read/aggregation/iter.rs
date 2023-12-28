@@ -19,12 +19,26 @@ impl<'a, A: Aggregator> Iter<'a, A> {
     }
     /// Combines each partial aggregate in the Iterator and returns the final result
     #[inline]
-    pub fn combine(self) -> Option<A::PartialAggregate> {
+    pub fn combinez(self) -> Option<A::PartialAggregate> {
         let mut res: Option<A::PartialAggregate> = None;
         for partial in self.flatten() {
             combine_or_insert::<A>(&mut res, *partial);
         }
         res
+    }
+    /// Combines each partial aggregate in the Iterator and returns the final result + combine operations
+    #[inline]
+    pub fn combine(self) -> (Option<A::PartialAggregate>, usize) {
+        let mut res: Option<A::PartialAggregate> = None;
+        let mut ops = 0;
+        for partial in self.flatten() {
+            if res.is_some() {
+                // count combine operation only if current res has some value
+                ops += 1;
+            }
+            combine_or_insert::<A>(&mut res, *partial);
+        }
+        (res, ops)
     }
 }
 impl<'a, A: Aggregator> Iterator for Iter<'a, A> {

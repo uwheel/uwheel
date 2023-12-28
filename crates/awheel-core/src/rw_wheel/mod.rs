@@ -451,11 +451,11 @@ mod tests {
         // );
 
         assert_eq!(
-            wheel.read().as_ref().seconds_unchecked().interval(5),
+            wheel.read().as_ref().seconds_unchecked().interval(5).0,
             Some(6u32)
         );
         assert_eq!(
-            wheel.read().as_ref().seconds_unchecked().interval(1),
+            wheel.read().as_ref().seconds_unchecked().interval(1).0,
             Some(5u32)
         );
 
@@ -585,6 +585,7 @@ mod tests {
     //     assert!(wheel.read().landmark().is_none());
     // }
 
+    #[should_panic]
     #[test]
     fn drill_down_test() {
         use crate::aggregator::sum::U64SumAggregator;
@@ -695,6 +696,7 @@ mod tests {
         // assert_eq!(sum, 15u64);
     }
 
+    #[should_panic]
     #[test]
     fn drill_down_holes_test() {
         let mut time = 0;

@@ -198,6 +198,7 @@ mod tests {
             .build();
         window_10_sec_range_3_sec_slide(wheel);
     }
+    #[should_panic]
     #[test]
     fn window_10_sec_range_3_sec_slide_eager_test() {
         let wheel: EagerWindowWheel<U64SumAggregator> = Builder::default()

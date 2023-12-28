@@ -155,6 +155,12 @@ where
         self.inner.read().interval(dur)
     }
 
+    /// Returns the partial aggregate in the given time interval and the number of combine operations
+    #[inline]
+    pub fn interval_with_ops(&self, dur: Duration) -> (Option<A::PartialAggregate>, usize) {
+        self.inner.read().interval_with_stats(dur)
+    }
+
     /// Executes a Landmark Window that combines total partial aggregates across all wheels
     #[inline]
     pub fn landmark(&self) -> Option<A::PartialAggregate> {
