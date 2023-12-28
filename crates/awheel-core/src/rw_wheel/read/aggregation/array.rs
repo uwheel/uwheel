@@ -175,6 +175,7 @@ impl<A: Aggregator> MutablePartialArray<A> {
         self.len() == 0
     }
     #[doc(hidden)]
+    #[inline]
     pub fn push_front(&mut self, agg: A::PartialAggregate) {
         self.inner.insert(0, agg);
     }

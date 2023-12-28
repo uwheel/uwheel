@@ -366,64 +366,12 @@ fn sum_aggregation(
         });
         assert_eq!(_fiba4_results, _fiba8_results);
 
-        /*
-        let pairs_fiba_4: PairsTree<tree::FiBA4> =
-            external_impls::PairsTree::new(watermark, range, slide);
-        let (runtime, stats, _pairs_fiba_results) =
-            run(pairs_fiba_4, &events, watermark, watermark_freq);
-        dbg!("Finished Pairs FiBA Bfinger 4 Wheel");
-        runs.push(Run {
-            id: "Pairs FiBA Bfinger 4".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            qps: None,
-        });
-        assert_eq!(_fiba8_results, _pairs_fiba_results);
-
-        let pairs_fiba8: PairsTree<tree::FiBA8> =
-            external_impls::PairsTree::new(watermark, range, slide);
-        let (runtime, stats, _) = run(pairs_fiba8, &events, watermark, watermark_freq);
-        dbg!("Finished Pairs FiBA Bfinger 8 Wheel");
-        runs.push(Run {
-            id: "Pairs FiBA Bfinger 8".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            qps: None,
-        });
-        */
-
         dbg!(window);
-
-        /*
-        let pairs_btreemap: PairsTree<BTreeMap<u64, _>> =
-            external_impls::PairsTree::new(watermark, range, slide);
-        let (runtime, stats, btreemap_results) = run(pairs_btreemap, &events, watermark);
-        println!("Finished Pairs BTreeMap");
-        runs.push(Run {
-            id: "Pairs BTreeMap".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            qps: None,
-        });
-        */
-        /*
-        let mismatches =
-            find_first_mismatch(&eager_results, &_pairs_fiba_results, &btreemap_results);
-        dbg!(mismatches);
-        */
-        //assert_eq!(eager_results, btreemap_results);
-        //assert_eq!(_pairs_fiba_results, btreemap_results);
 
         let result = BenchResult::new(window, runs);
         result.print();
         results.push(result);
     }
-
-    #[cfg(feature = "plot")]
-    window::plot_window(id, &results);
 
     let output = PlottingOutput::from(id, watermark_freq, results);
     output.flush_to_file().unwrap();

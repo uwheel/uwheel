@@ -1,6 +1,7 @@
 #![allow(clippy::let_and_return)]
 use awheel::{
     aggregator::{sum::U64SumAggregator, Aggregator},
+    rw_wheel::read::{aggregation::conf::RetentionPolicy, hierarchical::HawConf},
     time_internal::Duration as Durationz,
     tree::wheel_tree::WheelTree,
     Entry,
@@ -144,7 +145,8 @@ fn run(args: &Args) -> Vec<Run> {
     let start_date = START_DATE_MS;
     let mut current_date = start_date;
     let max_parallelism = 8;
-    let total_landmark_queries = 1000; // Less variance in the landmark queries and it takes up time of the execution
+    // let total_landmark_queries = 1000; // Less variance in the landmark queries and it takes up time of the execution
+    let total_landmark_queries = total_queries;
 
     // Prepare DuckDB
     let (mut duckdb, _id) = duckdb_setup(args.disk, max_parallelism);
@@ -152,7 +154,15 @@ fn run(args: &Args) -> Vec<Run> {
     // Prepare WheelDB
 
     let mut wheels = HashMap::with_capacity(MAX_KEYS as usize);
-    let opts = Options::default().with_write_ahead(604800usize.next_power_of_two());
+    let mut haw_conf = HawConf::default();
+    haw_conf.seconds.set_retention_policy(RetentionPolicy::Keep);
+    haw_conf.minutes.set_retention_policy(RetentionPolicy::Keep);
+    haw_conf.hours.set_retention_policy(RetentionPolicy::Keep);
+    haw_conf.days.set_retention_policy(RetentionPolicy::Keep);
+
+    let opts = Options::default()
+        .with_write_ahead(604800usize.next_power_of_two())
+        .with_haw_conf(haw_conf);
     let mut star = RwWheel::<U64SumAggregator>::with_options(start_date, opts);
 
     let mut tree: WheelTree<u64, U64SumAggregator> = WheelTree::default();
