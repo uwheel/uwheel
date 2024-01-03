@@ -20,6 +20,7 @@ macro_rules! sum_impl {
 
         impl Aggregator for $struct {
             const IDENTITY: Self::PartialAggregate = 0 as $pa;
+            const PREFIX_SUPPORT: bool = true;
 
             type Input = $type;
             type MutablePartialAggregate = $pa;
@@ -81,6 +82,19 @@ macro_rules! sum_impl {
                 for (d, s) in dst_tail.iter_mut().zip(src_tail.iter()) {
                     *d += s;
                 }
+            }
+
+            #[inline]
+            fn prefix_query(
+                slice: &[Self::PartialAggregate],
+                start: usize,
+                end: usize,
+            ) -> Option<Self::PartialAggregate> {
+                Some(if start == 0 {
+                    slice[end]
+                } else {
+                    slice[end] - slice[start - 1]
+                })
             }
 
             #[inline]
@@ -162,3 +176,31 @@ sum_impl!(F32SumAggregator, f32, f32, f32x16);
 sum_impl!(F64SumAggregator, f64, f64);
 #[cfg(feature = "simd")]
 sum_impl!(F64SumAggregator, f64, f64, f64x8);
+
+#[cfg(test)]
+mod tests {
+    use crate::{time_internal::NumericalDuration, Entry, RwWheel};
+
+    use super::*;
+
+    #[test]
+    fn sum_test() {
+        let mut wheel = RwWheel::<U64SumAggregator>::new(0);
+        wheel.insert(Entry::new(1, 1000));
+        wheel.insert(Entry::new(5, 2000));
+        wheel.insert(Entry::new(10, 3000));
+        wheel.advance(3.seconds());
+        assert_eq!(wheel.read().interval_and_lower(3.seconds()), Some(6));
+        wheel.advance(1.seconds());
+        assert_eq!(wheel.read().interval_and_lower(3.seconds()), Some(16));
+    }
+
+    #[test]
+    fn sum_prefix_test() {
+        let partials = vec![1, 2, 3];
+        let prefix_sum = U64SumAggregator::build_prefix(&partials);
+        assert_eq!(U64SumAggregator::prefix_query(&prefix_sum, 0, 1), Some(3));
+        assert_eq!(U64SumAggregator::prefix_query(&prefix_sum, 1, 2), Some(5));
+        assert_eq!(U64SumAggregator::prefix_query(&prefix_sum, 0, 2), Some(6));
+    }
+}

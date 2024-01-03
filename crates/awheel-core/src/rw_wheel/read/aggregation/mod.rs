@@ -9,7 +9,7 @@ use core::{
     assert,
     fmt::Debug,
     mem,
-    ops::{Range, RangeBounds},
+    ops::{Bound, Range, RangeBounds},
     option::{
         Option,
         Option::{None, Some},
@@ -146,6 +146,10 @@ pub struct AggregationWheel<A: Aggregator> {
     slots: MutablePartialArray<A>,
     /// Higher-order aggregates indexed by event time
     drill_down_slots: MutablePartialArray<A>,
+    /// Optional prefix slots in order to support prefix-sum optimization
+    prefix_slots: MutablePartialArray<A>,
+    /// flag indicating whether prefix-sum optimizations is turned on
+    prefix_sum: bool,
     /// Keeps track whether we have done a full rotation (rotation_count == num_slots)
     rotation_count: usize,
     #[cfg(test)]
@@ -160,10 +164,17 @@ impl<A: Aggregator> AggregationWheel<A> {
         let capacity = conf.capacity;
         let num_slots = crate::capacity_to_slots!(capacity);
 
+        // sanity check
+        if conf.prefix_sum {
+            assert!(A::PREFIX_SUPPORT, "Cannot configure prefix-sum");
+        }
+
         Self {
             capacity,
             num_slots,
             slots: MutablePartialArray::with_capacity(num_slots),
+            prefix_slots: MutablePartialArray::default(),
+            prefix_sum: conf.prefix_sum,
             drill_down_slots: MutablePartialArray::default(),
             total: None,
             watermark: conf.watermark,
@@ -298,8 +309,27 @@ impl<A: Aggregator> AggregationWheel<A> {
     where
         R: RangeBounds<usize>,
     {
-        self.slots.range_query(range)
+        // If Prefix-sum support and optimization is enabled
+        if A::PREFIX_SUPPORT && self.prefix_sum {
+            let len = self.prefix_slots.len();
+
+            let start = match range.start_bound() {
+                Bound::Included(&n) => n,
+                Bound::Excluded(&n) => n + 1,
+                Bound::Unbounded => 0,
+            };
+            let end = match range.end_bound() {
+                Bound::Included(&n) => n + 1,
+                Bound::Excluded(&n) => n - 1,
+                Bound::Unbounded => len,
+            };
+            A::prefix_query(self.prefix_slots.as_ref(), start, end)
+        } else {
+            // Otherwise fall back to a range query
+            self.slots.range_query(range)
+        }
     }
+
     /// Combines partial aggregates from the specified range and lowers it to a final aggregate value
     ///
     /// # Panics
@@ -346,6 +376,7 @@ impl<A: Aggregator> AggregationWheel<A> {
             tick_size_ms: self.tick_size_ms,
             retention: self.retention,
             drill_down: self.drill_down,
+            prefix_sum: self.prefix_sum,
         });
         core::mem::swap(self, &mut new);
     }
@@ -363,6 +394,11 @@ impl<A: Aggregator> AggregationWheel<A> {
     #[inline]
     pub fn insert_head(&mut self, entry: A::PartialAggregate) {
         self.slots.push_front(entry);
+
+        // Rebuild prefix-sum slots if it is supported and enabled.
+        if A::PREFIX_SUPPORT && self.prefix_sum {
+            self.prefix_slots = MutablePartialArray::from_vec(A::build_prefix(self.slots.as_ref()));
+        }
     }
 
     #[inline]
@@ -699,6 +735,8 @@ impl<A: Aggregator> AggregationWheel<A> {
             retention: Default::default(),
             drill_down: drill_down != 0,
             drill_down_slots: Default::default(),
+            prefix_slots: Default::default(),
+            prefix_sum: false,
             #[cfg(test)]
             total_ticks: 0,
             #[cfg(feature = "profiler")]
@@ -735,9 +773,43 @@ impl<A: Aggregator> WheelExt for AggregationWheel<A> {
 mod tests {
     use super::*;
     use crate::{
-        aggregator::sum::U64SumAggregator,
+        aggregator::{min::U64MinAggregator, sum::U64SumAggregator},
         rw_wheel::read::{aggregation::array::PartialArray, hierarchical::HOUR_TICK_MS},
     };
+
+    #[test]
+    #[should_panic]
+    fn invalid_prefix_conf() {
+        let conf = WheelConf::new(HOUR_TICK_MS, 24)
+            .with_retention_policy(RetentionPolicy::Keep)
+            .with_prefix_sum(true);
+        // should panic as U64MinAggregator does not support prefix-sum
+        let _wheel = AggregationWheel::<U64MinAggregator>::new(conf);
+    }
+
+    #[test]
+    fn agg_wheel_prefix_test() {
+        let conf = WheelConf::new(HOUR_TICK_MS, 24)
+            .with_retention_policy(RetentionPolicy::Keep)
+            .with_prefix_sum(true);
+        let mut wheel = AggregationWheel::<U64SumAggregator>::new(conf);
+
+        for i in 0..30 {
+            wheel.insert_slot(WheelSlot::with_total(Some(i)));
+            wheel.tick();
+        }
+
+        // Sum aggregator supports prefix range queries + we have enabled it in conf
+        // Verify that a prefix-sum range query returns the same result as a regular scan.
+
+        let prefix_result = wheel.combine_range(0..4);
+        let regular_result = wheel.slots().range_query(0..4);
+        assert_eq!(prefix_result, regular_result);
+
+        let prefix_result = wheel.combine_range(5..10);
+        let regular_result = wheel.slots().range_query(5..10);
+        assert_eq!(prefix_result, regular_result);
+    }
 
     #[test]
     fn mutable_partial_array_test() {

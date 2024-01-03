@@ -132,6 +132,7 @@ impl Aggregate {
 // NOTE: in this case both the mutable and immutable aggregate types are the same
 impl Aggregator for CustomAggregator {
     const IDENTITY: Self::PartialAggregate = PartialAggregate::identity();
+    const PREFIX_SUPPORT: bool = false;
 
     type Input = RawData;
     type PartialAggregate = PartialAggregate;

@@ -101,6 +101,18 @@ impl HawConf {
         self
     }
 
+    /// Configures all wheels with prefix-sum enabled
+    pub fn with_prefix_sum(mut self) -> Self {
+        self.seconds.set_prefix_sum(true);
+        self.minutes.set_prefix_sum(true);
+        self.hours.set_prefix_sum(true);
+        self.days.set_prefix_sum(true);
+        self.weeks.set_prefix_sum(true);
+        self.years.set_prefix_sum(true);
+
+        self
+    }
+
     /// Configures a global retention policy across all granularities
     pub fn with_retention_policy(mut self, policy: RetentionPolicy) -> Self {
         self.seconds.set_retention_policy(policy);
@@ -441,7 +453,7 @@ where
         self.combine_range(start, end).map(A::lower)
     }
 
-    /// Combines partial aggregates within the given date range into a final partial aggregate
+    /// Combines partial aggregates within the given date range [start, end) into a final partial aggregate
     #[inline]
     pub fn combine_range(
         &self,
@@ -455,25 +467,88 @@ where
             end >= start,
             "End date needs to be equal or larger than start date"
         );
+
+        // calculate the cost of performing a single wheel aggregation using the lowest granularity wheel
+        let single_cost = self.wheel_aggregation_cost(start, end);
+
         // Generate aligned and non-overlapping query nodes each representing a wheel aggregation
         let nodes = generate_query_nodes(start, end);
 
-        // Perform a combined aggregation over a set of wheel aggregations and return a final partial aggregate
-        nodes.into_iter().fold(None, |mut acc, node| {
-            match self.wheel_aggregation(node.start, node.end) {
-                Some(agg) => {
-                    combine_or_insert::<A>(&mut acc, agg);
-                    acc
+        // calculate the cost of executing the query using combined aggregation of multiple wheel aggregations
+        let combined_cost: usize = nodes
+            .iter()
+            .map(|n| self.wheel_aggregation_cost(n.start, n.end))
+            .sum();
+
+        let combined_cost = combined_cost + nodes.len(); // update to include number of ⊕ required to reduce the nodes
+
+        // Execute the plan with lowest cost
+        if single_cost > combined_cost {
+            // Perform a combined aggregation over a set of wheel aggregations and reduce it to a final partial aggregate
+            nodes.into_iter().fold(None, |mut acc, node| {
+                match self.wheel_aggregation(node.start, node.end) {
+                    Some(agg) => {
+                        combine_or_insert::<A>(&mut acc, agg);
+                        acc
+                    }
+                    None => acc,
                 }
-                None => acc,
-            }
-        })
+            })
+        } else {
+            self.wheel_aggregation(start, end)
+        }
     }
 
-    /// Combines partial aggregates within the given date range using the lowest time granularity wheel
+    /// Given a [start, end) interval, returns the cost (number of ⊕ operations) for a given wheel aggregation
+    #[inline]
+    fn wheel_aggregation_cost(&self, start: OffsetDateTime, end: OffsetDateTime) -> usize {
+        assert!(
+            end >= start,
+            "End date needs to be equal or larger than start date"
+        );
+        // figure out which is the lowest granularity
+        let is_seconds = start.second() != 0 || end.second() != 0;
+        let is_minutes = start.minute() != 0 || end.minute() != 0;
+        let is_hours = start.hour() != 0 || end.hour() != 0;
+        let is_days = start.day() != 0 || end.day() != 0;
+
+        // worst-cost of performing a prefix-sum range query
+        let prefix_cost = 1;
+
+        let cost = if is_seconds {
+            if self.seconds_wheel.prefix_support() {
+                prefix_cost
+            } else {
+                (end - start).whole_seconds()
+            }
+        } else if is_minutes {
+            if self.minutes_wheel.prefix_support() {
+                prefix_cost
+            } else {
+                (end - start).whole_minutes()
+            }
+        } else if is_hours {
+            if self.hours_wheel.prefix_support() {
+                prefix_cost
+            } else {
+                (end - start).whole_hours()
+            }
+        } else if is_days {
+            if self.days_wheel.prefix_support() {
+                prefix_cost
+            } else {
+                (end - start).whole_days()
+            }
+        } else {
+            unimplemented!("weeks and years not supported yet!");
+        };
+        cost.try_into().unwrap()
+    }
+
+    /// Combines partial aggregates within [start, end) using the lowest time granularity wheel
     ///
     /// Note that start date is inclusive while end date is exclusive.
-    /// For instance, the range of 16:00:50 and 16:01:00 refers to the 10 remaining seconds of the minute.
+    /// For instance, the range of 16:00:50 and 16:01:00 refers to the 10 remaining seconds of the minute
     #[inline]
     pub fn wheel_aggregation(
         &self,
@@ -1204,12 +1279,10 @@ impl Display for QueryError {
     }
 }
 
-// Generates query nodes given a start and end date
-//
-// Each query node consists of a start and end date aligned by a lowest time unit (e.g, seconds, minutes, ..).
-// TODO: refactor
+// Generates multiple non-overlapping [start, end) ranges aligned by granularity
 #[inline]
 fn generate_query_nodes(start: OffsetDateTime, end: OffsetDateTime) -> Vec<QueryNode> {
+    // NOTE: measure whether it is worth using smallvec here
     let mut nodes = Vec::new();
 
     // initial starting pointing

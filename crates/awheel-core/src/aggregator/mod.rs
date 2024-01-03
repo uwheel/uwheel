@@ -34,6 +34,9 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     /// Identity value for the Aggregator's Partial Aggregate
     const IDENTITY: Self::PartialAggregate;
 
+    /// Indicates whether the implemented aggregator supports prefix-sum range queries
+    const PREFIX_SUPPORT: bool;
+
     /// Input type that can be inserted into [Self::MutablePartialAggregate]
     type Input: InputBounds;
 
@@ -57,6 +60,9 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
 
     /// Combine two partial aggregates and produce new output
     fn combine(a: Self::PartialAggregate, b: Self::PartialAggregate) -> Self::PartialAggregate;
+
+    /// Convert a partial aggregate to a final result
+    fn lower(a: Self::PartialAggregate) -> Self::Aggregate;
 
     /// Combines a slice of partial aggregates into a new partial
     ///
@@ -84,8 +90,31 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
         }
     }
 
-    /// Convert a partial aggregate to a final result
-    fn lower(a: Self::PartialAggregate) -> Self::Aggregate;
+    /// Builds a prefix-sum vec given slice of partial aggregates
+    ///
+    /// Only used for aggregation functions that support range queries using prefix-sum
+    #[inline]
+    fn build_prefix(slice: &[Self::PartialAggregate]) -> Vec<Self::PartialAggregate> {
+        slice
+            .iter()
+            .scan(Self::IDENTITY, |pa, &i| {
+                *pa = Self::combine(*pa, i);
+                Some(*pa)
+            })
+            .collect::<Vec<_>>()
+    }
+
+    /// Answers a range query in O(1) using a prefix-sum slice
+    ///
+    /// If the aggregator does not support prefix range query then it returns `None`
+    #[inline]
+    fn prefix_query(
+        _slice: &[Self::PartialAggregate],
+        _start: usize,
+        _end: usize,
+    ) -> Option<Self::PartialAggregate> {
+        None
+    }
 
     /// User-defined compression function of partial aggregates
     fn compress(_data: &[Self::PartialAggregate]) -> Option<Vec<u8>> {

@@ -54,6 +54,12 @@ impl<A: Aggregator> MaybeWheel<A> {
             None
         }
     }
+
+    /// Returns whether this wheel supports prefix-sum range queries
+    pub fn prefix_support(&self) -> bool {
+        A::PREFIX_SUPPORT && self.conf.prefix_sum
+    }
+
     pub fn size_bytes(&self) -> usize {
         if let Some(inner) = self.inner.as_ref() {
             inner.size_bytesz().unwrap() // safe as we know its implemented for AggregationWheel

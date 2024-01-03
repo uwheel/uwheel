@@ -128,6 +128,8 @@ pub struct AllAggregator;
 
 impl Aggregator for AllAggregator {
     const IDENTITY: Self::PartialAggregate = AggState::identity();
+    const PREFIX_SUPPORT: bool = false;
+
     type Input = f64;
     type Aggregate = AggState;
     type PartialAggregate = AggState;

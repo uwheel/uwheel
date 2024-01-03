@@ -80,6 +80,7 @@ pub struct WheelConf {
     pub(crate) tick_size_ms: u64,
     pub(crate) retention: RetentionPolicy,
     pub(crate) drill_down: bool,
+    pub(crate) prefix_sum: bool,
 }
 
 impl WheelConf {
@@ -92,8 +93,15 @@ impl WheelConf {
             tick_size_ms,
             retention: Default::default(),
             drill_down: false,
+            prefix_sum: false,
         }
     }
+
+    /// Sets the prefix-sum flag
+    pub fn set_prefix_sum(&mut self, prefix_sum: bool) {
+        self.prefix_sum = prefix_sum;
+    }
+
     /// Sets the drill down flag
     pub fn set_drill_down(&mut self, drill_down: bool) {
         self.drill_down = drill_down;
@@ -105,6 +113,12 @@ impl WheelConf {
     /// Configures the wheel to maintain dril-down slots
     pub fn with_drill_down(mut self, drill_down: bool) -> Self {
         self.drill_down = drill_down;
+        self
+    }
+
+    /// Configures the wheel to use prefix-sum optimization
+    pub fn with_prefix_sum(mut self, prefix_sum: bool) -> Self {
+        self.prefix_sum = prefix_sum;
         self
     }
     /// Sets the retention policy for this wheel

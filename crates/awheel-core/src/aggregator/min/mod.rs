@@ -8,6 +8,7 @@ macro_rules! min_impl {
 
         impl Aggregator for $struct {
             const IDENTITY: Self::PartialAggregate = <$type>::MAX;
+            const PREFIX_SUPPORT: bool = false;
 
             type Input = $type;
             type MutablePartialAggregate = $pa;
