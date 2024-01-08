@@ -3,7 +3,7 @@ use awheel::{
     aggregator::{sum::U64SumAggregator, Aggregator},
     rw_wheel::read::{aggregation::conf::RetentionPolicy, hierarchical::HawConf},
     time_internal::Duration as Durationz,
-    tree::wheel_tree::WheelTree,
+    tree::WheelTree,
     Entry,
     Options,
     RwWheel,
@@ -25,7 +25,8 @@ pub enum Workload {
 
 // 2023-10-01 01:00:00 + 2023-10-08 00:00:00
 // 1hr, 7 days.
-const INTERVALS: [Durationz; 2] = [Durationz::hours(1), Durationz::hours(23 + 24 * 6)];
+// const INTERVALS: [Durationz; 2] = [Durationz::hours(1), Durationz::hours(23 + 24 * 6)];
+const INTERVALS: [Durationz; 2] = [Durationz::hours(24), Durationz::hours(24 * 6)];
 // const INTERVALS: [Durationz; 3] = [
 //     Durationz::hours(1),  // 2023-10-01 01:00:00
 //     Durationz::hours(23), // 2023-10-02 00:00:00
@@ -589,7 +590,7 @@ where
                         let (start, end) = into_offset_date_time_start_end(start, end);
                         // Record latency of the wheel aggregation
                         let aggregation_now = Instant::now();
-                        let result = wheel.as_ref().combine_range(start, end);
+                        let result = wheel.as_ref().combine_range((start, end));
                         aggregation_hist
                             .record(aggregation_now.elapsed().as_nanos() as u64)
                             .unwrap();

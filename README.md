@@ -23,15 +23,12 @@ Features:
 
 ## Use cases
 
-- Materialized view for Streaming Data Warehousing
-    - Streaming Window Aggregation
-    - Ad-hoc querying
+- Streaming Window Aggregation
+- Index for speeding up temporal OLAP queries
 - Analytics at the edge
     - WASM + ``#[no_std]`` compatible
     - Low memory footprint
     - Serializable and highly compressible
-- Index for speeding up temporal OLAP queries
-
 
 ## Aggregation Framework
 
@@ -44,7 +41,7 @@ The Aggregation Interface is inspired by the work of [Tangwongsan et al.](http:/
     * Combines the input data into the mutable aggregate
 * ``freeze(mutable) -> PartialAggregate``
     * Freezes the mutable aggregate into a immutable one
-* ``combine(a, b) -> c``
+* ``combine(a, a) -> a``
     * Combines ⊕ two partial aggregates into a new one
 * ``lower(a) -> Aggregate``
     * Lowers a partial aggregate to a final aggregate (e.g., sum/count -> avg)
@@ -81,7 +78,7 @@ See a user-defined aggregator example [here](examples/aggregator/).
     - Enables top_n aggregation
 - `window`
     - Enables wheels for streaming window aggregation
-- `simd` (_implicitly enables `std`_)
+- `simd` (_requires `nightly`_)
     - Enables support to speed up aggregation functions with SIMD operations
 - `sync` (_implicitly enables `std`_)
     - Enables a sync version of ``ReadWheel`` that can be shared and queried across threads

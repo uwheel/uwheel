@@ -298,14 +298,14 @@ impl<A: Aggregator> AggregationWheel<A> {
         self.slots.len()
     }
 
-    /// Combines partial aggregates within the given range into a new partial aggregate
+    /// Executes a wheel aggregation given the [start, end) range and combines it to a final partial aggregate
     ///
     /// # Panics
     ///
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the wheel.
     #[inline]
-    pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
+    pub fn aggregate<R>(&self, range: R) -> Option<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
     {
@@ -325,7 +325,7 @@ impl<A: Aggregator> AggregationWheel<A> {
             };
             A::prefix_query(self.prefix_slots.as_ref(), start, end)
         } else {
-            // Otherwise fall back to a range query
+            // Otherwise fall back to a scan-based range query
             self.slots.range_query(range)
         }
     }
@@ -336,11 +336,11 @@ impl<A: Aggregator> AggregationWheel<A> {
     ///
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the wheel.
-    pub fn combine_and_lower_range<R>(&self, range: R) -> Option<A::Aggregate>
+    pub fn aggregate_and_lower<R>(&self, range: R) -> Option<A::Aggregate>
     where
         R: RangeBounds<usize>,
     {
-        self.combine_range(range).map(|res| A::lower(res))
+        self.aggregate(range).map(|res| A::lower(res))
     }
 
     /// Shift the tail and clear any old entry
@@ -483,13 +483,6 @@ impl<A: Aggregator> AggregationWheel<A> {
         self.slots.merge(&other.slots);
         // self.drill_down_slots.merge(&other.drill_down_slots);
         // TODO: merge drill-down also
-    }
-
-    /// Fast skip `capacity - 1` and prepare wheel for a full rotation
-    ///
-    /// Note that This function clears all existing wheel slots
-    pub fn fast_skip_tick(&mut self) {
-        // todo!("Fix");
     }
 
     /// Tick the wheel by 1 slot
@@ -802,11 +795,11 @@ mod tests {
         // Sum aggregator supports prefix range queries + we have enabled it in conf
         // Verify that a prefix-sum range query returns the same result as a regular scan.
 
-        let prefix_result = wheel.combine_range(0..4);
+        let prefix_result = wheel.aggregate(0..4);
         let regular_result = wheel.slots().range_query(0..4);
         assert_eq!(prefix_result, regular_result);
 
-        let prefix_result = wheel.combine_range(5..10);
+        let prefix_result = wheel.aggregate(5..10);
         let regular_result = wheel.slots().range_query(5..10);
         assert_eq!(prefix_result, regular_result);
     }
@@ -861,14 +854,14 @@ mod tests {
             wheel_two.tick();
         }
 
-        assert_eq!(wheel.combine_range(..), Some(499500));
-        assert_eq!(wheel.combine_range(..2), Some(1997));
+        assert_eq!(wheel.aggregate(..), Some(499500));
+        assert_eq!(wheel.aggregate(..2), Some(1997));
 
         // merge the second wheel into wheel one and confirm results
         wheel.merge(&wheel_two);
 
-        assert_eq!(wheel.combine_range(..), Some(499500 * 2));
-        assert_eq!(wheel.combine_range(..2), Some(1997 * 2));
+        assert_eq!(wheel.aggregate(..), Some(499500 * 2));
+        assert_eq!(wheel.aggregate(..2), Some(1997 * 2));
     }
 
     #[test]
@@ -882,17 +875,17 @@ mod tests {
             wheel.insert_slot(WheelSlot::with_total(Some(i)));
             wheel.tick();
         }
-        assert_eq!(wheel.combine_range(..), Some(499500));
+        assert_eq!(wheel.aggregate(..), Some(499500));
         let bytes = wheel.as_bytes();
         let decoded: Option<AggregationWheel<U64SumAggregator>> =
             AggregationWheel::from_bytes(&bytes);
         assert!(decoded.is_some());
-        assert_eq!(decoded.unwrap().combine_range(..), Some(499500));
+        assert_eq!(decoded.unwrap().aggregate(..), Some(499500));
 
         let slots = wheel.slots.as_bytes().to_vec();
         let partial: PartialArray<'_, U64SumAggregator> = PartialArray::from_bytes(&slots);
         wheel.merge_from_ref(partial);
-        assert_eq!(wheel.combine_range(..), Some(499500 * 2));
+        assert_eq!(wheel.aggregate(..), Some(499500 * 2));
     }
 
     //     #[test]

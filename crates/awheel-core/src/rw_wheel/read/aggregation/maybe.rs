@@ -1,5 +1,13 @@
+use time::OffsetDateTime;
+
 use super::{conf::WheelConf, AggregationWheel};
-use crate::{aggregator::Aggregator, rw_wheel::WheelExt};
+use crate::{
+    aggregator::Aggregator,
+    rw_wheel::{
+        read::hierarchical::{Granularity, WheelRange},
+        WheelExt,
+    },
+};
 
 // An internal wrapper Struct that containing a possible AggregationWheel
 #[repr(C)]
@@ -24,6 +32,28 @@ impl<A: Aggregator> MaybeWheel<A> {
             // TODO: fix better checks
             wheel.merge(other.as_ref().unwrap());
         }
+    }
+    pub fn aggregate(
+        &self,
+        start: OffsetDateTime,
+        slots: usize,
+        gran: Granularity,
+    ) -> Option<A::PartialAggregate> {
+        let watermark_date =
+            |wm: u64| OffsetDateTime::from_unix_timestamp((wm as i64) / 1000).unwrap();
+        self.inner.as_ref().and_then(|wheel| {
+            let watermark = watermark_date(wheel.watermark());
+            let distance = watermark - start;
+            let slot_distance = match gran {
+                Granularity::Second => distance.whole_seconds(),
+                Granularity::Minute => distance.whole_minutes(),
+                Granularity::Hour => distance.whole_hours(),
+                Granularity::Day => distance.whole_days(),
+            } as usize;
+            let start_slot = slot_distance - slots;
+            let end_slot = start_slot + slots;
+            wheel.aggregate(start_slot..end_slot)
+        })
     }
     #[inline]
     pub fn head(&self) -> Option<A::PartialAggregate> {
@@ -52,6 +82,21 @@ impl<A: Aggregator> MaybeWheel<A> {
             wheel.total()
         } else {
             None
+        }
+    }
+
+    /// Returns estimated cost for performing the given aggregate on this wheel
+    pub fn aggregate_cost(&self, range: &WheelRange, gran: Granularity) -> usize {
+        if self.prefix_support() {
+            1
+        } else {
+            let diff = range.end - range.start;
+            (match gran {
+                Granularity::Second => diff.whole_seconds(),
+                Granularity::Minute => diff.whole_minutes(),
+                Granularity::Hour => diff.whole_hours(),
+                Granularity::Day => diff.whole_days(),
+            }) as usize
         }
     }
 

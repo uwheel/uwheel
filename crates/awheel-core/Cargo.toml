@@ -61,3 +61,7 @@ harness = false
 [[bench]]
 name = "merge"
 harness = false
+
+[[bench]]
+name = "prefix"
+harness = false

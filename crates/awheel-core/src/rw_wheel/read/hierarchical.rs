@@ -180,11 +180,54 @@ struct Granularities {
     pub year: Option<usize>,
 }
 
-// A query node consisting of a start and end date
+/// A query range consisting of a start and end date
 #[derive(Debug, Copy, PartialEq, Clone)]
-struct QueryNode {
-    start: OffsetDateTime,
-    end: OffsetDateTime,
+pub struct WheelRange {
+    pub(crate) start: OffsetDateTime,
+    pub(crate) end: OffsetDateTime,
+}
+impl WheelRange {
+    /// Creates a new WheelRange given the start and end date
+    pub fn new(start: OffsetDateTime, end: OffsetDateTime) -> Self {
+        Self::from((start, end))
+    }
+}
+impl From<(OffsetDateTime, OffsetDateTime)> for WheelRange {
+    fn from(tuple: (OffsetDateTime, OffsetDateTime)) -> Self {
+        WheelRange {
+            start: tuple.0,
+            end: tuple.1,
+        }
+    }
+}
+
+impl WheelRange {
+    /// Returns the lowest granularity of the Wheel range
+    pub(crate) fn lowest_granularity(&self) -> Granularity {
+        let is_seconds = self.start.second() != 0 || self.end.second() != 0;
+        let is_minutes = self.start.minute() != 0 || self.end.minute() != 0;
+        let is_hours = self.start.hour() != 0 || self.end.hour() != 0;
+        let is_days = self.start.day() != 0 || self.end.day() != 0;
+        if is_seconds {
+            Granularity::Second
+        } else if is_minutes {
+            Granularity::Minute
+        } else if is_hours {
+            Granularity::Hour
+        } else if is_days {
+            Granularity::Day
+        } else {
+            unimplemented!("Weeks and years not supported");
+        }
+    }
+}
+
+#[derive(Debug, Copy, PartialEq, Clone)]
+pub(crate) enum Granularity {
+    Second,
+    Minute,
+    Hour,
+    Day,
 }
 
 /// Hierarchical Aggregation Wheel
@@ -354,35 +397,6 @@ where
             // Exceeds full cycle length, clear all!
             self.clear();
         }
-
-        // if ticks <= SECONDS {
-        //     tick_n(ticks, self, waw);
-        // } else if ticks <= Self::CYCLE_LENGTH_SECS as usize {
-        //     // force full rotation
-        //     let rem_ticks = self.seconds_wheel.get_or_insert().ticks_remaining();
-        //     tick_n(rem_ticks, self, waw);
-        //     ticks -= rem_ticks;
-
-        //     // calculate how many fast_ticks we can perform
-        //     let fast_ticks = ticks.saturating_div(SECONDS);
-
-        //     if fast_ticks == 0 {
-        //         // if fast ticks is 0, then tick normally
-        //         tick_n(ticks, self, waw);
-        //     } else {
-        //         // perform a number of fast ticks
-        //         // NOTE: currently a fast tick is a full SECONDS rotation.
-        //         let fast_tick_ms = (SECONDS - 1) as u64 * Self::SECOND_AS_MS;
-        //         for _ in 0..fast_ticks {
-        //             self.seconds_wheel.get_or_insert().fast_skip_tick();
-        //             self.watermark += fast_tick_ms;
-        //             *waw.watermark_mut() += fast_tick_ms;
-        //             self.tick(waw.tick().map(|m| A::freeze(m)));
-        //             ticks -= SECONDS;
-        //         }
-        //         // tick any remaining ticks
-        //         tick_n(ticks, self, waw);
-        //     }
     }
 
     /// Advances the watermark by the given duration and returns deltas that were applied
@@ -395,7 +409,7 @@ where
         let ticks: usize = duration.whole_seconds() as usize;
 
         let mut deltas = Vec::with_capacity(ticks);
-        // Naivé way, no fast ticking..
+
         for _ in 0..ticks {
             let delta = waw.tick().map(|m| A::freeze(m));
             // tick wheel first in case any timer has to fire
@@ -445,23 +459,18 @@ where
     }
     /// Combines partial aggregates within the given date range and lowers it to a final aggregate
     #[inline]
-    pub fn combine_range_and_lower(
-        &self,
-        start: OffsetDateTime,
-        end: OffsetDateTime,
-    ) -> Option<A::Aggregate> {
-        self.combine_range(start, end).map(A::lower)
+    pub fn combine_range_and_lower(&self, range: impl Into<WheelRange>) -> Option<A::Aggregate> {
+        self.combine_range(range).map(A::lower)
     }
 
     /// Combines partial aggregates within the given date range [start, end) into a final partial aggregate
     #[inline]
-    pub fn combine_range(
-        &self,
-        start: OffsetDateTime,
-        end: OffsetDateTime,
-    ) -> Option<A::PartialAggregate> {
+    pub fn combine_range(&self, range: impl Into<WheelRange>) -> Option<A::PartialAggregate> {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.combine_range);
+
+        let range = range.into();
+        let WheelRange { start, end } = range;
 
         assert!(
             end >= start,
@@ -469,162 +478,81 @@ where
         );
 
         // calculate the cost of performing a single wheel aggregation using the lowest granularity wheel
-        let single_cost = self.wheel_aggregation_cost(start, end);
+        let single_cost = self.wheel_aggregation_cost(&range);
 
-        // Generate aligned and non-overlapping query nodes each representing a wheel aggregation
-        let nodes = generate_query_nodes(start, end);
+        // Generate aligned and non-overlapping wheel ranges each representing a wheel aggregation
+        let ranges = generate_wheel_ranges(start, end);
 
         // calculate the cost of executing the query using combined aggregation of multiple wheel aggregations
-        let combined_cost: usize = nodes
-            .iter()
-            .map(|n| self.wheel_aggregation_cost(n.start, n.end))
-            .sum();
+        let combined_cost: usize = ranges.iter().map(|r| self.wheel_aggregation_cost(r)).sum();
 
-        let combined_cost = combined_cost + nodes.len(); // update to include number of ⊕ required to reduce the nodes
+        let combined_cost = combined_cost + ranges.len(); // update to include number of ⊕ required to reduce the it
 
         // Execute the plan with lowest cost
         if single_cost > combined_cost {
             // Perform a combined aggregation over a set of wheel aggregations and reduce it to a final partial aggregate
-            nodes.into_iter().fold(None, |mut acc, node| {
-                match self.wheel_aggregation(node.start, node.end) {
+            ranges
+                .into_iter()
+                .fold(None, |mut acc, range| match self.wheel_aggregation(range) {
                     Some(agg) => {
                         combine_or_insert::<A>(&mut acc, agg);
                         acc
                     }
                     None => acc,
-                }
-            })
+                })
         } else {
-            self.wheel_aggregation(start, end)
+            self.wheel_aggregation(range)
         }
     }
 
     /// Given a [start, end) interval, returns the cost (number of ⊕ operations) for a given wheel aggregation
     #[inline]
-    fn wheel_aggregation_cost(&self, start: OffsetDateTime, end: OffsetDateTime) -> usize {
-        assert!(
-            end >= start,
-            "End date needs to be equal or larger than start date"
-        );
-        // figure out which is the lowest granularity
-        let is_seconds = start.second() != 0 || end.second() != 0;
-        let is_minutes = start.minute() != 0 || end.minute() != 0;
-        let is_hours = start.hour() != 0 || end.hour() != 0;
-        let is_days = start.day() != 0 || end.day() != 0;
-
-        // worst-cost of performing a prefix-sum range query
-        let prefix_cost = 1;
-
-        let cost = if is_seconds {
-            if self.seconds_wheel.prefix_support() {
-                prefix_cost
-            } else {
-                (end - start).whole_seconds()
-            }
-        } else if is_minutes {
-            if self.minutes_wheel.prefix_support() {
-                prefix_cost
-            } else {
-                (end - start).whole_minutes()
-            }
-        } else if is_hours {
-            if self.hours_wheel.prefix_support() {
-                prefix_cost
-            } else {
-                (end - start).whole_hours()
-            }
-        } else if is_days {
-            if self.days_wheel.prefix_support() {
-                prefix_cost
-            } else {
-                (end - start).whole_days()
-            }
-        } else {
-            unimplemented!("weeks and years not supported yet!");
-        };
-        cost.try_into().unwrap()
+    fn wheel_aggregation_cost(&self, range: &WheelRange) -> usize {
+        match range.lowest_granularity() {
+            Granularity::Second => self
+                .seconds_wheel
+                .aggregate_cost(range, Granularity::Second),
+            Granularity::Minute => self
+                .minutes_wheel
+                .aggregate_cost(range, Granularity::Minute),
+            Granularity::Hour => self.hours_wheel.aggregate_cost(range, Granularity::Hour),
+            Granularity::Day => self.days_wheel.aggregate_cost(range, Granularity::Day),
+        }
     }
 
     /// Combines partial aggregates within [start, end) using the lowest time granularity wheel
     ///
     /// Note that start date is inclusive while end date is exclusive.
-    /// For instance, the range of 16:00:50 and 16:01:00 refers to the 10 remaining seconds of the minute
+    /// For instance, the range [16:00:50, 16:01:00) refers to the 10 remaining seconds of the minute
     #[inline]
-    pub fn wheel_aggregation(
-        &self,
-        start: OffsetDateTime,
-        end: OffsetDateTime,
-    ) -> Option<A::PartialAggregate> {
+    pub fn wheel_aggregation(&self, range: impl Into<WheelRange>) -> Option<A::PartialAggregate> {
+        let range = range.into();
+        let start = range.start;
+        let end = range.end;
         // NOTE: naivé version, still needs checks and can do more optimizations
         assert!(
             end >= start,
             "End date needs to be equal or larger than start date"
         );
-        // figure out which is the lowest granularity
-        let is_seconds = start.second() != 0 || end.second() != 0;
-        let is_minutes = start.minute() != 0 || end.minute() != 0;
-        let is_hours = start.hour() != 0 || end.hour() != 0;
-        let is_days = start.day() != 0 || end.day() != 0;
-
-        // build watermark as OffsetDateTime object
-        let watermark_date =
-            |wm: u64| OffsetDateTime::from_unix_timestamp((wm as i64) / 1000).unwrap();
-
-        // TODO: Refactor and move inner logic to inner wheel?
-        if is_seconds {
-            // We have the number of seconds in the range
-            let seconds = (end - start).whole_seconds();
-            // dbg!(seconds);
-            if let Some(wheel) = self.seconds_wheel.as_ref() {
-                let watermark = watermark_date(wheel.watermark());
-                let watermark_start_diff: usize = (watermark - start).whole_seconds() as usize;
-                let start_pos = watermark_start_diff - seconds as usize;
-                let end_pos = start_pos + seconds as usize;
-                wheel.combine_range(start_pos..end_pos)
-            } else {
-                panic!("sec wheel not initialized");
+        match range.lowest_granularity() {
+            Granularity::Second => {
+                let seconds = (end - start).whole_seconds() as usize;
+                self.seconds_wheel
+                    .aggregate(start, seconds, Granularity::Second)
             }
-        } else if is_minutes {
-            // We have the number of minutes in the range
-            let minutes = (end - start).whole_minutes();
-            // dbg!(minutes);
-            if let Some(wheel) = self.minutes_wheel.as_ref() {
-                let watermark = watermark_date(wheel.watermark());
-                // start must be lower than watermark
-                // end must be lower or equal to watermark
-                let watermark_start_diff: usize = (watermark - start).whole_minutes() as usize;
-                let start_pos = watermark_start_diff - minutes as usize;
-                let end_pos = start_pos + minutes as usize;
-                wheel.combine_range(start_pos..end_pos)
-            } else {
-                panic!("min wheel not initialized");
+            Granularity::Minute => {
+                let minutes = (end - start).whole_minutes() as usize;
+                self.minutes_wheel
+                    .aggregate(start, minutes, Granularity::Minute)
             }
-        } else if is_hours {
-            let hours = (end - start).whole_hours();
-            // dbg!(hours);
-            if let Some(wheel) = self.hours_wheel.as_ref() {
-                let watermark = watermark_date(wheel.watermark());
-                let watermark_start_diff: usize = (watermark - start).whole_hours() as usize;
-                let start_pos = watermark_start_diff - hours as usize;
-                let end_pos = start_pos + hours as usize;
-                wheel.combine_range(start_pos..end_pos)
-            } else {
-                panic!("hours wheel not initialized");
+            Granularity::Hour => {
+                let hours = (end - start).whole_hours() as usize;
+                self.hours_wheel.aggregate(start, hours, Granularity::Hour)
             }
-        } else if is_days {
-            let days = (end - start).whole_days();
-            // dbg!(days);
-            if let Some(wheel) = self.days_wheel.as_ref() {
-                let watermark = watermark_date(wheel.watermark());
-                let watermark_start_diff: usize = (watermark - start).whole_days() as usize;
-                let start_pos = watermark_start_diff - days as usize;
-                let end_pos = start_pos + days as usize;
-                wheel.combine_range(start_pos..end_pos)
-            } else {
-                panic!("days wheel not initialized");
+            Granularity::Day => {
+                let days = (end - start).whole_days() as usize;
+                self.days_wheel.aggregate(start, days, Granularity::Day)
             }
-        } else {
-            unimplemented!();
         }
     }
 
@@ -1281,9 +1209,9 @@ impl Display for QueryError {
 
 // Generates multiple non-overlapping [start, end) ranges aligned by granularity
 #[inline]
-fn generate_query_nodes(start: OffsetDateTime, end: OffsetDateTime) -> Vec<QueryNode> {
+fn generate_wheel_ranges(start: OffsetDateTime, end: OffsetDateTime) -> Vec<WheelRange> {
     // NOTE: measure whether it is worth using smallvec here
-    let mut nodes = Vec::new();
+    let mut ranges = Vec::new();
 
     // initial starting pointing
     let mut current_start = start;
@@ -1355,18 +1283,18 @@ fn generate_query_nodes(start: OffsetDateTime, end: OffsetDateTime) -> Vec<Query
     };
 
     // dbg!(start, end);
-    // while we have not reached the end date, keep building query nodes.
+    // while we have not reached the end date, keep building wheel rangess.
     while current_start < end {
         let current_end = new_curr_end(current_start, &end);
         // dbg!(current_start, current_end);
-        nodes.push(QueryNode {
+        ranges.push(WheelRange {
             start: current_start,
             end: current_end,
         });
         current_start = current_end;
     }
 
-    // function that returns a score of the query node which is used during sorting
+    // function that returns a score of the wheel range which is used during sorting
     let granularity_score = |start: &OffsetDateTime, end: &OffsetDateTime| {
         let (sh, sm, ss) = start.time().as_hms();
         let (eh, em, es) = end.time().as_hms();
@@ -1374,7 +1302,7 @@ fn generate_query_nodes(start: OffsetDateTime, end: OffsetDateTime) -> Vec<Query
             // second rank
             0
         } else if sm > 0 || em > 0 {
-            // miute rank
+            // minute rank
             1
         } else if sh > 0 || eh > 0 {
             // hour rank
@@ -1385,15 +1313,15 @@ fn generate_query_nodes(start: OffsetDateTime, end: OffsetDateTime) -> Vec<Query
         }
     };
 
-    // Sort query nodes based on lowest granularity in order to execute nodes in order
+    // Sort ranges based on lowest granularity in order to execute ranges in order of granularity of granularity
     // so that the execution visits wheels sequentially and not randomly.
-    nodes.sort_unstable_by(|a, b| {
+    ranges.sort_unstable_by(|a, b| {
         let a_score = granularity_score(&a.start, &a.end);
         let b_score = granularity_score(&b.start, &b.end);
         a_score.cmp(&b_score)
     });
 
-    nodes
+    ranges
 }
 
 #[cfg(test)]
@@ -1441,12 +1369,12 @@ mod tests {
         let start = datetime!(2023-11-09 00:00:00 UTC);
         let end = datetime!(2023-11-09 00:00:02 UTC);
 
-        let agg = haw.combine_range(start, end);
+        let agg = haw.combine_range((start, end));
         assert_eq!(agg, Some(10));
 
         let start = datetime!(2023-11-09 00:00:00 UTC);
         let end = datetime!(2023-11-09 00:00:04 UTC);
-        let agg = haw.combine_range(start, end);
+        let agg = haw.combine_range((start, end));
         assert_eq!(agg, Some(60));
     }
 
@@ -1466,7 +1394,7 @@ mod tests {
         let start = datetime!(2023-11-09 00:00 UTC);
         let end = datetime!(2023-11-09 00:03 UTC);
 
-        let agg = haw.combine_range(start, end);
+        let agg = haw.combine_range((start, end));
         // 1 for each second rolled-up over 3 minutes > 180
         assert_eq!(agg, Some(180));
     }
@@ -1487,60 +1415,60 @@ mod tests {
         let start = datetime!(2023-11-09 00:00 UTC);
         let end = datetime!(2023-11-09 01:00 UTC);
 
-        assert_eq!(haw.combine_range(start, end), Some(3600));
+        assert_eq!(haw.combine_range((start, end)), Some(3600));
 
         let start = datetime!(2023-11-09 00:00 UTC);
         let end = datetime!(2023-11-09 03:00 UTC);
 
-        assert_eq!(haw.combine_range(start, end), Some(10800));
+        assert_eq!(haw.combine_range((start, end)), Some(10800));
     }
 
     #[test]
-    fn query_nodes_test() {
+    fn wheel_ranges_test() {
         // Day granularity
         let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
         let end = datetime!(2023 - 11 - 10 00:00:00 UTC);
 
-        // should return a single query node, same as start and end..
-        let nodes = generate_query_nodes(start, end);
-        assert_eq!(nodes, vec![QueryNode { start, end }]);
+        // should return a single range, same as start and end..
+        let ranges = generate_wheel_ranges(start, end);
+        assert_eq!(ranges, vec![WheelRange { start, end }]);
 
         // Slightly more complex query plan
         let start = datetime!(2023 - 11 - 09 15:50:50 UTC);
         let end = datetime!(2023 - 11 - 11 12:30:45 UTC);
 
-        let nodes = generate_query_nodes(start, end);
+        let ranges = generate_wheel_ranges(start, end);
         let expected = vec![
-            QueryNode {
+            WheelRange {
                 start: datetime!(2023 - 11 - 09 15:50:50 UTC),
                 end: datetime!(2023 - 11 - 09 15:51:00 UTC),
             },
-            QueryNode {
+            WheelRange {
                 start: datetime!(2023 - 11 - 11 12:30:00 UTC),
                 end: datetime!(2023 - 11 - 11 12:30:45 UTC),
             },
-            QueryNode {
+            WheelRange {
                 start: datetime!(2023 - 11 - 09 15:51:00 UTC),
                 end: datetime!(2023 - 11 - 09 16:00:00 UTC),
             },
-            QueryNode {
+            WheelRange {
                 start: datetime!(2023 - 11 - 11 12:00:00 UTC),
                 end: datetime!(2023 - 11 - 11 12:30:00 UTC),
             },
-            QueryNode {
+            WheelRange {
                 start: datetime!(2023 - 11 - 09 16:00:00 UTC),
                 end: datetime!(2023 - 11 - 10 00:00:00 UTC),
             },
-            QueryNode {
+            WheelRange {
                 start: datetime!(2023 - 11 - 11 00:00:00 UTC),
                 end: datetime!(2023 - 11 - 11 12:00:00 UTC),
             },
-            QueryNode {
+            WheelRange {
                 start: datetime!(2023 - 11 - 10 00:00:00 UTC),
                 end: datetime!(2023 - 11 - 11 00:00:00 UTC),
             },
         ];
-        assert_eq!(nodes, expected);
+        assert_eq!(ranges, expected);
     }
 
     #[test]
@@ -1561,18 +1489,18 @@ mod tests {
         let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
         let end = datetime!(2023 - 11 - 10 00:00:00 UTC);
 
-        assert_eq!(haw.combine_range(start, end), Some(3600 * 24));
+        assert_eq!(haw.combine_range((start, end)), Some(3600 * 24));
 
         let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
         let end = datetime!(2023 - 11 - 12 00:00:00 UTC);
 
-        assert_eq!(haw.combine_range(start, end), Some(259200));
+        assert_eq!(haw.combine_range((start, end)), Some(259200));
 
         let start = datetime!(2023 - 11 - 09 15:50:50 UTC);
         let end = datetime!(2023 - 11 - 11 12:30:45 UTC);
 
         // verify that both wheel aggregation using seconds and combine range using multiple wheel aggregations end up the same
-        assert_eq!(haw.wheel_aggregation(start, end), Some(160795));
-        assert_eq!(haw.combine_range(start, end), Some(160795));
+        assert_eq!(haw.wheel_aggregation((start, end)), Some(160795));
+        assert_eq!(haw.combine_range((start, end)), Some(160795));
     }
 }

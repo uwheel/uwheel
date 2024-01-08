@@ -11,19 +11,10 @@ all-features = true
 targets = []
 rustdoc-args = ["--cfg", "docsrs"]
 
-[features]
-default = ["std", "concurrent"]
-std = []
-concurrent = ["std", "awheel-core/sync", "parking_lot", "concurrent-map"]
-
-
 [dependencies]
 time = { version = "0.3.30", default-features = false, features = ["macros"]}
-concurrent-map = { version = "5.0.31", optional = true }
-stack-map = "1.0.5"
-awheel-core.workspace = true
-hashbrown.workspace = true
-parking_lot = { workspace = true, optional = true }
+concurrent-map = "5.0.31"
+awheel-core = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
 awheel-core = { workspace = true, features = ["sum"] }

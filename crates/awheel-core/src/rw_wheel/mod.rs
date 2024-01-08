@@ -494,7 +494,7 @@ mod tests {
                 .read()
                 .as_ref()
                 .seconds_unchecked()
-                .combine_and_lower_range(0..5),
+                .aggregate_and_lower(0..5),
             Some(6u32)
         );
     }
