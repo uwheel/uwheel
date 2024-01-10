@@ -4,7 +4,10 @@ use super::{conf::WheelConf, AggregationWheel};
 use crate::{
     aggregator::Aggregator,
     rw_wheel::{
-        read::hierarchical::{Granularity, WheelRange},
+        read::{
+            hierarchical::{Granularity, WheelRange},
+            plan::Aggregation,
+        },
         WheelExt,
     },
 };
@@ -86,17 +89,18 @@ impl<A: Aggregator> MaybeWheel<A> {
     }
 
     /// Returns estimated cost for performing the given aggregate on this wheel
-    pub fn aggregate_cost(&self, range: &WheelRange, gran: Granularity) -> usize {
+    pub fn aggregate_plan(&self, range: &WheelRange, gran: Granularity) -> Aggregation {
         if self.prefix_support() {
-            1
+            Aggregation::Prefix
         } else {
             let diff = range.end - range.start;
-            (match gran {
+            let slots = (match gran {
                 Granularity::Second => diff.whole_seconds(),
                 Granularity::Minute => diff.whole_minutes(),
                 Granularity::Hour => diff.whole_hours(),
                 Granularity::Day => diff.whole_days(),
-            }) as usize
+            }) as usize;
+            Aggregation::Scan(slots)
         }
     }
 

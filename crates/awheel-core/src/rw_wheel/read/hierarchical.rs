@@ -14,12 +14,13 @@ use time::OffsetDateTime;
 use super::{
     super::write::WriteAheadWheel,
     aggregation::{conf::RetentionPolicy, maybe::MaybeWheel, AggregationWheel},
+    plan::{ExecutionPlan, WheelAggregation},
     Kind,
     Lazy,
 };
 use crate::{
     aggregator::Aggregator,
-    rw_wheel::read::{aggregation::combine_or_insert, Mode},
+    rw_wheel::read::{aggregation::combine_or_insert, plan::CombinedAggregation, Mode},
     time_internal::{self, Duration},
 };
 
@@ -180,7 +181,7 @@ struct Granularities {
     pub year: Option<usize>,
 }
 
-/// A query range consisting of a start and end date
+/// A Wheel range representing a closed-open interval of [start, end)
 #[derive(Debug, Copy, PartialEq, Clone)]
 pub struct WheelRange {
     pub(crate) start: OffsetDateTime,
@@ -476,48 +477,61 @@ where
             end >= start,
             "End date needs to be equal or larger than start date"
         );
+        // Generate and run lowest cost execution plan
+        match self.combine_range_exec_plan(range) {
+            ExecutionPlan::Single(wheel_agg) => self.wheel_aggregation(wheel_agg.range),
+            ExecutionPlan::Combined(combined) => {
+                combined
+                    .aggregations
+                    .into_iter()
+                    .fold(None, |mut acc, wheel_agg| {
+                        match self.wheel_aggregation(wheel_agg.range) {
+                            Some(agg) => {
+                                combine_or_insert::<A>(&mut acc, agg);
+                                acc
+                            }
+                            None => acc,
+                        }
+                    })
+            }
+        }
+    }
 
-        // calculate the cost of performing a single wheel aggregation using the lowest granularity wheel
-        let single_cost = self.wheel_aggregation_cost(&range);
+    /// Returns the execution plan for the given Combine Range query
+    #[inline]
+    pub fn combine_range_exec_plan(&self, range: WheelRange) -> ExecutionPlan {
+        // generate single wheel aggregation plan
+        let single_plan = self.wheel_aggregation_plan(range);
 
-        // Generate aligned and non-overlapping wheel ranges each representing a wheel aggregation
-        let ranges = generate_wheel_ranges(start, end);
+        // generate combined aggregation plan
+        let ranges = generate_wheel_ranges(range.start, range.end);
+        let mut combined_plan = CombinedAggregation::default();
+        for range in ranges.into_iter() {
+            combined_plan.push(self.wheel_aggregation_plan(range))
+        }
 
-        // calculate the cost of executing the query using combined aggregation of multiple wheel aggregations
-        let combined_cost: usize = ranges.iter().map(|r| self.wheel_aggregation_cost(r)).sum();
-
-        let combined_cost = combined_cost + ranges.len(); // update to include number of ⊕ required to reduce the it
-
-        // Execute the plan with lowest cost
-        if single_cost > combined_cost {
-            // Perform a combined aggregation over a set of wheel aggregations and reduce it to a final partial aggregate
-            ranges
-                .into_iter()
-                .fold(None, |mut acc, range| match self.wheel_aggregation(range) {
-                    Some(agg) => {
-                        combine_or_insert::<A>(&mut acc, agg);
-                        acc
-                    }
-                    None => acc,
-                })
+        // select the execution plan with the lowest cost
+        if single_plan.cost() > combined_plan.cost() {
+            ExecutionPlan::Combined(combined_plan)
         } else {
-            self.wheel_aggregation(range)
+            ExecutionPlan::Single(single_plan)
         }
     }
 
     /// Given a [start, end) interval, returns the cost (number of ⊕ operations) for a given wheel aggregation
     #[inline]
-    fn wheel_aggregation_cost(&self, range: &WheelRange) -> usize {
-        match range.lowest_granularity() {
+    fn wheel_aggregation_plan(&self, range: WheelRange) -> WheelAggregation {
+        let plan = match range.lowest_granularity() {
             Granularity::Second => self
                 .seconds_wheel
-                .aggregate_cost(range, Granularity::Second),
+                .aggregate_plan(&range, Granularity::Second),
             Granularity::Minute => self
                 .minutes_wheel
-                .aggregate_cost(range, Granularity::Minute),
-            Granularity::Hour => self.hours_wheel.aggregate_cost(range, Granularity::Hour),
-            Granularity::Day => self.days_wheel.aggregate_cost(range, Granularity::Day),
-        }
+                .aggregate_plan(&range, Granularity::Minute),
+            Granularity::Hour => self.hours_wheel.aggregate_plan(&range, Granularity::Hour),
+            Granularity::Day => self.days_wheel.aggregate_plan(&range, Granularity::Day),
+        };
+        WheelAggregation::new(range, plan)
     }
 
     /// Combines partial aggregates within [start, end) using the lowest time granularity wheel

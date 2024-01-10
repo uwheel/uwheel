@@ -59,6 +59,11 @@ name = "combine"
 harness = false
 
 [[bench]]
+name = "combine_range"
+harness = false
+
+
+[[bench]]
 name = "merge"
 harness = false
 

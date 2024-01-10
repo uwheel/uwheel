@@ -5,6 +5,8 @@ pub mod aggregation;
 /// Hierarchical Aggregation Wheel (HAW)
 pub mod hierarchical;
 
+mod plan;
+
 #[cfg(feature = "profiler")]
 pub(crate) mod stats;
 #[cfg(feature = "timer")]
