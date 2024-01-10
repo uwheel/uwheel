@@ -1,5 +1,5 @@
 [workspace]
-resolver = "1"                         # resolver 1 needed for awheel-demo to work on web
+resolver = "1"                                                               # resolver 1 needed for awheel-demo to work on web
 members = ["crates/*", "benchmarks/window", "benchmarks/olap", "examples/*"]
 exclude = ["benchmarks/*", "crates/awheel-demo", "examples/top-n"]
 

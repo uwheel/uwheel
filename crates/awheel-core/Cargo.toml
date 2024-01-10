@@ -13,7 +13,7 @@ targets = []
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["std", "all", "avg", "sum", "min", "max"]
+default = ["std", "all", "avg", "sum", "min", "max", "smallvec"]
 std = ["serde?/std"]
 all = []
 avg = []
@@ -21,7 +21,13 @@ sum = []
 min = []
 max = []
 top_n = ["dep:hashbrown"]
-serde = ["dep:serde", "dep:serde-big-array", "parking_lot?/serde", "hashbrown?/serde", "awheel-stats?/serde"]
+serde = [
+  "dep:serde",
+  "dep:serde-big-array",
+  "parking_lot?/serde",
+  "hashbrown?/serde",
+  "awheel-stats?/serde",
+]
 sync = ["dep:parking_lot", "std"]
 timer = []
 profiler = ["dep:awheel-stats", "prettytable-rs", "std"]
@@ -30,7 +36,10 @@ simd = ["dep:multiversion"]
 
 
 [dependencies]
-time = { version = "0.3.30", default-features = false, features = ["macros", "parsing"] }
+time = { version = "0.3.30", default-features = false, features = [
+  "macros",
+  "parsing",
+] }
 multiversion = { version = "0.7.3", default-features = false, optional = true }
 rayon = { version = "1.8.0", optional = true }
 zerocopy = { version = "0.7.18", features = ["derive"] }
@@ -38,12 +47,10 @@ pco = { version = "0.0.0-alpha.1", optional = true }
 awheel-stats = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
 hashbrown = { workspace = true, optional = true }
-serde = { workspace = true, optional = true, features = [
-    "derive",
-    "rc",
-] }
+serde = { workspace = true, optional = true, features = ["derive", "rc"] }
 serde-big-array = { workspace = true, optional = true }
 prettytable-rs = { version = "0.10.0", optional = true }
+smallvec = { version = "1.11.2", optional = true }
 
 [dev-dependencies]
 fastrand.workspace = true

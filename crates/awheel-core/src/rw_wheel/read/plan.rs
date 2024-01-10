@@ -22,7 +22,7 @@ impl ExecutionPlan {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WheelAggregation {
     pub(crate) range: WheelRange,
     pub(crate) plan: Aggregation,
@@ -41,7 +41,7 @@ impl WheelAggregation {
 }
 
 /// Aggregation method
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Aggregation {
     /// A scan-based wheel aggregation that needs to reduce N slots
     Scan(usize),
@@ -59,16 +59,24 @@ impl Aggregation {
     }
 }
 
+#[cfg(feature = "smallvec")]
+pub(crate) type WheelAggregations = smallvec::SmallVec<[WheelAggregation; 8]>;
+#[cfg(not(feature = "smallvec"))]
+pub(crate) type WheelAggregations = Vec<WheelAggregation>;
+
 /// A Combined Aggregation Execution plan consisting of multiple Wheel Aggregations
 #[derive(Debug, Default, Clone)]
 pub struct CombinedAggregation {
-    pub(crate) aggregations: Vec<WheelAggregation>,
+    pub(crate) aggregations: WheelAggregations,
+}
+
+impl From<WheelAggregations> for CombinedAggregation {
+    fn from(aggregations: WheelAggregations) -> Self {
+        Self { aggregations }
+    }
 }
 
 impl CombinedAggregation {
-    pub(crate) fn push(&mut self, agg: WheelAggregation) {
-        self.aggregations.push(agg);
-    }
     /// Returns the cost of executing the Combined Aggregation
     pub fn cost(&self) -> usize {
         let cost = self.aggregations.iter().fold(0, |mut acc, w_agg| {

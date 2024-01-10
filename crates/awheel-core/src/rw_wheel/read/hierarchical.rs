@@ -20,7 +20,11 @@ use super::{
 };
 use crate::{
     aggregator::Aggregator,
-    rw_wheel::read::{aggregation::combine_or_insert, plan::CombinedAggregation, Mode},
+    rw_wheel::read::{
+        aggregation::combine_or_insert,
+        plan::{CombinedAggregation, WheelAggregations},
+        Mode,
+    },
     time_internal::{self, Duration},
 };
 
@@ -504,11 +508,7 @@ where
         let single_plan = self.wheel_aggregation_plan(range);
 
         // generate combined aggregation plan
-        let ranges = generate_wheel_ranges(range.start, range.end);
-        let mut combined_plan = CombinedAggregation::default();
-        for range in ranges.into_iter() {
-            combined_plan.push(self.wheel_aggregation_plan(range))
-        }
+        let combined_plan = self.combined_aggregation_plan(range);
 
         // select the execution plan with the lowest cost
         if single_plan.cost() > combined_plan.cost() {
@@ -532,6 +532,126 @@ where
             Granularity::Day => self.days_wheel.aggregate_plan(&range, Granularity::Day),
         };
         WheelAggregation::new(range, plan)
+    }
+
+    // Attemps to split the wheel range into multiple non-overlapping ranges to execute using Combined Aggregation
+    fn combined_aggregation_plan(&self, range: WheelRange) -> CombinedAggregation {
+        let mut aggregations = WheelAggregations::default();
+
+        let WheelRange { start, end } = range;
+
+        // initial starting pointing
+        let mut current_start = start;
+
+        // helper fn to update the end date to an aligned point
+        let new_curr_end = |current_start: OffsetDateTime, end: &OffsetDateTime| {
+            let second = current_start.second();
+            let minute = current_start.minute();
+            let hour = current_start.hour();
+            let day = current_start.day();
+            let next_days = time::Duration::days(31 - day as i64); // Needs to be checked
+            let next_hours = time::Duration::hours(HOURS as i64 - hour as i64);
+            let next_minutes = time::Duration::minutes(MINUTES as i64 - minute as i64);
+            let next_seconds = time::Duration::seconds(SECONDS as i64 - second as i64);
+
+            let dur = *end - current_start;
+
+            if second > 0 {
+                // we are in second gran, need to jump to next min.
+                if current_start + next_seconds > *end {
+                    // if we reach the end date itself, bump by remaining seconds left..
+                    current_start + time::Duration::seconds(dur.whole_seconds())
+                } else {
+                    // otherwise bump by the remaining seconds in the current minute
+                    current_start + next_seconds
+                }
+            } else if minute > 0 {
+                // we are in minute gran, need to jump to next hour.
+                if current_start + next_minutes > *end {
+                    // if there are whole minutes, bump by it otherwise fallback to seconds..
+                    if dur.whole_minutes() > 0 {
+                        current_start + time::Duration::minutes(dur.whole_minutes())
+                    } else {
+                        current_start + time::Duration::seconds(dur.whole_seconds())
+                    }
+                } else {
+                    current_start + next_minutes
+                }
+            } else if hour > 0 {
+                // we in hour gran, need to jump to next day.
+                if current_start + next_hours > *end {
+                    if dur.whole_hours() > 0 {
+                        // bump by hours
+                        current_start + time::Duration::hours(dur.whole_hours())
+                    } else if dur.whole_minutes() > 0 {
+                        // otherwise bump by minutes remaining
+                        current_start + time::Duration::minutes(dur.whole_minutes())
+                    } else {
+                        *end
+                    }
+                } else {
+                    current_start + next_hours
+                }
+            } else if day > 0 {
+                if current_start + next_days > *end {
+                    if dur.whole_days() > 0 {
+                        current_start + time::Duration::days(dur.whole_days())
+                    } else if dur.whole_hours() > 0 {
+                        current_start + time::Duration::hours(dur.whole_hours())
+                    } else {
+                        *end
+                    }
+                } else {
+                    current_start + next_days
+                }
+            } else {
+                unimplemented!("Dimensions weeks, years not supported yet");
+            }
+        };
+
+        // dbg!(start, end);
+        // while we have not reached the end date, keep building wheel rangess.
+        while current_start < end {
+            let current_end = new_curr_end(current_start, &end);
+            // dbg!(current_start, current_end);
+            let range = WheelRange {
+                start: current_start,
+                end: current_end,
+            };
+            let aggregation = self.wheel_aggregation_plan(range);
+
+            aggregations.push(aggregation);
+            current_start = current_end;
+        }
+
+        // function that returns a score of the wheel range which is used during sorting
+        let granularity_score = |start: &OffsetDateTime, end: &OffsetDateTime| {
+            let (sh, sm, ss) = start.time().as_hms();
+            let (eh, em, es) = end.time().as_hms();
+            if ss > 0 || es > 0 {
+                // second rank
+                0
+            } else if sm > 0 || em > 0 {
+                // minute rank
+                1
+            } else if sh > 0 || eh > 0 {
+                // hour rank
+                2
+            } else {
+                // day rank (00:00:00 - 00:00:00)
+                3
+            }
+        };
+
+        // Sort ranges based on lowest granularity in order to execute ranges in order of granularity
+        // so that the execution visits wheels sequentially and not randomly.
+        aggregations.sort_unstable_by(|a, b| {
+            let a_score = granularity_score(&a.range.start, &a.range.end);
+            let b_score = granularity_score(&b.range.start, &b.range.end);
+            a_score.cmp(&b_score)
+        });
+
+        CombinedAggregation::from(aggregations)
     }
 
     /// Combines partial aggregates within [start, end) using the lowest time granularity wheel
@@ -1221,126 +1341,13 @@ impl Display for QueryError {
     }
 }
 
-// Generates multiple non-overlapping [start, end) ranges aligned by granularity
-#[inline]
-fn generate_wheel_ranges(start: OffsetDateTime, end: OffsetDateTime) -> Vec<WheelRange> {
-    // NOTE: measure whether it is worth using smallvec here
-    let mut ranges = Vec::new();
-
-    // initial starting pointing
-    let mut current_start = start;
-
-    // helper fn to update the end date to an aligned point
-    let new_curr_end = |current_start: OffsetDateTime, end: &OffsetDateTime| {
-        let second = current_start.second();
-        let minute = current_start.minute();
-        let hour = current_start.hour();
-        let day = current_start.day();
-        let next_days = time::Duration::days(31 - day as i64); // Needs to be checked
-        let next_hours = time::Duration::hours(HOURS as i64 - hour as i64);
-        let next_minutes = time::Duration::minutes(MINUTES as i64 - minute as i64);
-        let next_seconds = time::Duration::seconds(SECONDS as i64 - second as i64);
-
-        let dur = *end - current_start;
-
-        if second > 0 {
-            // we are in second gran, need to jump to next min.
-            if current_start + next_seconds > *end {
-                // if we reach the end date itself, bump by remaining seconds left..
-                current_start + time::Duration::seconds(dur.whole_seconds())
-            } else {
-                // otherwise bump by the remaining seconds in the current minute
-                current_start + next_seconds
-            }
-        } else if minute > 0 {
-            // we are in minute gran, need to jump to next hour.
-            if current_start + next_minutes > *end {
-                // if there are whole minutes, bump by it otherwise fallback to seconds..
-                if dur.whole_minutes() > 0 {
-                    current_start + time::Duration::minutes(dur.whole_minutes())
-                } else {
-                    current_start + time::Duration::seconds(dur.whole_seconds())
-                }
-            } else {
-                current_start + next_minutes
-            }
-        } else if hour > 0 {
-            // we in hour gran, need to jump to next day.
-            if current_start + next_hours > *end {
-                if dur.whole_hours() > 0 {
-                    // bump by hours
-                    current_start + time::Duration::hours(dur.whole_hours())
-                } else if dur.whole_minutes() > 0 {
-                    // otherwise bump by minutes remaining
-                    current_start + time::Duration::minutes(dur.whole_minutes())
-                } else {
-                    *end
-                }
-            } else {
-                current_start + next_hours
-            }
-        } else if day > 0 {
-            if current_start + next_days > *end {
-                if dur.whole_days() > 0 {
-                    current_start + time::Duration::days(dur.whole_days())
-                } else if dur.whole_hours() > 0 {
-                    current_start + time::Duration::hours(dur.whole_hours())
-                } else {
-                    *end
-                }
-            } else {
-                current_start + next_days
-            }
-        } else {
-            unimplemented!("Dimensions weeks, years not supported yet");
-        }
-    };
-
-    // dbg!(start, end);
-    // while we have not reached the end date, keep building wheel rangess.
-    while current_start < end {
-        let current_end = new_curr_end(current_start, &end);
-        // dbg!(current_start, current_end);
-        ranges.push(WheelRange {
-            start: current_start,
-            end: current_end,
-        });
-        current_start = current_end;
-    }
-
-    // function that returns a score of the wheel range which is used during sorting
-    let granularity_score = |start: &OffsetDateTime, end: &OffsetDateTime| {
-        let (sh, sm, ss) = start.time().as_hms();
-        let (eh, em, es) = end.time().as_hms();
-        if ss > 0 || es > 0 {
-            // second rank
-            0
-        } else if sm > 0 || em > 0 {
-            // minute rank
-            1
-        } else if sh > 0 || eh > 0 {
-            // hour rank
-            2
-        } else {
-            // day rank (00:00:00 - 00:00:00)
-            3
-        }
-    };
-
-    // Sort ranges based on lowest granularity in order to execute ranges in order of granularity of granularity
-    // so that the execution visits wheels sequentially and not randomly.
-    ranges.sort_unstable_by(|a, b| {
-        let a_score = granularity_score(&a.start, &a.end);
-        let b_score = granularity_score(&b.start, &b.end);
-        a_score.cmp(&b_score)
-    });
-
-    ranges
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{aggregator::sum::U64SumAggregator, time_internal::NumericalDuration};
+    use crate::{
+        aggregator::sum::U64SumAggregator,
+        rw_wheel::read::plan::Aggregation,
+        time_internal::NumericalDuration,
+    };
     use time::macros::datetime;
 
     use super::*;
@@ -1438,54 +1445,6 @@ mod tests {
     }
 
     #[test]
-    fn wheel_ranges_test() {
-        // Day granularity
-        let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
-        let end = datetime!(2023 - 11 - 10 00:00:00 UTC);
-
-        // should return a single range, same as start and end..
-        let ranges = generate_wheel_ranges(start, end);
-        assert_eq!(ranges, vec![WheelRange { start, end }]);
-
-        // Slightly more complex query plan
-        let start = datetime!(2023 - 11 - 09 15:50:50 UTC);
-        let end = datetime!(2023 - 11 - 11 12:30:45 UTC);
-
-        let ranges = generate_wheel_ranges(start, end);
-        let expected = vec![
-            WheelRange {
-                start: datetime!(2023 - 11 - 09 15:50:50 UTC),
-                end: datetime!(2023 - 11 - 09 15:51:00 UTC),
-            },
-            WheelRange {
-                start: datetime!(2023 - 11 - 11 12:30:00 UTC),
-                end: datetime!(2023 - 11 - 11 12:30:45 UTC),
-            },
-            WheelRange {
-                start: datetime!(2023 - 11 - 09 15:51:00 UTC),
-                end: datetime!(2023 - 11 - 09 16:00:00 UTC),
-            },
-            WheelRange {
-                start: datetime!(2023 - 11 - 11 12:00:00 UTC),
-                end: datetime!(2023 - 11 - 11 12:30:00 UTC),
-            },
-            WheelRange {
-                start: datetime!(2023 - 11 - 09 16:00:00 UTC),
-                end: datetime!(2023 - 11 - 10 00:00:00 UTC),
-            },
-            WheelRange {
-                start: datetime!(2023 - 11 - 11 00:00:00 UTC),
-                end: datetime!(2023 - 11 - 11 12:00:00 UTC),
-            },
-            WheelRange {
-                start: datetime!(2023 - 11 - 10 00:00:00 UTC),
-                end: datetime!(2023 - 11 - 11 00:00:00 UTC),
-            },
-        ];
-        assert_eq!(ranges, expected);
-    }
-
-    #[test]
     fn range_query_day_test() {
         // 2023-11-09 00:00:00
         let watermark = 1699488000000;
@@ -1516,5 +1475,69 @@ mod tests {
         // verify that both wheel aggregation using seconds and combine range using multiple wheel aggregations end up the same
         assert_eq!(haw.wheel_aggregation((start, end)), Some(160795));
         assert_eq!(haw.combine_range((start, end)), Some(160795));
+
+        let plan = haw.combine_range_exec_plan(WheelRange::new(start, end));
+        let combined_plan = match plan {
+            ExecutionPlan::Combined(plan) => plan,
+            ExecutionPlan::Single(_) => panic!("not supposed to happen"),
+        };
+
+        let mut expected = WheelAggregations::default();
+
+        expected.push(WheelAggregation {
+            range: WheelRange {
+                start: datetime!(2023 - 11 - 09 15:50:50 UTC),
+                end: datetime!(2023 - 11 - 09 15:51:00 UTC),
+            },
+            plan: Aggregation::Scan(10),
+        });
+
+        expected.push(WheelAggregation {
+            range: WheelRange {
+                start: datetime!(2023 - 11 - 11 12:30:00 UTC),
+                end: datetime!(2023 - 11 - 11 12:30:45 UTC),
+            },
+            plan: Aggregation::Scan(45),
+        });
+
+        expected.push(WheelAggregation {
+            range: WheelRange {
+                start: datetime!(2023 - 11 - 09 15:51:00 UTC),
+                end: datetime!(2023 - 11 - 09 16:00:00 UTC),
+            },
+            plan: Aggregation::Scan(9),
+        });
+
+        expected.push(WheelAggregation {
+            range: WheelRange {
+                start: datetime!(2023 - 11 - 11 12:00:00 UTC),
+                end: datetime!(2023 - 11 - 11 12:30:00 UTC),
+            },
+            plan: Aggregation::Scan(30),
+        });
+
+        expected.push(WheelAggregation {
+            range: WheelRange {
+                start: datetime!(2023 - 11 - 09 16:00:00 UTC),
+                end: datetime!(2023 - 11 - 10 00:00:00 UTC),
+            },
+            plan: Aggregation::Scan(8),
+        });
+        expected.push(WheelAggregation {
+            range: WheelRange {
+                start: datetime!(2023 - 11 - 11 00:00:00 UTC),
+                end: datetime!(2023 - 11 - 11 12:00:00 UTC),
+            },
+            plan: Aggregation::Scan(12),
+        });
+        expected.push(WheelAggregation {
+            range: WheelRange {
+                start: datetime!(2023 - 11 - 10 00:00:00 UTC),
+                end: datetime!(2023 - 11 - 11 00:00:00 UTC),
+            },
+            plan: Aggregation::Scan(1),
+        });
+
+        assert_eq!(combined_plan.aggregations, expected);
     }
 }
