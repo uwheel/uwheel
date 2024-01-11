@@ -27,7 +27,10 @@ fn combine_range<A: Aggregator<PartialAggregate = u64>>(bencher: &mut Bencher) {
         let (start, end) = generate_seconds_range(START_WATERMARK, watermark);
         let range = WheelRange::from(into_offset_date_time_start_end(start, end));
         black_box(haw.combine_range(range))
-    })
+    });
+
+    #[cfg(feature = "profiler")]
+    println!("{:?}", haw.stats());
 }
 
 pub fn into_offset_date_time_start_end(start: u64, end: u64) -> (OffsetDateTime, OffsetDateTime) {

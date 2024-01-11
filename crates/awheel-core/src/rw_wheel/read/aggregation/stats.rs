@@ -7,6 +7,7 @@ use core::{cell::Cell, fmt};
 pub struct Stats {
     pub combine_ops: u64,
     pub combine_range: Sketch,
+    pub insert: Sketch,
     pub total_access: Cell<u64>,
     pub scans: Cell<u64>,
 }

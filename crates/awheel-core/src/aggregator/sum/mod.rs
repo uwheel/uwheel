@@ -2,9 +2,9 @@ use super::super::Aggregator;
 use crate::aggregator::InverseExt;
 
 #[cfg(feature = "simd")]
-use core::simd::{f32x16, f64x8, i32x16, i64x8, u32x16, u64x8};
+use core::simd::prelude::{SimdFloat, SimdInt, SimdUint};
 #[cfg(feature = "simd")]
-use core::simd::{SimdFloat, SimdInt, SimdUint};
+use core::simd::{f32x16, f64x8, i32x16, i64x8, u32x16, u64x8};
 
 #[cfg(feature = "simd")]
 use multiversion::multiversion;
@@ -65,8 +65,8 @@ macro_rules! sum_impl {
             #[multiversion(targets = "simd")]
             #[inline]
             fn merge_slices(dst: &mut [$pa], src: &[$pa]) {
-                let (src_head, src_chunks, src_tail) = src.as_simd::<{ <$simd>::LANES }>();
-                let (dst_head, dst_chunks, dst_tail) = dst.as_simd_mut::<{ <$simd>::LANES }>();
+                let (src_head, src_chunks, src_tail) = src.as_simd::<{ <$simd>::LEN }>();
+                let (dst_head, dst_chunks, dst_tail) = dst.as_simd_mut::<{ <$simd>::LEN }>();
 
                 // add to destination using scalar approach
                 for (d, s) in dst_head.iter_mut().zip(src_head.iter()) {
@@ -82,6 +82,18 @@ macro_rules! sum_impl {
                 for (d, s) in dst_tail.iter_mut().zip(src_tail.iter()) {
                     *d += s;
                 }
+            }
+
+            #[inline]
+            #[cfg(feature = "simd")]
+            #[multiversion(targets = "simd")]
+            fn build_prefix(_slice: &[$pa]) -> Vec<$pa> {
+                // let mut result = Vec::with_capacity(slice.len());
+                // TODO: use explicit SIMD instructions to build prefix-sum array
+                // let chunks = slice.chunks_exact(<$simd>::LANES);
+                // let remainder = chunks.remainder();
+                // for chunk in chunks {}
+                unimplemented!();
             }
 
             #[inline]

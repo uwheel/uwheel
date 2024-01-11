@@ -11,7 +11,7 @@ use window::{external_impls::Slicing, PlottingOutput, Window};
 
 use awheel::{
     aggregator::sum::U64SumAggregator,
-    window::{eager, lazy, stats::Stats, WindowExt},
+    window::{eager, lazy, stats::Stats, wheels, WindowExt},
     Aggregator,
     Entry,
 };
@@ -183,6 +183,44 @@ fn sum_aggregation(
         let total_insertions = events.len() as u64;
 
         let mut runs = Vec::new();
+
+        let wheel_64: wheels::WindowWheel<U64SumAggregator> = wheels::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(64)
+            .with_watermark(watermark)
+            .build();
+
+        let (runtime, stats, _wheel_results) = run(wheel_64, &events, watermark, watermark_freq);
+
+        dbg!("Finished Wheel 64");
+
+        runs.push(Run {
+            id: "Wheel 64".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+            qps: None,
+        });
+        let wheel_512: wheels::WindowWheel<U64SumAggregator> = wheels::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_write_ahead(512)
+            .with_watermark(watermark)
+            .build();
+
+        let (runtime, stats, _wheel_results) = run(wheel_512, &events, watermark, watermark_freq);
+
+        dbg!("Finished Wheel 512");
+
+        runs.push(Run {
+            id: "Wheel 512".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+            qps: None,
+        });
+
         let lazy_wheel_64: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
             .with_range(range)
             .with_slide(slide)

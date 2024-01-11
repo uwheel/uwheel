@@ -17,6 +17,9 @@ use core::{
 };
 
 #[cfg(feature = "profiler")]
+use awheel_stats::profile_scope;
+
+#[cfg(feature = "profiler")]
 pub(crate) mod stats;
 
 /// Array implementations for Partial Aggregates
@@ -164,6 +167,17 @@ impl<A: Aggregator> AggregationWheel<A> {
         let capacity = conf.capacity;
         let num_slots = crate::capacity_to_slots!(capacity);
 
+        // Need to at least hold "capacity" slots.
+        let retention = if let RetentionPolicy::KeepWithLimit(limit) = conf.retention {
+            if limit < capacity {
+                RetentionPolicy::KeepWithLimit(capacity)
+            } else {
+                conf.retention
+            }
+        } else {
+            conf.retention
+        };
+
         // sanity check
         if conf.prefix_sum {
             assert!(A::PREFIX_SUPPORT, "Cannot configure prefix-sum");
@@ -181,7 +195,7 @@ impl<A: Aggregator> AggregationWheel<A> {
             tick_size_ms: conf.tick_size_ms,
             drill_down: conf.drill_down,
             compression: conf.compression,
-            retention: conf.retention,
+            retention,
             rotation_count: 0,
             #[cfg(test)]
             total_ticks: 0,
@@ -348,7 +362,11 @@ impl<A: Aggregator> AggregationWheel<A> {
     fn clear_tail(&mut self) {
         if !self.slots.is_empty() && self.retention.should_drop() {
             self.slots.pop_back();
-        }
+        } else if let RetentionPolicy::KeepWithLimit(limit) = self.retention {
+            if self.slots.len() > limit {
+                self.slots.pop_back();
+            }
+        };
     }
     /// Returns the current rotation position in the wheel
     pub fn rotation_count(&self) -> usize {
@@ -393,6 +411,9 @@ impl<A: Aggregator> AggregationWheel<A> {
     /// Insert PartialAggregate into the head of the wheel
     #[inline]
     pub fn insert_head(&mut self, entry: A::PartialAggregate) {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.insert);
+
         self.slots.push_front(entry);
 
         // Rebuild prefix-sum slots if it is supported and enabled.
@@ -529,10 +550,12 @@ impl<A: Aggregator> AggregationWheel<A> {
     }
 
     /// Check whether this wheel is utilising all its slots
+    #[inline]
     pub fn is_full(&self) -> bool {
-        let len = self.slots.len();
+        self.slots.len() >= self.capacity
+        // let len = self.slots.len();
         // + 1 as we want to maintain num_slots of history at all times
-        len == self.capacity + 1
+        // len == self.capacity + 1
     }
 
     /// Returns a back-to-front iterator of regular wheel slots

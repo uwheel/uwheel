@@ -187,6 +187,7 @@ impl<A: Aggregator> MutablePartialArray<A> {
         }
     }
     #[doc(hidden)]
+    #[inline]
     pub fn pop_back(&mut self) {
         let _ = self.inner.pop();
     }

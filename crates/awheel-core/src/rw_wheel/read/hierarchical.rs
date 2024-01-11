@@ -225,6 +225,12 @@ impl WheelRange {
             unimplemented!("Weeks and years not supported");
         }
     }
+
+    /// Returns a Duration object for the range
+    #[inline]
+    pub fn duration(&self) -> time_internal::Duration {
+        time_internal::Duration::seconds((self.end - self.start).whole_seconds())
+    }
 }
 
 #[derive(Debug, Copy, PartialEq, Clone)]
@@ -462,6 +468,13 @@ where
     pub fn interval_and_lower(&self, dur: time_internal::Duration) -> Option<A::Aggregate> {
         self.interval(dur).map(|partial| A::lower(partial))
     }
+
+    /// Returns the execution plan for a given combine range query
+    #[inline]
+    pub fn explain_combine_range(&self, range: impl Into<WheelRange>) -> ExecutionPlan {
+        self.combine_range_exec_plan(range.into())
+    }
+
     /// Combines partial aggregates within the given date range and lowers it to a final aggregate
     #[inline]
     pub fn combine_range_and_lower(&self, range: impl Into<WheelRange>) -> Option<A::Aggregate> {
@@ -471,6 +484,24 @@ where
     /// Combines partial aggregates within the given date range [start, end) into a final partial aggregate
     #[inline]
     pub fn combine_range(&self, range: impl Into<WheelRange>) -> Option<A::PartialAggregate> {
+        self.combine_range_inner(range).0
+    }
+
+    /// Executes a combine range query and returns the result + cost (combine ops) of executing it
+    #[inline]
+    pub fn analyze_combine_range(
+        &self,
+        range: impl Into<WheelRange>,
+    ) -> (Option<A::PartialAggregate>, usize) {
+        self.combine_range_inner(range)
+    }
+
+    /// Combines partial aggregates within the given date range [start, end) into a final partial aggregate
+    #[inline]
+    fn combine_range_inner(
+        &self,
+        range: impl Into<WheelRange>,
+    ) -> (Option<A::PartialAggregate>, usize) {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.combine_range);
 
@@ -483,9 +514,12 @@ where
         );
         // Generate and run lowest cost execution plan
         match self.combine_range_exec_plan(range) {
-            ExecutionPlan::Single(wheel_agg) => self.wheel_aggregation(wheel_agg.range),
+            ExecutionPlan::Single(wheel_agg) => {
+                (self.wheel_aggregation(wheel_agg.range), wheel_agg.cost())
+            }
             ExecutionPlan::Combined(combined) => {
-                combined
+                let cost = combined.cost();
+                let agg = combined
                     .aggregations
                     .into_iter()
                     .fold(None, |mut acc, wheel_agg| {
@@ -496,7 +530,8 @@ where
                             }
                             None => acc,
                         }
-                    })
+                    });
+                (agg, cost)
             }
         }
     }
@@ -504,8 +539,17 @@ where
     /// Returns the execution plan for the given Combine Range query
     #[inline]
     pub fn combine_range_exec_plan(&self, range: WheelRange) -> ExecutionPlan {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.combine_range_plan);
+
         // generate single wheel aggregation plan
         let single_plan = self.wheel_aggregation_plan(range);
+
+        // Check if the range is quantizable to the time intervals of HAW.
+        // If it is, then it is not worth generating a combined plan.
+        if Self::is_quantizablez(range.duration()) {
+            return ExecutionPlan::Single(single_plan);
+        }
 
         // generate combined aggregation plan
         let combined_plan = self.combined_aggregation_plan(range);
@@ -535,6 +579,7 @@ where
     }
 
     // Attemps to split the wheel range into multiple non-overlapping ranges to execute using Combined Aggregation
+    #[inline]
     fn combined_aggregation_plan(&self, range: WheelRange) -> CombinedAggregation {
         let mut aggregations = WheelAggregations::default();
 
@@ -1060,6 +1105,28 @@ where
         }
 
         false
+    }
+
+    #[inline]
+    fn is_quantizablez(duration: time_internal::Duration) -> bool {
+        let Granularities {
+            second,
+            minute,
+            hour,
+            day,
+            week,
+            year,
+        } = Self::duration_to_granularities(duration);
+
+        matches!(
+            (second, minute, hour, day, week, year),
+            (Some(_), None, None, None, None, None)
+                | (None, Some(_), None, None, None, None)
+                | (None, None, Some(_), None, None, None)
+                | (None, None, None, Some(_), None, None)
+                | (None, None, None, None, Some(_), None)
+                | (None, None, None, None, None, Some(_))
+        )
     }
 
     /// Executes a Landmark Window that combines total partial aggregates across all wheels

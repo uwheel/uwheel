@@ -3,12 +3,9 @@ use time::OffsetDateTime;
 use super::{conf::WheelConf, AggregationWheel};
 use crate::{
     aggregator::Aggregator,
-    rw_wheel::{
-        read::{
-            hierarchical::{Granularity, WheelRange},
-            plan::Aggregation,
-        },
-        WheelExt,
+    rw_wheel::read::{
+        hierarchical::{Granularity, WheelRange},
+        plan::Aggregation,
     },
 };
 
@@ -123,8 +120,9 @@ impl<A: Aggregator> MaybeWheel<A> {
 
     #[inline]
     pub fn len(&self) -> usize {
-        self.inner.as_ref().map(|w| w.len()).unwrap_or(0)
+        self.inner.as_ref().map(|w| w.total_slots()).unwrap_or(0)
     }
+
     pub(crate) fn as_mut(&mut self) -> Option<&mut AggregationWheel<A>> {
         self.inner.as_mut()
     }
