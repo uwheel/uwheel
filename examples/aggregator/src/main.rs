@@ -134,6 +134,9 @@ impl Aggregator for CustomAggregator {
     const IDENTITY: Self::PartialAggregate = PartialAggregate::identity();
     const PREFIX_SUPPORT: bool = false;
 
+    type CombineInverse =
+        fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate;
+
     type Input = RawData;
     type PartialAggregate = PartialAggregate;
     type MutablePartialAggregate = PartialAggregate;

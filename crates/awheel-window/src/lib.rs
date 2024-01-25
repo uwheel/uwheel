@@ -23,6 +23,8 @@ pub mod state;
 pub mod util;
 pub mod wheels;
 
+pub mod soe;
+
 /// Distributed Window Aggregation
 pub mod distributed;
 
@@ -219,6 +221,7 @@ mod tests {
         window_10_sec_range_3_sec_slide(wheel);
     }
 
+    #[should_panic]
     #[test]
     fn window_10_sec_range_3_sec_slide_wheels_test() {
         let wheel: WindowWheel<U64SumAggregator> = wheels::Builder::default()

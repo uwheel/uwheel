@@ -86,17 +86,24 @@ impl<A: Aggregator> MaybeWheel<A> {
     }
 
     /// Returns estimated cost for performing the given aggregate on this wheel
+    #[allow(unused_mut)]
     pub fn aggregate_plan(&self, range: &WheelRange, gran: Granularity) -> Aggregation {
         if self.prefix_support() {
             Aggregation::Prefix
         } else {
             let diff = range.end - range.start;
-            let slots = (match gran {
+            let mut slots = (match gran {
                 Granularity::Second => diff.whole_seconds(),
                 Granularity::Minute => diff.whole_minutes(),
                 Granularity::Hour => diff.whole_hours(),
                 Granularity::Day => diff.whole_days(),
             }) as usize;
+
+            #[cfg(feature = "simd")]
+            {
+                let remainder = slots % A::SIMD_LANES;
+                slots = (slots / A::SIMD_LANES) + remainder;
+            }
             Aggregation::Scan(slots)
         }
     }

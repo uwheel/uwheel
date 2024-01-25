@@ -3,13 +3,20 @@ use super::hierarchical::WheelRange;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
+#[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
+
 /// Contains the Execution Plan of a HAW combine range query
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ExecutionPlan {
     /// Execution consisting of a single Wheel Aggregation
     Single(WheelAggregation),
     /// Execution consisting of multiple Wheel Aggregations
     Combined(CombinedAggregation),
+    /// Execution can be queried through a landmark window
+    Landmark,
+    /// Execution can be queried through a combination of landmark window + inverse combine
+    InverseLandmark(Box<ExecutionPlan>),
 }
 
 impl ExecutionPlan {
@@ -18,6 +25,8 @@ impl ExecutionPlan {
         match self {
             ExecutionPlan::Single(w) => w.cost(),
             ExecutionPlan::Combined(c) => c.cost(),
+            ExecutionPlan::Landmark => 6,
+            ExecutionPlan::InverseLandmark(w) => w.cost() + 6 + 2, // 6 Wheels + 2 combine operations at end
         }
     }
 }
@@ -35,6 +44,15 @@ impl WheelAggregation {
     pub fn cost(&self) -> usize {
         self.plan.cost()
     }
+    #[inline]
+    pub fn is_prefix(&self) -> bool {
+        matches!(self.plan, Aggregation::Prefix)
+    }
+    #[inline]
+    pub fn is_scan(&self) -> bool {
+        matches!(self.plan, Aggregation::Scan(_))
+    }
+
     pub fn range(&self) -> &WheelRange {
         &self.range
     }
@@ -65,7 +83,7 @@ pub(crate) type WheelAggregations = smallvec::SmallVec<[WheelAggregation; 8]>;
 pub(crate) type WheelAggregations = Vec<WheelAggregation>;
 
 /// A Combined Aggregation Execution plan consisting of multiple Wheel Aggregations
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct CombinedAggregation {
     pub(crate) aggregations: WheelAggregations,
 }

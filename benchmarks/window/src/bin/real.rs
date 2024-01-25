@@ -196,7 +196,7 @@ fn sum_aggregation(
         dbg!("Finished Wheel 64");
 
         runs.push(Run {
-            id: "Wheel 64".to_string(),
+            id: "AggregateWheels 64".to_string(),
             total_insertions,
             runtime,
             stats,
@@ -214,7 +214,7 @@ fn sum_aggregation(
         dbg!("Finished Wheel 512");
 
         runs.push(Run {
-            id: "Wheel 512".to_string(),
+            id: "AggregateWheels 512".to_string(),
             total_insertions,
             runtime,
             stats,

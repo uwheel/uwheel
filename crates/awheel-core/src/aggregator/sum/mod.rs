@@ -19,6 +19,13 @@ macro_rules! sum_impl {
         pub struct $struct;
 
         impl Aggregator for $struct {
+            #[cfg(feature = "simd")]
+            const SIMD_LANES: usize = <$simd>::LEN;
+            #[cfg(feature = "simd")]
+            type CombineSimd = fn(&[$pa]) -> $pa;
+
+            type CombineInverse = fn($pa, $pa) -> $pa;
+
             const IDENTITY: Self::PartialAggregate = 0 as $pa;
             const PREFIX_SUPPORT: bool = true;
 
@@ -128,6 +135,26 @@ macro_rules! sum_impl {
                     pco::standalone::auto_decompress::<Self::PartialAggregate>(&_bytes)
                         .expect("failed to decompress"),
                 )
+            }
+
+            #[inline]
+            fn combine_inverse() -> Option<Self::CombineInverse> {
+                Some(|a, b| if a > b { a - b } else { 0 as $pa })
+            }
+
+            #[cfg(feature = "simd")]
+            #[inline]
+            fn combine_simd() -> Option<Self::CombineSimd> {
+                Some(|slice: &[$pa]| {
+                    let (head, chunks, tail) = slice.as_simd();
+                    let chunk = chunks
+                        .iter()
+                        .fold(<$simd>::default(), |acc, chunk| acc + *chunk);
+
+                    chunk.reduce_sum()
+                        + head.iter().copied().sum::<$pa>()
+                        + tail.iter().copied().sum::<$pa>()
+                })
             }
         }
         impl InverseExt for $struct {

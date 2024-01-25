@@ -4,13 +4,16 @@ version = "0.1.0"
 edition.workspace = true
 
 [features]
-default = []
+default = ["duckdb_index"]
 debug = []
 sync = ["awheel/sync"]
+simd = ["awheel/simd"]
+profiler = ["awheel/profiler"]
+duckdb_index = []
 
 [dependencies]
 cxx = "1.0"
-flume = "0.11.0"
+duckdb.workspace = true
 awheel = { workspace = true, features = ["window", "stats", "simd"] }
 mimalloc = { version = "*", default-features = false, optional = true }
 csv = "1.2.2"

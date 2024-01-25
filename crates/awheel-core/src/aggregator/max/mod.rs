@@ -10,6 +10,13 @@ macro_rules! max_impl {
             const IDENTITY: Self::PartialAggregate = <$type>::MIN;
             const PREFIX_SUPPORT: bool = false;
 
+            #[cfg(feature = "simd")]
+            const SIMD_LANES: usize = 16;
+            #[cfg(feature = "simd")]
+            type CombineSimd = fn(&[$pa]) -> $pa;
+
+            type CombineInverse = fn($pa, $pa) -> $pa;
+
             type Input = $type;
             type MutablePartialAggregate = $pa;
             type Aggregate = $type;
@@ -39,6 +46,11 @@ macro_rules! max_impl {
             #[inline]
             fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a
+            }
+
+            #[inline]
+            fn combine_inverse() -> Option<Self::CombineInverse> {
+                None
             }
         }
     };

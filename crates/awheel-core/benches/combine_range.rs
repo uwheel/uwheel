@@ -21,7 +21,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 }
 fn combine_range<A: Aggregator<PartialAggregate = u64>>(bencher: &mut Bencher) {
     // 2023-11-09 00:00:00
-    let haw: Haw<A> = prepare_haw(START_WATERMARK, 3600 * 24);
+    let haw: Haw<A> = prepare_haw(START_WATERMARK, 3600 * 14);
     let watermark = haw.watermark();
     bencher.iter(|| {
         let (start, end) = generate_seconds_range(START_WATERMARK, watermark);

@@ -24,10 +24,7 @@ use write::{WriteAheadWheel, DEFAULT_WRITE_AHEAD_SLOTS};
 pub use read::{aggregation::DrillCut, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 pub use wheel_ext::WheelExt;
 
-use self::{
-    read::{hierarchical::HawConf, Kind, Lazy},
-    timer::RawTimerWheel,
-};
+use self::read::{hierarchical::HawConf, Kind, Lazy};
 
 #[cfg(feature = "profiler")]
 use awheel_stats::profile_scope;
@@ -56,7 +53,6 @@ where
     A: Aggregator,
     K: Kind,
 {
-    overflow: RawTimerWheel<Entry<A::Input>>,
     write: WriteAheadWheel<A>,
     read: ReadWheel<A, K>,
     #[cfg(feature = "profiler")]
@@ -82,7 +78,6 @@ where
         let options = Options::default().with_haw_conf(haw_conf);
 
         Self {
-            overflow: RawTimerWheel::new(time),
             write: WriteAheadWheel::with_watermark(time),
             read: ReadWheel::with_conf(time, options.haw_conf),
             #[cfg(feature = "profiler")]
@@ -94,7 +89,6 @@ where
     /// Time is represented as milliseconds
     pub fn new(time: u64) -> Self {
         Self {
-            overflow: RawTimerWheel::new(time),
             write: WriteAheadWheel::with_watermark(time),
             read: ReadWheel::new(time),
             #[cfg(feature = "profiler")]
@@ -107,7 +101,6 @@ where
             WriteAheadWheel::with_capacity_and_watermark(opts.write_ahead_capacity, time);
         let read = ReadWheel::with_conf(time, opts.haw_conf);
         Self {
-            overflow: RawTimerWheel::new(time),
             write,
             read,
             #[cfg(feature = "profiler")]
@@ -119,21 +112,8 @@ where
     pub fn insert(&mut self, e: impl Into<Entry<A::Input>>) {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.insert);
-
-        // If entry does not fit within the write-ahead wheel then schedule it to be inserted in the future
-        if let Err(Error::Overflow {
-            entry,
-            max_write_ahead_ts: _,
-        }) = self.write.insert(e)
-        {
-            #[cfg(feature = "profiler")]
-            profile_scope!(&self.stats.overflow_schedule);
-            // TODO: cluster the entry with other timestamps around the same write-ahead range
-            let write_ahead_ms =
-                time_internal::Duration::seconds(self.write.write_ahead_len() as i64)
-                    .whole_milliseconds() as u64;
-            let timestamp = entry.timestamp - write_ahead_ms / 2; // for now
-            self.overflow.schedule_at(timestamp, entry).unwrap();
+        if let Err(Error::Late { .. }) = self.write.insert(e) {
+            // For now do nothing but should be returned to the user..
         }
     }
 
@@ -178,11 +158,6 @@ where
         // Advance the read wheel
         self.read.advance_to(watermark, &mut self.write);
         debug_assert_eq!(self.write.watermark(), self.read.watermark());
-
-        // Check if there are entries that can be inserted into the write-ahead wheel
-        for entry in self.overflow.advance_to(watermark) {
-            self.write.insert(entry).unwrap(); // this is assumed to be safe if it was scheduled correctly
-        }
     }
     /// Advances the time of the wheel aligned by the lowest unit (Second) and emits deltas
     #[inline]
@@ -200,10 +175,6 @@ where
         );
         debug_assert_eq!(self.write.watermark(), self.read.watermark());
 
-        // Check if there are entries that can be inserted into the write-ahead wheel
-        for entry in self.overflow.advance_to(watermark) {
-            self.write.insert(entry).unwrap(); // this is assumed to be safe if it was scheduled correctly
-        }
         delta_state
     }
     /// Returns an estimation of bytes used by the wheel
@@ -242,16 +213,32 @@ where
 
         add_row("insert", &mut table, &self.stats.insert);
         add_row("advance", &mut table, &self.stats.advance);
-        add_row(
-            "overflow schedule",
-            &mut table,
-            &self.stats.overflow_schedule,
-        );
 
         let read = self.read.as_ref();
         add_row("tick", &mut table, &read.stats().tick);
         add_row("interval", &mut table, &read.stats().interval);
         add_row("landmark", &mut table, &read.stats().landmark);
+        add_row("combine range", &mut table, &read.stats().combine_range);
+        add_row(
+            "combine range plan",
+            &mut table,
+            &read.stats().combine_range_plan,
+        );
+        add_row(
+            "combined aggregation",
+            &mut table,
+            &read.stats().combined_aggregation,
+        );
+        add_row(
+            "combined aggregation plan",
+            &mut table,
+            &read.stats().combined_aggregation_plan,
+        );
+        add_row(
+            "wheel aggregation",
+            &mut table,
+            &read.stats().wheel_aggregation,
+        );
 
         println!("====RwWheel Profiler Dump====");
         table.printstd();

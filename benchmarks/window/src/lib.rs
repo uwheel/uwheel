@@ -3,6 +3,7 @@ pub mod btreemap_wheel;
 pub mod external_impls;
 pub mod timestamp_generator;
 pub mod tree;
+pub mod util;
 
 use awheel::{stats::Percentiles, time_internal::Duration, window::stats::Stats};
 use std::fs::File;

@@ -3,7 +3,6 @@ use core::{
     fmt::{self, Display},
     iter::IntoIterator,
     marker::PhantomData,
-    ops::RangeBounds,
     option::{
         Option,
         Option::{None, Some},
@@ -25,11 +24,14 @@ use crate::{
         plan::{CombinedAggregation, WheelAggregations},
         Mode,
     },
-    time_internal::{self, Duration},
+    time_internal::{self},
 };
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+
+#[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
 
 #[cfg(feature = "profiler")]
 use super::stats::Stats;
@@ -390,6 +392,15 @@ where
         time_internal::Duration::seconds(cycle_time as i64)
     }
 
+    #[inline]
+    const fn to_ms(ts: u64) -> u64 {
+        ts * 1000
+    }
+    #[inline]
+    fn to_offset_date(ts: u64) -> OffsetDateTime {
+        OffsetDateTime::from_unix_timestamp(ts as i64 / 1000).unwrap()
+    }
+
     /// Advance the watermark of the wheel by the given [time::Duration]
     #[inline(always)]
     pub fn advance(&mut self, duration: time_internal::Duration, waw: &mut WriteAheadWheel<A>) {
@@ -512,28 +523,53 @@ where
             end >= start,
             "End date needs to be equal or larger than start date"
         );
+
         // Generate and run lowest cost execution plan
         match self.combine_range_exec_plan(range) {
             ExecutionPlan::Single(wheel_agg) => {
                 (self.wheel_aggregation(wheel_agg.range), wheel_agg.cost())
             }
-            ExecutionPlan::Combined(combined) => {
-                let cost = combined.cost();
-                let agg = combined
-                    .aggregations
-                    .into_iter()
-                    .fold(None, |mut acc, wheel_agg| {
-                        match self.wheel_aggregation(wheel_agg.range) {
-                            Some(agg) => {
-                                combine_or_insert::<A>(&mut acc, agg);
-                                acc
-                            }
-                            None => acc,
-                        }
-                    });
-                (agg, cost)
+            ExecutionPlan::Combined(combined) => self.combined_aggregation(combined),
+            ExecutionPlan::Landmark => self.analyze_landmark(),
+            ExecutionPlan::InverseLandmark(inverse_plan) => {
+                // NOTE: if end >= watermark: combine_inverse(landmark, combine_range(wheel_start, start))
+                let landmark = self.landmark().unwrap_or(A::IDENTITY);
+
+                let (result, cost) = match *inverse_plan {
+                    ExecutionPlan::Single(w) => (self.wheel_aggregation(*w.range()), w.cost()),
+                    ExecutionPlan::Combined(c) => self.combined_aggregation(c),
+                    _ => panic!("Should not happen"),
+                };
+                let inverse_combine = A::combine_inverse().unwrap(); // assumed to be safe as it has been verified by the plan generation
+                let inversed = inverse_combine(landmark, result.unwrap_or(A::IDENTITY));
+                (Some(inversed), cost)
             }
         }
+    }
+
+    /// Performs a given Combined Aggregation and returns the partial aggregate and the cost of the operation
+    #[inline]
+    fn combined_aggregation(
+        &self,
+        combined: CombinedAggregation,
+    ) -> (Option<A::PartialAggregate>, usize) {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.combined_aggregation);
+
+        let cost = combined.cost();
+        let agg = combined
+            .aggregations
+            .into_iter()
+            .fold(None, |mut acc, wheel_agg| {
+                match self.wheel_aggregation(wheel_agg.range) {
+                    Some(agg) => {
+                        combine_or_insert::<A>(&mut acc, agg);
+                        acc
+                    }
+                    None => acc,
+                }
+            });
+        (agg, cost)
     }
 
     /// Returns the execution plan for the given Combine Range query
@@ -542,24 +578,57 @@ where
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.combine_range_plan);
 
+        let wheel_start = self
+            .watermark()
+            .saturating_sub(self.current_time_in_cycle().whole_milliseconds() as u64);
+
+        let end_ms = Self::to_ms(range.end.unix_timestamp() as u64);
+        let start_ms = Self::to_ms(range.start.unix_timestamp() as u64);
+
+        // Landmark optimization: landmark covers the whole range
+        if start_ms <= wheel_start && end_ms >= self.watermark() {
+            return ExecutionPlan::Landmark;
+        }
+
         // generate single wheel aggregation plan
         let single_plan = self.wheel_aggregation_plan(range);
 
-        // Check if the range is quantizable to the time intervals of HAW.
-        // If it is, then it is not worth generating a combined plan.
-        if Self::is_quantizablez(range.duration()) {
+        // If it can be executed through prefix-sum optimization or if the range is quantizable to a single wheel,
+        // then return a single wheel aggregation plan.
+        if single_plan.is_prefix() || Self::is_quantizablez(range.duration()) {
             return ExecutionPlan::Single(single_plan);
         }
 
         // generate combined aggregation plan
         let combined_plan = self.combined_aggregation_plan(range);
 
-        // select the execution plan with the lowest cost
-        if single_plan.cost() > combined_plan.cost() {
-            ExecutionPlan::Combined(combined_plan)
-        } else {
+        let single_cost = single_plan.cost();
+        let combined_cost = combined_plan.cost();
+
+        // If number of combine operations in a single scan is below this bound then execute as single wheel aggregation
+        let upper_scan_bound: usize = 1000;
+
+        let plan = if single_cost < upper_scan_bound || single_cost < combined_cost {
             ExecutionPlan::Single(single_plan)
+        } else {
+            ExecutionPlan::Combined(combined_plan)
+        };
+
+        // Check for possible Landmark Inverse optimization
+        // NOTE: combine_inverse(self.landmark(), combine_range(wheel_start..start));
+        if end_ms >= self.watermark() && A::combine_inverse().is_some() {
+            // Create a plan for the range below (wheel_start..start)
+            let start_offset_date = Self::to_offset_date(wheel_start);
+            let wheel_range = WheelRange::new(start_offset_date, range.start);
+            let inverse_plan = self.combine_range_exec_plan(wheel_range);
+
+            // Only return this inverse landmark plan if it has a lower cost
+            if inverse_plan.cost() < plan.cost() {
+                return ExecutionPlan::InverseLandmark(Box::new(inverse_plan));
+            }
         }
+
+        plan
     }
 
     /// Given a [start, end) interval, returns the cost (number of ⊕ operations) for a given wheel aggregation
@@ -581,6 +650,9 @@ where
     // Attemps to split the wheel range into multiple non-overlapping ranges to execute using Combined Aggregation
     #[inline]
     fn combined_aggregation_plan(&self, range: WheelRange) -> CombinedAggregation {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.combined_aggregation_plan);
+
         let mut aggregations = WheelAggregations::default();
 
         let WheelRange { start, end } = range;
@@ -705,6 +777,9 @@ where
     /// For instance, the range [16:00:50, 16:01:00) refers to the 10 remaining seconds of the minute
     #[inline]
     pub fn wheel_aggregation(&self, range: impl Into<WheelRange>) -> Option<A::PartialAggregate> {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.wheel_aggregation);
+
         let range = range.into();
         let start = range.start;
         let end = range.end;
@@ -778,20 +853,6 @@ where
         self.timer
             .borrow_mut()
             .schedule_at(at, TimerAction::Repeat((at, interval, Box::new(f))))
-    }
-
-    /// Returns the a set of partial aggregates based on the downsampling function
-    pub fn downsample<R>(
-        &self,
-        _range: R,
-        _interval: Duration,
-        _slide: Duration,
-    ) -> Option<Vec<A::PartialAggregate>>
-    where
-        R: RangeBounds<u64>,
-    {
-        // # Issue: https://github.com/Max-Meldrum/awheel/issues/87
-        unimplemented!();
     }
 
     /// Returns the partial aggregate in the given time interval
@@ -1132,6 +1193,12 @@ where
     /// Executes a Landmark Window that combines total partial aggregates across all wheels
     #[inline]
     pub fn landmark(&self) -> Option<A::PartialAggregate> {
+        self.analyze_landmark().0
+    }
+
+    /// Executes a Landmark Window that combines total partial aggregates across all wheels and returns the cost
+    #[inline]
+    pub fn analyze_landmark(&self) -> (Option<A::PartialAggregate>, usize) {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.landmark);
 
@@ -1143,8 +1210,9 @@ where
             self.weeks_wheel.total(),
             self.years_wheel.total(),
         ];
-        Self::reduce(wheels).0
+        Self::reduce(wheels)
     }
+
     /// Executes a Landmark Window that combines total partial aggregates across all wheels and lowers the result
     #[inline]
     pub fn landmark_and_lower(&self) -> Option<A::Aggregate> {
@@ -1546,7 +1614,7 @@ mod tests {
         let plan = haw.combine_range_exec_plan(WheelRange::new(start, end));
         let combined_plan = match plan {
             ExecutionPlan::Combined(plan) => plan,
-            ExecutionPlan::Single(_) => panic!("not supposed to happen"),
+            _ => panic!("not supposed to happen"),
         };
 
         let mut expected = WheelAggregations::default();
@@ -1606,5 +1674,14 @@ mod tests {
         });
 
         assert_eq!(combined_plan.aggregations, expected);
+
+        let start = datetime!(2023 - 11 - 09 05:00:00 UTC);
+        let end = datetime!(2023 - 11 - 12 00:00:00 UTC);
+
+        // Runs a Inverse Landmark Execution
+        let result = haw.combine_range(WheelRange::new(start, end));
+        let plan = haw.combine_range_exec_plan(WheelRange::new(start, end));
+        assert!(matches!(plan, ExecutionPlan::InverseLandmark(_)));
+        assert_eq!(result, Some(241200));
     }
 }

@@ -1,10 +1,14 @@
-use crate::WindowExt;
+use crate::{
+    soe::{SubtractOnEvict, TwoStacks, Window},
+    state::State,
+    util::pairs_space,
+    WindowExt,
+};
 
 use awheel_core::{
     aggregator::Aggregator,
     rw_wheel::{
         read::{
-            aggregation::conf::RetentionPolicy,
             hierarchical::{HawConf, WheelRange},
             ReadWheel,
         },
@@ -80,49 +84,36 @@ impl Builder {
             "Range must be larger or equal to slide"
         );
 
-        let duration = self.range;
-        let seconds = duration.whole_seconds() as usize;
-        let minutes = duration.whole_minutes() as usize;
-        let hours = duration.whole_hours() as usize;
-        let days = duration.whole_days() as usize;
-
-        let seconds_policy = RetentionPolicy::KeepWithLimit(seconds);
-        let minutes_policy = RetentionPolicy::KeepWithLimit(minutes);
-        let hours_policy = RetentionPolicy::KeepWithLimit(hours);
-        let days_policy = RetentionPolicy::KeepWithLimit(days);
-
-        // dbg!(self.range, self.slide);
-        // dbg!((seconds, minutes, hours, days));
-
-        let mut haw_conf = self.haw_conf;
-        haw_conf.seconds.set_retention_policy(seconds_policy);
-        haw_conf.minutes.set_retention_policy(minutes_policy);
-        haw_conf.hours.set_retention_policy(hours_policy);
-        haw_conf.days.set_retention_policy(days_policy);
-
         WindowWheel::new(
             self.time,
             self.write_ahead,
             self.range.whole_milliseconds() as usize,
             self.slide.whole_milliseconds() as usize,
-            haw_conf,
+            self.haw_conf,
         )
     }
 }
 
 pub struct WindowWheel<A: Aggregator> {
-    range: usize,
     slide: usize,
     wheel: RwWheel<A>,
-    next_window_end: u64,
+    window: Box<dyn Window<A>>,
+    state: State,
     #[cfg(feature = "stats")]
     stats: super::stats::Stats,
 }
 
 impl<A: Aggregator> WindowWheel<A> {
     fn new(time: u64, write_ahead: usize, range: usize, slide: usize, haw_conf: HawConf) -> Self {
+        let state = State::new(time, range, slide);
+        let pairs = pairs_space(range, slide);
+        let window: Box<dyn Window<A>> = if A::combine_inverse().is_some() {
+            Box::new(SubtractOnEvict::with_capacity(pairs))
+        } else {
+            Box::new(TwoStacks::with_capacity(pairs))
+        };
+
         Self {
-            range,
             slide,
             wheel: RwWheel::with_options(
                 time,
@@ -130,10 +121,17 @@ impl<A: Aggregator> WindowWheel<A> {
                     .with_write_ahead(write_ahead)
                     .with_haw_conf(haw_conf),
             ),
-            next_window_end: time + range as u64,
+            state,
+            window,
             #[cfg(feature = "stats")]
             stats: Default::default(),
         }
+    }
+    #[inline]
+    fn compute_window(&self) -> A::PartialAggregate {
+        #[cfg(feature = "stats")]
+        profile_scope!(&self.stats.window_computation_ns);
+        self.window.query()
     }
 }
 
@@ -144,32 +142,48 @@ impl<A: Aggregator> WindowExt<A> for WindowWheel<A> {
         for _tick in 0..ticks {
             self.wheel.advance(1.seconds());
             let watermark = self.wheel.watermark();
-            if watermark == self.next_window_end {
-                // Convert window range [watermark - range, watermark) into WheelRange
-                let from = watermark - self.range as u64;
+
+            self.state.pair_ticks_remaining -= 1;
+
+            if self.state.pair_ticks_remaining == 0 {
+                // pair ended
+                let from = watermark - self.state.current_pair_len as u64;
                 let to = watermark;
+                // dbg!(from, to);
 
                 let start = OffsetDateTime::from_unix_timestamp(from as i64 / 1000).unwrap();
                 let end = OffsetDateTime::from_unix_timestamp(to as i64 / 1000).unwrap();
+                // dbg!(start, end);
 
-                #[cfg(feature = "stats")]
-                profile_scope!(&self.stats.window_computation_ns);
-
-                let (window, _cost) = self
+                // query pair from Reader wheel
+                let (pair, _cost) = self
                     .wheel
                     .read()
                     .as_ref()
                     .analyze_combine_range(WheelRange::new(start, end));
+                // dbg!(pair);
 
-                #[cfg(feature = "stats")]
-                self.stats
-                    .window_combines
-                    .set(self.stats.window_combines.get() + _cost);
+                self.window.push(pair.unwrap_or(A::IDENTITY));
 
-                window_results.push((watermark, window.map(A::lower)));
+                // Update pair metadata
+                self.state.update_pair_len();
 
-                // update new window end
-                self.next_window_end = watermark + self.slide as u64;
+                self.state.next_pair_end =
+                    self.wheel.read().watermark() + self.state.current_pair_len as u64;
+                self.state.pair_ticks_remaining =
+                    self.state.current_pair_duration().whole_seconds() as usize;
+
+                if self.wheel.read().watermark() == self.state.next_window_end {
+                    let window = self.compute_window();
+
+                    window_results.push((watermark, Some(A::lower(window))));
+
+                    // clean up
+                    self.window.pop();
+
+                    // update new window end
+                    self.state.next_window_end += self.slide as u64;
+                }
             }
         }
         window_results

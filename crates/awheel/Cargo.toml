@@ -24,7 +24,7 @@ smallvec = ["awheel-core/smallvec"]
 top_n = ["awheel-core/top_n"]
 sync = ["awheel-core/sync"]
 window = ["dep:awheel-window"]
-tree = ["dep:awheel-tree"]
+# tree = ["dep:awheel-tree"]
 stats = ["std", "dep:awheel-stats", "awheel-window?/stats"]
 serde = ["awheel-core/serde"]
 profiler = ["std", "awheel-core/profiler"]
@@ -35,7 +35,7 @@ pco = ["awheel-core/pco", "std"]
 [dependencies]
 awheel-core = { workspace = true, default-features = false }
 awheel-window = { workspace = true, optional = true }
-awheel-tree = { workspace = true, optional = true }
+# awheel-tree = { workspace = true, optional = true }
 awheel-stats = { workspace = true, optional = true }
 
 [dev-dependencies]

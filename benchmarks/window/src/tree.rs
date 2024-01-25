@@ -17,6 +17,60 @@ pub trait Tree<A: Aggregator>: Default {
     fn combine_ops(&self) -> usize;
 }
 
+#[derive(Default)]
+pub struct BTree<A: Aggregator> {
+    inner: BTreeMap<u64, A::PartialAggregate>,
+}
+impl<A: Aggregator> Tree<A> for BTree<A> {
+    #[inline]
+    fn insert(&mut self, ts: u64, agg: A::PartialAggregate) {
+        self.inner
+            .entry(ts)
+            .and_modify(|f| {
+                *f = A::combine(*f, agg);
+            })
+            .or_insert(agg);
+    }
+    #[inline]
+    fn range_query(&self, from: u64, to: u64) -> Option<A::PartialAggregate> {
+        let mut res: Option<A::PartialAggregate> = None;
+        for (_ts, agg) in self.inner.range(from..to) {
+            combine_or_insert::<A>(&mut res, *agg);
+        }
+        res
+    }
+    #[inline]
+    fn query(&self) -> Option<A::PartialAggregate> {
+        let mut res: Option<A::PartialAggregate> = None;
+        for (_ts, agg) in self.inner.range(..) {
+            combine_or_insert::<A>(&mut res, *agg);
+        }
+        res
+    }
+    #[inline]
+    fn evict_range(&mut self, to: u64) {
+        let mut split_tree = self.inner.split_off(&(to - 1));
+        std::mem::swap(&mut split_tree, &mut self.inner);
+    }
+    fn evict(&mut self) {
+        let _ = self.inner.pop_first();
+    }
+    fn size_bytes(&self) -> usize {
+        use std::mem::size_of;
+        // Estimate the memory usage of the BTreeMap itself
+        let btree_map_size = size_of::<Self>();
+
+        // Estimate the memory usage of each key-value pair
+        let key_value_size = size_of::<u64>() + size_of::<u64>();
+
+        // Calculate the total memory usage estimation
+        btree_map_size + key_value_size * self.inner.len()
+    }
+    fn combine_ops(&self) -> usize {
+        unimplemented!();
+    }
+}
+
 impl<A: Aggregator> Tree<A> for BTreeMap<u64, A::PartialAggregate> {
     #[inline]
     fn insert(&mut self, ts: u64, agg: A::PartialAggregate) {

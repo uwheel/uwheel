@@ -15,6 +15,12 @@ pub struct Stats {
     pub combine_range: Sketch,
     /// A sketch for recording latencies of generating combine range plans
     pub combine_range_plan: Sketch,
+    /// A sketch for recording latencies of generating combine aggregation plan
+    pub combined_aggregation_plan: Sketch,
+    /// A sketch for recording latencies of executing combined aggregation
+    pub combined_aggregation: Sketch,
+    /// A sketch for recording latencies of executing a wheel aggregation
+    pub wheel_aggregation: Sketch,
 }
 
 impl core::fmt::Debug for Stats {
@@ -25,6 +31,15 @@ impl core::fmt::Debug for Stats {
             .field("landmark", &self.landmark.percentiles())
             .field("combine_range", &self.combine_range.percentiles())
             .field("combine_range_plan", &self.combine_range_plan.percentiles())
+            .field(
+                "combined_aggregation_plan",
+                &self.combined_aggregation_plan.percentiles(),
+            )
+            .field(
+                "combined_aggregation",
+                &self.combined_aggregation.percentiles(),
+            )
+            .field("wheel_aggregation", &self.wheel_aggregation.percentiles())
             .finish()
     }
 }

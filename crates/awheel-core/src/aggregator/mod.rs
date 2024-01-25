@@ -31,6 +31,20 @@ pub mod sum;
 
 /// Aggregation interface that library users must implement to use awheel
 pub trait Aggregator: Default + Debug + Clone + 'static {
+    #[cfg(feature = "simd")]
+    /// Returns the number of lanes Combine SIMD is using
+    const SIMD_LANES: usize;
+
+    #[cfg(feature = "simd")]
+    /// Combine Simd Function
+    type CombineSimd: Fn(&[Self::PartialAggregate]) -> Self::PartialAggregate;
+
+    /// A combine inverse function
+    type CombineInverse: Fn(
+        Self::PartialAggregate,
+        Self::PartialAggregate,
+    ) -> Self::PartialAggregate;
+
     /// Identity value for the Aggregator's Partial Aggregate
     const IDENTITY: Self::PartialAggregate;
 
@@ -123,6 +137,21 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
 
     /// User-defined decompress function of partial aggregates
     fn decompress(_bytes: &[u8]) -> Option<Vec<Self::PartialAggregate>> {
+        None
+    }
+
+    /// Returns a function that inverse combines two partial aggregates
+    ///
+    /// If the aggregator does not support invertability then set it returns ``None``
+    fn combine_inverse() -> Option<Self::CombineInverse> {
+        None
+    }
+
+    /// Returns a function that inverse combines two partial aggregates
+    ///
+    /// If the aggregator does not support invertability then set it returns ``None``
+    #[cfg(feature = "simd")]
+    fn combine_simd() -> Option<Self::CombineSimd> {
         None
     }
 }
