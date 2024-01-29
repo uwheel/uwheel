@@ -17,6 +17,10 @@ const START_WATERMARK: u64 = 1699488000000;
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("combine_range");
     group.bench_function("combine_range_u64_sum", combine_range::<U64SumAggregator>);
+    group.bench_function(
+        "combined_aggregation_plan",
+        combined_aggregation_plan::<U64SumAggregator>,
+    );
     group.finish();
 }
 fn combine_range<A: Aggregator<PartialAggregate = u64>>(bencher: &mut Bencher) {
@@ -26,7 +30,21 @@ fn combine_range<A: Aggregator<PartialAggregate = u64>>(bencher: &mut Bencher) {
     bencher.iter(|| {
         let (start, end) = generate_seconds_range(START_WATERMARK, watermark);
         let range = WheelRange::from(into_offset_date_time_start_end(start, end));
-        black_box(haw.combine_range(range))
+        haw.combine_range(range)
+    });
+
+    #[cfg(feature = "profiler")]
+    println!("{:?}", haw.stats());
+}
+
+fn combined_aggregation_plan<A: Aggregator<PartialAggregate = u64>>(bencher: &mut Bencher) {
+    // 2023-11-09 00:00:00
+    let haw: Haw<A> = prepare_haw(START_WATERMARK, 3600 * 14);
+    let watermark = haw.watermark();
+    bencher.iter(|| {
+        let (start, end) = generate_seconds_range(START_WATERMARK, watermark);
+        let range = WheelRange::from(into_offset_date_time_start_end(start, end));
+        black_box(haw.combined_aggregation_plan(range))
     });
 
     #[cfg(feature = "profiler")]

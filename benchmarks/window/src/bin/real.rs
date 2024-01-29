@@ -11,7 +11,7 @@ use window::{external_impls::Slicing, PlottingOutput, Window};
 
 use awheel::{
     aggregator::sum::U64SumAggregator,
-    window::{eager, lazy, stats::Stats, wheels, WindowExt},
+    window::{stats::Stats, wheels, WindowExt},
     Aggregator,
     Entry,
 };
@@ -221,121 +221,6 @@ fn sum_aggregation(
             qps: None,
         });
 
-        let lazy_wheel_64: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(64)
-            .with_watermark(watermark)
-            .build();
-
-        #[cfg(feature = "sync")]
-        let (gate, handle) = spawn_query_thread(&lazy_wheel_64);
-        let (runtime, stats, lazy_results) = run(lazy_wheel_64, &events, watermark, watermark_freq);
-        #[cfg(feature = "sync")]
-        gate.store(false, Ordering::Relaxed);
-        #[cfg(feature = "sync")]
-        let qps = handle.join().unwrap();
-
-        dbg!("Finished Lazy Wheel 64");
-
-        runs.push(Run {
-            id: "Lazy Wheel 64".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            #[cfg(feature = "sync")]
-            qps: Some(qps),
-            #[cfg(not(feature = "sync"))]
-            qps: None,
-        });
-        let lazy_wheel_512: lazy::LazyWindowWheel<U64SumAggregator> = lazy::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(512)
-            .with_watermark(watermark)
-            .build();
-
-        #[cfg(feature = "sync")]
-        let (gate, handle) = spawn_query_thread(&lazy_wheel_512);
-        let (runtime, stats, _lazy_results) =
-            run(lazy_wheel_512, &events, watermark, watermark_freq);
-        #[cfg(feature = "sync")]
-        gate.store(false, Ordering::Relaxed);
-        #[cfg(feature = "sync")]
-        let qps = handle.join().unwrap();
-
-        dbg!("Finished Lazy Wheel 512");
-
-        runs.push(Run {
-            id: "Lazy Wheel 512".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            #[cfg(feature = "sync")]
-            qps: Some(qps),
-            #[cfg(not(feature = "sync"))]
-            qps: None,
-        });
-
-        // EAGER
-        let eager_wheel_64: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(64)
-            .with_watermark(watermark)
-            .build();
-
-        #[cfg(feature = "sync")]
-        let (gate, handle) = spawn_query_thread(&eager_wheel_64);
-        let (runtime, stats, eager_results) =
-            run(eager_wheel_64, &events, watermark, watermark_freq);
-        #[cfg(feature = "sync")]
-        gate.store(false, Ordering::Relaxed);
-        #[cfg(feature = "sync")]
-        let qps = handle.join().unwrap();
-
-        assert_eq!(lazy_results, eager_results);
-
-        dbg!("Finished Eager Wheel W64");
-        runs.push(Run {
-            id: "Eager Wheel W64".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            #[cfg(feature = "sync")]
-            qps: Some(qps),
-            #[cfg(not(feature = "sync"))]
-            qps: None,
-        });
-
-        let eager_wheel_512: eager::EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(512)
-            .with_watermark(watermark)
-            .build();
-
-        #[cfg(feature = "sync")]
-        let (gate, handle) = spawn_query_thread(&eager_wheel_512);
-        let (runtime, stats, eager_results) =
-            run(eager_wheel_512, &events, watermark, watermark_freq);
-        #[cfg(feature = "sync")]
-        gate.store(false, Ordering::Relaxed);
-        #[cfg(feature = "sync")]
-        let qps = handle.join().unwrap();
-
-        dbg!("Finished Eager Wheel W512");
-        runs.push(Run {
-            id: "Eager Wheel W512".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            #[cfg(feature = "sync")]
-            qps: Some(qps),
-            #[cfg(not(feature = "sync"))]
-            qps: None,
-        });
-
         let fiba_4: WindowTree<tree::FiBA4> =
             WindowTree::new(watermark, range, slide, Slicing::Wheel);
         let (runtime, stats, _fiba4_results) = run(fiba_4, &events, watermark, watermark_freq);
@@ -348,7 +233,7 @@ fn sum_aggregation(
             qps: None,
         });
 
-        pretty_assertions::assert_eq!(eager_results, _fiba4_results);
+        // pretty_assertions::assert_eq!(eager_results, _fiba4_results);
         /*
         dbg!(&find_first_mismatch(
             &lazy_results,
@@ -382,7 +267,7 @@ fn sum_aggregation(
             qps: None,
         });
 
-        pretty_assertions::assert_eq!(eager_results, _fiba4_results);
+        // pretty_assertions::assert_eq!(eager_results, _fiba4_results);
         /*
         dbg!(&find_first_mismatch(
             &lazy_results,

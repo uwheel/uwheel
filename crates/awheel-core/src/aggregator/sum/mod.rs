@@ -4,7 +4,7 @@ use crate::aggregator::InverseExt;
 #[cfg(feature = "simd")]
 use core::simd::prelude::{SimdFloat, SimdInt, SimdUint};
 #[cfg(feature = "simd")]
-use core::simd::{f32x16, f64x8, i32x16, i64x8, u32x16, u64x8};
+use core::simd::{f32x16, f64x8, i32x16, i64x8, u32x16, u64x32};
 
 #[cfg(feature = "simd")]
 use multiversion::multiversion;
@@ -91,17 +91,17 @@ macro_rules! sum_impl {
                 }
             }
 
-            #[inline]
-            #[cfg(feature = "simd")]
-            #[multiversion(targets = "simd")]
-            fn build_prefix(_slice: &[$pa]) -> Vec<$pa> {
-                // let mut result = Vec::with_capacity(slice.len());
-                // TODO: use explicit SIMD instructions to build prefix-sum array
-                // let chunks = slice.chunks_exact(<$simd>::LANES);
-                // let remainder = chunks.remainder();
-                // for chunk in chunks {}
-                unimplemented!();
-            }
+            // #[inline]
+            // #[cfg(feature = "simd")]
+            // #[multiversion(targets = "simd")]
+            // fn build_prefix(_slice: &[$pa]) -> Vec<$pa> {
+            //     // let mut result = Vec::with_capacity(slice.len());
+            //     // TODO: use explicit SIMD instructions to build prefix-sum array
+            //     // let chunks = slice.chunks_exact(<$simd>::LANES);
+            //     // let remainder = chunks.remainder();
+            //     // for chunk in chunks {}
+            //     unimplemented!();
+            // }
 
             #[inline]
             fn prefix_query(
@@ -186,7 +186,7 @@ sum_impl!(U32SumAggregator, u32, u32, u32x16);
 #[cfg(not(feature = "simd"))]
 sum_impl!(U64SumAggregator, u64, u64);
 #[cfg(feature = "simd")]
-sum_impl!(U64SumAggregator, u64, u64, u64x8);
+sum_impl!(U64SumAggregator, u64, u64, u64x32);
 
 // #[cfg(not(feature = "simd"))]
 // integer_sum_impl!(I16SumAggregator, i16, i16);

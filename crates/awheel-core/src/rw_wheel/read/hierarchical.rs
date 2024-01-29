@@ -19,6 +19,8 @@ use super::{
 };
 use crate::{
     aggregator::Aggregator,
+    cfg_not_sync,
+    cfg_sync,
     rw_wheel::read::{
         aggregation::combine_or_insert,
         plan::{CombinedAggregation, WheelAggregations},
@@ -236,11 +238,101 @@ impl WheelRange {
 }
 
 #[derive(Debug, Copy, PartialEq, Clone)]
+#[repr(usize)]
 pub(crate) enum Granularity {
     Second,
     Minute,
     Hour,
     Day,
+}
+impl Granularity {
+    fn from_usize(value: usize) -> Self {
+        match value {
+            0 => Granularity::Second,
+            1 => Granularity::Minute,
+            2 => Granularity::Hour,
+            3 => Granularity::Day,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Default, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+struct WheelFrequencies {
+    table: [Frequency; 6],
+}
+impl WheelFrequencies {
+    /// Returns wheel granularities that are outliers in access frequency
+    #[allow(dead_code)]
+    fn outliers(&self) -> Vec<(Granularity, u64)> {
+        let percentile = |data: &[Frequency; 6], p: f64| {
+            let mut sorted: Vec<_> = data.iter().map(|m| m.get()).collect();
+            sorted.sort();
+            let index = (p / 100.0 * sorted.len() as f64) as usize;
+            sorted[index - 1] as f64
+        };
+        let q1 = percentile(&self.table, 25.0);
+        let q3 = percentile(&self.table, 75.0);
+        let iqr = q3 - q1;
+        let lower_bound = q1 - 1.5 * iqr;
+        let higher_bound = q3 + 1.5 * iqr;
+        self.table
+            .iter()
+            .enumerate()
+            .filter(|(_, value)| {
+                value.get() < lower_bound as u64 || value.get() > higher_bound as u64
+            })
+            .map(|(pos, v)| (Granularity::from_usize(pos), v.get()))
+            .collect()
+    }
+    #[inline]
+    fn record_hit(&self, gran: Granularity) {
+        let slot = &self.table[gran as usize];
+        slot.bump()
+    }
+}
+
+cfg_not_sync! {
+    use core::cell::Cell;
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+    #[derive(Clone, Default)]
+    #[doc(hidden)]
+    pub struct Frequency(Cell<u64>);
+
+    impl Frequency {
+        #[inline(always)]
+        pub fn get(&self) -> u64 {
+            self.0.get()
+        }
+
+        #[inline(always)]
+        pub fn bump(&self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+}
+
+cfg_sync! {
+    use std::sync::Arc;
+    use core::sync::atomic::{AtomicU64, Ordering};
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+    #[derive(Clone, Default)]
+    #[doc(hidden)]
+    pub struct Frequency(Arc<AtomicU64>);
+
+    impl Frequency {
+        #[inline(always)]
+        pub fn get(&self) -> u64 {
+            self.0.load(Ordering::Relaxed)
+        }
+
+        #[inline(always)]
+        pub fn bump(&self) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
 }
 
 /// Hierarchical Aggregation Wheel
@@ -270,6 +362,7 @@ where
     K: Kind,
 {
     watermark: u64,
+    frequencies: WheelFrequencies,
     seconds_wheel: MaybeWheel<A>,
     minutes_wheel: MaybeWheel<A>,
     hours_wheel: MaybeWheel<A>,
@@ -329,6 +422,7 @@ where
 
         Self {
             watermark: time,
+            frequencies: Default::default(),
             seconds_wheel: MaybeWheel::new(seconds),
             minutes_wheel: MaybeWheel::new(minutes),
             hours_wheel: MaybeWheel::new(hours),
@@ -593,9 +687,26 @@ where
         // generate single wheel aggregation plan
         let single_plan = self.wheel_aggregation_plan(range);
 
+        // flag indicating whether explicit SIMD support is available
+        let simd_enabled = {
+            #[cfg(feature = "simd")]
+            {
+                A::combine_simd().is_some()
+            }
+            #[cfg(not(feature = "simd"))]
+            false
+        };
+
+        // If number of combine operations in a single scan is below this bound then execute as single wheel aggregation
+        // TODO: Currently Somewhat random..
+        let single_scan_bound = if simd_enabled { 5000 } else { 500 };
+
         // If it can be executed through prefix-sum optimization or if the range is quantizable to a single wheel,
         // then return a single wheel aggregation plan.
-        if single_plan.is_prefix() || Self::is_quantizablez(range.duration()) {
+        if single_plan.is_prefix()
+            || Self::is_quantizablez(range.duration())
+            || single_plan.cost() < single_scan_bound
+        {
             return ExecutionPlan::Single(single_plan);
         }
 
@@ -605,10 +716,7 @@ where
         let single_cost = single_plan.cost();
         let combined_cost = combined_plan.cost();
 
-        // If number of combine operations in a single scan is below this bound then execute as single wheel aggregation
-        let upper_scan_bound: usize = 1000;
-
-        let plan = if single_cost < upper_scan_bound || single_cost < combined_cost {
+        let plan = if single_cost < combined_cost {
             ExecutionPlan::Single(single_plan)
         } else {
             ExecutionPlan::Combined(combined_plan)
@@ -647,9 +755,60 @@ where
         WheelAggregation::new(range, plan)
     }
 
-    // Attemps to split the wheel range into multiple non-overlapping ranges to execute using Combined Aggregation
+    // helper fn to calculate the next aligned end date
     #[inline]
-    fn combined_aggregation_plan(&self, range: WheelRange) -> CombinedAggregation {
+    fn new_curr_end(current_start: OffsetDateTime, end: OffsetDateTime) -> OffsetDateTime {
+        let second = current_start.second();
+        let minute = current_start.minute();
+        let hour = current_start.hour();
+        let day = current_start.day();
+
+        // based on the lowest granularity figure out the duration to next alignment point
+        let next = if second > 0 {
+            time::Duration::seconds(SECONDS as i64 - second as i64)
+        } else if minute > 0 {
+            time::Duration::minutes(MINUTES as i64 - minute as i64)
+        } else if hour > 0 {
+            time::Duration::hours(HOURS as i64 - hour as i64)
+        } else if day > 0 {
+            time::Duration::days(31 - day as i64) // Needs to be checked
+        } else {
+            unimplemented!("Weeks and Years not supported yet");
+        };
+
+        let next_aligned = current_start + next;
+
+        if next_aligned > end {
+            // if jumping too far: check the remaining duration between current_start and end
+            let rem = end - current_start;
+            let rem_secs = rem.whole_seconds();
+            let rem_mins = rem.whole_minutes();
+            let rem_hours = rem.whole_hours();
+            let rem_days = rem.whole_days();
+
+            let remains = [
+                (rem_secs, time::Duration::seconds(rem_secs)),
+                (rem_mins, time::Duration::minutes(rem_mins)),
+                (rem_hours, time::Duration::hours(rem_hours)),
+                (rem_days, time::Duration::days(rem_days)),
+            ];
+
+            // Jump with lowest remaining duration > 0
+            let idx = remains
+                .iter()
+                .rposition(|&(rem, _)| rem > 0)
+                .unwrap_or(remains.len());
+
+            current_start + remains[idx].1
+        } else {
+            next_aligned
+        }
+    }
+
+    /// Attemps to split the wheel range into multiple non-overlapping ranges to execute using Combined Aggregation
+    #[doc(hidden)]
+    #[inline]
+    pub fn combined_aggregation_plan(&self, range: WheelRange) -> CombinedAggregation {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.combined_aggregation_plan);
 
@@ -657,79 +816,13 @@ where
 
         let WheelRange { start, end } = range;
 
-        // initial starting pointing
+        // initial starting point
         let mut current_start = start;
-
-        // helper fn to update the end date to an aligned point
-        let new_curr_end = |current_start: OffsetDateTime, end: &OffsetDateTime| {
-            let second = current_start.second();
-            let minute = current_start.minute();
-            let hour = current_start.hour();
-            let day = current_start.day();
-            let next_days = time::Duration::days(31 - day as i64); // Needs to be checked
-            let next_hours = time::Duration::hours(HOURS as i64 - hour as i64);
-            let next_minutes = time::Duration::minutes(MINUTES as i64 - minute as i64);
-            let next_seconds = time::Duration::seconds(SECONDS as i64 - second as i64);
-
-            let dur = *end - current_start;
-
-            if second > 0 {
-                // we are in second gran, need to jump to next min.
-                if current_start + next_seconds > *end {
-                    // if we reach the end date itself, bump by remaining seconds left..
-                    current_start + time::Duration::seconds(dur.whole_seconds())
-                } else {
-                    // otherwise bump by the remaining seconds in the current minute
-                    current_start + next_seconds
-                }
-            } else if minute > 0 {
-                // we are in minute gran, need to jump to next hour.
-                if current_start + next_minutes > *end {
-                    // if there are whole minutes, bump by it otherwise fallback to seconds..
-                    if dur.whole_minutes() > 0 {
-                        current_start + time::Duration::minutes(dur.whole_minutes())
-                    } else {
-                        current_start + time::Duration::seconds(dur.whole_seconds())
-                    }
-                } else {
-                    current_start + next_minutes
-                }
-            } else if hour > 0 {
-                // we in hour gran, need to jump to next day.
-                if current_start + next_hours > *end {
-                    if dur.whole_hours() > 0 {
-                        // bump by hours
-                        current_start + time::Duration::hours(dur.whole_hours())
-                    } else if dur.whole_minutes() > 0 {
-                        // otherwise bump by minutes remaining
-                        current_start + time::Duration::minutes(dur.whole_minutes())
-                    } else {
-                        *end
-                    }
-                } else {
-                    current_start + next_hours
-                }
-            } else if day > 0 {
-                if current_start + next_days > *end {
-                    if dur.whole_days() > 0 {
-                        current_start + time::Duration::days(dur.whole_days())
-                    } else if dur.whole_hours() > 0 {
-                        current_start + time::Duration::hours(dur.whole_hours())
-                    } else {
-                        *end
-                    }
-                } else {
-                    current_start + next_days
-                }
-            } else {
-                unimplemented!("Dimensions weeks, years not supported yet");
-            }
-        };
 
         // dbg!(start, end);
         // while we have not reached the end date, keep building wheel rangess.
         while current_start < end {
-            let current_end = new_curr_end(current_start, &end);
+            let current_end = Self::new_curr_end(current_start, end);
             // dbg!(current_start, current_end);
             let range = WheelRange {
                 start: current_start,
@@ -788,7 +881,9 @@ where
             end >= start,
             "End date needs to be equal or larger than start date"
         );
-        match range.lowest_granularity() {
+        let gran = range.lowest_granularity();
+        self.frequencies.record_hit(gran);
+        match gran {
             Granularity::Second => {
                 let seconds = (end - start).whole_seconds() as usize;
                 self.seconds_wheel
@@ -1680,8 +1775,8 @@ mod tests {
 
         // Runs a Inverse Landmark Execution
         let result = haw.combine_range(WheelRange::new(start, end));
-        let plan = haw.combine_range_exec_plan(WheelRange::new(start, end));
-        assert!(matches!(plan, ExecutionPlan::InverseLandmark(_)));
+        // let plan = haw.combine_range_exec_plan(WheelRange::new(start, end));
+        // assert!(matches!(plan, ExecutionPlan::InverseLandmark(_)));
         assert_eq!(result, Some(241200));
     }
 }

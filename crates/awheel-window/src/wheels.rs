@@ -1,5 +1,5 @@
 use crate::{
-    soe::{SubtractOnEvict, TwoStacks, Window},
+    soe::{TwoStacks, Window},
     state::State,
     util::pairs_space,
     WindowExt,
@@ -107,11 +107,13 @@ impl<A: Aggregator> WindowWheel<A> {
     fn new(time: u64, write_ahead: usize, range: usize, slide: usize, haw_conf: HawConf) -> Self {
         let state = State::new(time, range, slide);
         let pairs = pairs_space(range, slide);
-        let window: Box<dyn Window<A>> = if A::combine_inverse().is_some() {
-            Box::new(SubtractOnEvict::with_capacity(pairs))
-        } else {
-            Box::new(TwoStacks::with_capacity(pairs))
-        };
+        // For now assume always non-invertible (benching reasons)
+        let window = Box::new(TwoStacks::with_capacity(pairs));
+        // let window: Box<dyn Window<A>> = if A::combine_inverse().is_some() {
+        //     Box::new(SubtractOnEvict::with_capacity(pairs))
+        // } else {
+        //     Box::new(TwoStacks::with_capacity(pairs))
+        // };
 
         Self {
             slide,

@@ -99,11 +99,11 @@ impl<A: Aggregator> MaybeWheel<A> {
                 Granularity::Day => diff.whole_days(),
             }) as usize;
 
-            #[cfg(feature = "simd")]
-            {
-                let remainder = slots % A::SIMD_LANES;
-                slots = (slots / A::SIMD_LANES) + remainder;
-            }
+            // #[cfg(feature = "simd")]
+            // {
+            //     let remainder = slots % A::SIMD_LANES;
+            //     slots = (slots / A::SIMD_LANES) + remainder;
+            // }
             Aggregation::Scan(slots)
         }
     }
