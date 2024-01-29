@@ -277,43 +277,16 @@ impl BenchResult {
     }
 }
 
+// 1/3 ratio
 pub const SMALL_RANGE_WINDOWS: [Window; 5] = [
-    //Window::new(Duration::seconds(5), Duration::seconds(2)),
-    Window::new(Duration::seconds(10), Duration::seconds(2)),
-    Window::new(Duration::seconds(20), Duration::seconds(2)),
-    Window::new(Duration::seconds(30), Duration::seconds(2)),
-    Window::new(Duration::seconds(40), Duration::seconds(2)),
-    Window::new(Duration::seconds(60), Duration::seconds(2)),
-];
-
-// 1/3 ratio with increasing range/slide
-
-// Range: 15s, Slide: 5s
-// Range: 30s, Slide: 10s
-// Range: 1m, Slide: 20s
-// Range: 15m, Slide: 5m
-// Range: 30m, Slide: 10m
-// Range: 1hr, Slide: 20m
-
-// 1/6 ratio with increasing range/slide
-
-// Range: 15s, Slide: 3s
-// Range: 30s, Slide: 5s
-// Range: 1m, Slide: 10s
-// Range: 15m, Slide: 150s
-
-// 1/3 small
-/*
-pub const BIG_RANGE_WINDOWS: [Window; 5] = [
-    Window::new(Duration::seconds(3), Duration::seconds(1)),
-    Window::new(Duration::seconds(6), Duration::seconds(3)),
     Window::new(Duration::seconds(15), Duration::seconds(5)),
     Window::new(Duration::seconds(30), Duration::seconds(10)),
     Window::new(Duration::minutes(1), Duration::seconds(20)),
+    Window::new(Duration::minutes(15), Duration::minutes(5)),
+    Window::new(Duration::minutes(30), Duration::minutes(10)),
 ];
-*/
 
-// 1/300
+// 1/300 ratio
 pub const BIG_RANGE_WINDOWS: [Window; 5] = [
     Window::new(Duration::minutes(3), Duration::seconds(1)),
     Window::new(Duration::minutes(15), Duration::seconds(3)),
@@ -321,85 +294,3 @@ pub const BIG_RANGE_WINDOWS: [Window; 5] = [
     Window::new(Duration::minutes(45), Duration::seconds(9)),
     Window::new(Duration::hours(1), Duration::seconds(12)),
 ];
-
-/*
-// 1/6 ratio
-pub const BIG_RANGE_WINDOWS: [Window; 5] = [
-    Window::new(Duration::seconds(12), Duration::seconds(2)),
-    Window::new(Duration::minutes(1), Duration::seconds(10)),
-    Window::new(Duration::minutes(24), Duration::minutes(4)),
-    Window::new(Duration::minutes(48), Duration::minutes(8)),
-    Window::new(Duration::hour(1), Duration::minutes(10)),
-];
-*/
-
-// 1/3 ratio with increasing range/slide
-/*
-pub const BIG_RANGE_WINDOWS: [Window; 6] = [
-    Window::new(Duration::seconds(15), Duration::seconds(5)),
-    Window::new(Duration::seconds(30), Duration::seconds(10)),
-    Window::new(Duration::minutes(1), Duration::seconds(20)),
-    Window::new(Duration::minutes(15), Duration::minutes(5)),
-    Window::new(Duration::minutes(30), Duration::minutes(10)),
-    Window::new(Duration::hours(1), Duration::minutes(20)),
-];
-*/
-
-// 1/6 ratio
-/*
-pub const BIG_RANGE_WINDOWS: [Window; 6] = [
-    Window::new(Duration::seconds(60), Duration::seconds(10)), // 1/6 ratio
-    Window::new(Duration::minutes(6), Duration::minutes(1)),   // 1/6 ratio
-    Window::new(Duration::minutes(12), Duration::minutes(2)),  // 1/6 ratio
-    Window::new(Duration::minutes(24), Duration::minutes(4)),  // 1/6 ratio
-    Window::new(Duration::minutes(48), Duration::minutes(8)),  // 1/6 ratio
-    Window::new(Duration::hours(1), Duration::minutes(10)),    // 1/6 ratio
-];
-*/
-
-// 1/30 ratio
-/*
-pub const BIG_RANGE_WINDOWS: [Window; 6] = [
-    Window::new(Duration::seconds(60), Duration::seconds(2)),
-    Window::new(Duration::minutes(6), Duration::seconds(12)),
-    Window::new(Duration::minutes(12), Duration::seconds(24)),
-    Window::new(Duration::minutes(24), Duration::seconds(48)),
-    Window::new(Duration::minutes(48), Duration::seconds(96)),
-    Window::new(Duration::hours(1), Duration::seconds(120)),
-];
-*/
-
-/*
-pub const BIG_RANGE_WINDOWS: [Window; 6] = [
-    Window::new(Duration::seconds(5), Duration::seconds(2)),
-    Window::new(Duration::seconds(30), Duration::seconds(2)),
-    Window::new(Duration::minutes(1), Duration::seconds(2)),
-    Window::new(Duration::minutes(15), Duration::seconds(2)),
-    Window::new(Duration::minutes(30), Duration::seconds(2)),
-    Window::new(Duration::hours(1), Duration::seconds(2)),
-];
-*/
-
-/*
-// 1/100 ratio
-pub const BIG_RANGE_WINDOWS: [Window; 5] = [
-    //Window::new(Duration::days(1), Duration::seconds(864)),
-    //Window::new(Duration::hours(16), Duration::seconds(576)),
-    Window::new(Duration::minutes(15), Duration::seconds(9)),
-    Window::new(Duration::minutes(30), Duration::seconds(18)),
-    Window::new(Duration::hours(1), Duration::seconds(36)),
-    Window::new(Duration::hours(16), Duration::seconds(576)),
-    Window::new(Duration::days(1), Duration::seconds(864)),
-];
-*/
-
-/*
-// Extreme
-pub const BIG_RANGE_WINDOWS: [Window; 5] = [
-    Window::new(Duration::minutes(1), Duration::seconds(10)),
-    Window::new(Duration::minutes(59), Duration::seconds(10)),
-    Window::new(Duration::hours(1), Duration::seconds(10)),
-    Window::new(Duration::hours(23), Duration::seconds(10)),
-    Window::new(Duration::days(1), Duration::seconds(10)),
-];
-*/
