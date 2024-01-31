@@ -1,6 +1,6 @@
 use super::{combine_or_insert, conf::CompressionPolicy, into_range};
 use crate::Aggregator;
-use core::ops::{Range, RangeBounds};
+use core::ops::{Bound, Range, RangeBounds};
 use zerocopy::{AsBytes, Ref};
 
 #[cfg(not(feature = "std"))]
@@ -271,5 +271,66 @@ impl<A: Aggregator> MutablePartialArray<A> {
 impl<A: Aggregator> AsRef<[A::PartialAggregate]> for MutablePartialArray<A> {
     fn as_ref(&self) -> &[A::PartialAggregate] {
         &self.inner
+    }
+}
+
+/// An event-time indexed array using prefix-sum optimization to answer queries at O(1)
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
+#[derive(Default, Clone, Debug)]
+pub struct PrefixArray<A: Aggregator> {
+    slots: MutablePartialArray<A>,
+    prefix: MutablePartialArray<A>,
+}
+
+impl<A: Aggregator> PrefixArray<A> {
+    fn rebuild_prefix(&mut self) {
+        self.prefix = MutablePartialArray::from_vec(A::build_prefix(self.slots.as_ref()));
+    }
+    pub(crate) fn _from_array(array: MutablePartialArray<A>) -> Self {
+        let prefix = MutablePartialArray::from_vec(A::build_prefix(array.as_ref()));
+        Self {
+            slots: array,
+            prefix,
+        }
+    }
+    pub(crate) fn len(&self) -> usize {
+        self.slots.len()
+    }
+    pub(crate) fn push_front(&mut self, agg: A::PartialAggregate) {
+        self.slots.push_front(agg);
+        self.rebuild_prefix();
+    }
+    pub(crate) fn pop_back(&mut self) {
+        self.slots.pop_back();
+        self.rebuild_prefix();
+    }
+    #[inline]
+    pub(crate) fn get(&self, slot: usize) -> Option<&A::PartialAggregate> {
+        self.slots.get(slot)
+    }
+    #[inline]
+    pub(crate) fn _iter(&self) -> impl Iterator<Item = &A::PartialAggregate> {
+        self.slots.iter()
+    }
+
+    #[inline]
+    pub(crate) fn range_query<R>(&self, range: R) -> Option<A::PartialAggregate>
+    where
+        R: RangeBounds<usize>,
+    {
+        let len = self.prefix.len();
+
+        let start = match range.start_bound() {
+            Bound::Included(&n) => n,
+            Bound::Excluded(&n) => n + 1,
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(&n) => n + 1,
+            Bound::Excluded(&n) => n - 1,
+            Bound::Unbounded => len,
+        };
+        A::prefix_query(self.prefix.as_ref(), start, end)
     }
 }

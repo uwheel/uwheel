@@ -229,6 +229,10 @@ where
             &mut table,
             &read.stats().combined_aggregation,
         );
+
+        add_row("logical plans", &mut table, &read.stats().logical_plans);
+
+        add_row("physical plan", &mut table, &read.stats().physical_plan);
         add_row(
             "combined aggregation plan",
             &mut table,

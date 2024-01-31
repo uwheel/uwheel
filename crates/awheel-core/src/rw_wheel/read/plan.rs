@@ -6,6 +6,29 @@ use alloc::vec::Vec;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 
+#[cfg(feature = "smallvec")]
+pub(crate) type LogicalPlans = smallvec::SmallVec<[LogicalPlan; 4]>;
+#[cfg(not(feature = "smallvec"))]
+pub(crate) type LogicalPlans = Vec<LogicalPlan>;
+
+#[cfg(feature = "smallvec")]
+pub(crate) type WheelRanges = smallvec::SmallVec<[WheelRange; 8]>;
+#[cfg(not(feature = "smallvec"))]
+pub(crate) type WheelRanges = Vec<WheelRange>;
+
+/// Logical Plan Variants
+#[derive(Debug, PartialEq, Clone)]
+pub enum LogicalPlan {
+    /// Execution consisting of a single Wheel Aggregation
+    Single(WheelRange),
+    /// Execution consisting of multiple Wheel Aggregations
+    Combined(WheelRanges),
+    /// Execution can be queried through a landmark window
+    Landmark,
+    /// Execution can be queried through a combination of landmark window + inverse combine
+    InverseLandmark(WheelRange, Option<WheelRanges>),
+}
+
 /// Contains the Execution Plan of a HAW combine range query
 #[derive(Debug, PartialEq, Clone)]
 pub enum ExecutionPlan {
