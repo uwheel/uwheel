@@ -1,5 +1,3 @@
-//use crate::aggregator::PartialAggregateType;
-
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 

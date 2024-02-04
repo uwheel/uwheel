@@ -8,10 +8,9 @@ use core::{
     marker::Copy,
     option::{Option, Option::Some},
 };
-use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
 /// Aggregate State for the [AllAggregator]
-#[derive(AsBytes, FromBytes, FromZeroes, Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct AggState {
@@ -73,35 +72,7 @@ impl AggState {
         }
     }
 }
-impl PartialAggregateType for AggState {
-    type Bytes = [u8; 32];
-    #[inline]
-    fn to_le_bytes(&self) -> Self::Bytes {
-        let mut result = [0; 32];
-
-        result[0..8].copy_from_slice(&self.min.to_le_bytes());
-        result[8..16].copy_from_slice(&self.max.to_le_bytes());
-        result[16..24].copy_from_slice(&self.count.to_le_bytes());
-        result[24..32].copy_from_slice(&self.sum.to_le_bytes());
-
-        result
-    }
-
-    #[inline]
-    fn from_le_bytes(bytes: Self::Bytes) -> Self {
-        let min: f64 = f64::from_le_bytes(bytes[0..8].try_into().unwrap());
-        let max: f64 = f64::from_le_bytes(bytes[8..16].try_into().unwrap());
-        let count: u64 = u64::from_le_bytes(bytes[16..24].try_into().unwrap());
-        let sum: f64 = f64::from_le_bytes(bytes[24..32].try_into().unwrap());
-
-        AggState {
-            min,
-            max,
-            count,
-            sum,
-        }
-    }
-}
+impl PartialAggregateType for AggState {}
 
 impl Ord for AggState {
     fn cmp(&self, other: &Self) -> Ordering {

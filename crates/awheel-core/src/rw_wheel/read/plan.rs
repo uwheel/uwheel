@@ -7,51 +7,56 @@ use alloc::vec::Vec;
 use alloc::boxed::Box;
 
 #[cfg(feature = "smallvec")]
-pub(crate) type LogicalPlans = smallvec::SmallVec<[LogicalPlan; 4]>;
-#[cfg(not(feature = "smallvec"))]
-pub(crate) type LogicalPlans = Vec<LogicalPlan>;
-
-#[cfg(feature = "smallvec")]
 pub(crate) type WheelRanges = smallvec::SmallVec<[WheelRange; 8]>;
 #[cfg(not(feature = "smallvec"))]
 pub(crate) type WheelRanges = Vec<WheelRange>;
+
+#[cfg(feature = "smallvec")]
+pub(crate) type WheelAggregations = smallvec::SmallVec<[WheelAggregation; 8]>;
+#[cfg(not(feature = "smallvec"))]
+pub(crate) type WheelAggregations = Vec<WheelAggregation>;
 
 /// Logical Plan Variants
 #[derive(Debug, PartialEq, Clone)]
 pub enum LogicalPlan {
     /// Execution consisting of a single Wheel Aggregation
-    Single(WheelRange),
+    WheelAggregation(WheelAggregation),
     /// Execution consisting of multiple Wheel Aggregations
-    Combined(WheelRanges),
+    CombinedAggregation(CombinedAggregation),
     /// Execution can be queried through a landmark window
-    Landmark,
+    LandmarkAggregation,
     /// Execution can be queried through a combination of landmark window + inverse combine
-    InverseLandmark(WheelRange, Option<WheelRanges>),
+    InverseLandmarkAggregation(Box<LogicalPlan>),
 }
 
-/// Contains the Execution Plan of a HAW combine range query
-#[derive(Debug, PartialEq, Clone)]
-pub enum ExecutionPlan {
-    /// Execution consisting of a single Wheel Aggregation
-    Single(WheelAggregation),
-    /// Execution consisting of multiple Wheel Aggregations
-    Combined(CombinedAggregation),
-    /// Execution can be queried through a landmark window
-    Landmark,
-    /// Execution can be queried through a combination of landmark window + inverse combine
-    InverseLandmark(Box<ExecutionPlan>),
-}
-
-impl ExecutionPlan {
-    /// Returns the cost of executing the plan
-    pub fn cost(&self) -> usize {
+impl LogicalPlan {
+    /// Returns `true``if logical plan is a single-wheel prefix sum or landmark`
+    #[inline]
+    pub fn is_prefix_or_landmark(&self) -> bool {
         match self {
-            ExecutionPlan::Single(w) => w.cost(),
-            ExecutionPlan::Combined(c) => c.cost(),
-            ExecutionPlan::Landmark => 6,
-            ExecutionPlan::InverseLandmark(w) => w.cost() + 6 + 2, // 6 Wheels + 2 combine operations at end
+            LogicalPlan::WheelAggregation(w) => w.is_prefix(),
+            LogicalPlan::LandmarkAggregation => true,
+            _ => false,
         }
     }
+    /// Returns the expected aggregate cost |⊕| of the plan
+    pub fn cost(&self) -> usize {
+        match self {
+            LogicalPlan::WheelAggregation(w) => w.cost(),
+            LogicalPlan::CombinedAggregation(c) => c.cost(),
+            LogicalPlan::LandmarkAggregation => 6,
+            LogicalPlan::InverseLandmarkAggregation(lp) => lp.cost() + 6 + 2, // 6 Wheels + 2 combine operations at end
+        }
+    }
+}
+
+/// Contains physical execution variants
+#[derive(Debug, PartialEq, Clone)]
+pub enum ExecutionPlan {
+    /// Sequential Aggregation
+    Seq(LogicalPlan),
+    /// Parallel Aggregation
+    Parallel(LogicalPlan),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -99,11 +104,6 @@ impl Aggregation {
         }
     }
 }
-
-#[cfg(feature = "smallvec")]
-pub(crate) type WheelAggregations = smallvec::SmallVec<[WheelAggregation; 8]>;
-#[cfg(not(feature = "smallvec"))]
-pub(crate) type WheelAggregations = Vec<WheelAggregation>;
 
 /// A Combined Aggregation Execution plan consisting of multiple Wheel Aggregations
 #[derive(Debug, Default, Clone, PartialEq)]

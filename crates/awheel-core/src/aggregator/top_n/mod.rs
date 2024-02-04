@@ -45,6 +45,16 @@ where
     type PartialAggregate = TopNState<Key, N, A>;
     type Aggregate = TopNState<Key, N, A>;
 
+    #[cfg(feature = "simd")]
+    const SIMD_LANES: usize = 0;
+    #[cfg(feature = "simd")]
+    type CombineSimd = fn(&[Self::PartialAggregate]) -> Self::PartialAggregate;
+
+    type CombineInverse =
+        fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate;
+
+    const PREFIX_SUPPORT: bool = false;
+
     #[inline]
     fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
         let mut map = TopNMap::default();
@@ -74,7 +84,7 @@ where
 mod tests {
     use crate::{
         aggregator::{all::AllAggregator, sum::U64SumAggregator, top_n::TopNAggregator},
-        time::NumericalDuration,
+        time_internal::NumericalDuration,
         Entry,
         RwWheel,
     };

@@ -4,8 +4,6 @@ use core::{
     marker::{Copy, Send},
 };
 
-use zerocopy::{AsBytes, FromBytes};
-
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
@@ -13,8 +11,8 @@ use alloc::vec::Vec;
 #[cfg(feature = "all")]
 pub mod all;
 /// Incremental AVG aggregation
-// #[cfg(feature = "avg")]
-// pub mod avg;
+#[cfg(feature = "avg")]
+pub mod avg;
 /// Incremental MAX aggregation
 #[cfg(feature = "max")]
 pub mod max;
@@ -25,9 +23,9 @@ pub mod min;
 #[cfg(feature = "sum")]
 pub mod sum;
 
-// #[cfg(feature = "top_n")]
-// Top-N Aggregation using a nested Aggregator which has a PartialAggregate that implements `Ord`
-// pub mod top_n;
+#[cfg(feature = "top_n")]
+/// Top-N Aggregation using a nested Aggregator which has a PartialAggregate that implements `Ord`
+pub mod top_n;
 
 /// Aggregation interface that library users must implement to use awheel
 pub trait Aggregator: Default + Debug + Clone + 'static {
@@ -204,95 +202,30 @@ impl<T> MutablePartialAggregateType for T where
 
 /// Trait bounds for a partial aggregate type
 #[cfg(not(feature = "serde"))]
-pub trait PartialAggregateBounds:
-    Default + Debug + Clone + Copy + Send + AsBytes + FromBytes
-{
-}
+pub trait PartialAggregateBounds: Default + Debug + Clone + Copy + Send {}
 
 /// Trait bounds for a partial aggregate type
 #[cfg(feature = "serde")]
 pub trait PartialAggregateBounds:
-    Default
-    + Debug
-    + Clone
-    + Copy
-    + Send
-    + AsBytes
-    + FromBytes
-    + serde::Serialize
-    + for<'a> serde::Deserialize<'a>
+    Default + Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
 {
 }
 
 #[cfg(not(feature = "serde"))]
-impl<T> PartialAggregateBounds for T where
-    T: Default + Debug + Clone + Copy + Send + AsBytes + FromBytes
-{
-}
+impl<T> PartialAggregateBounds for T where T: Default + Debug + Clone + Copy + Send {}
 
 #[cfg(feature = "serde")]
 impl<T> PartialAggregateBounds for T where
-    T: Default
-        + Debug
-        + Clone
-        + Copy
-        + Send
-        + AsBytes
-        + FromBytes
-        + serde::Serialize
-        + for<'a> serde::Deserialize<'a>
-        + 'static
+    T: Default + Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
 {
 }
 
 /// An immutable aggregate type
-pub trait PartialAggregateType: PartialAggregateBounds {
-    /// Type denoting its representation as bytes.
-    /// This is `[u8; N]` where `N = size_of::<T>`.
-    type Bytes: AsRef<[u8]>
-        + core::ops::Index<usize, Output = u8>
-        + core::ops::IndexMut<usize, Output = u8>
-        + for<'a> TryFrom<&'a [u8]>
-        + core::fmt::Debug
-        + Default;
-
-    /// To bytes in little endian
-    fn to_le_bytes(&self) -> Self::Bytes;
-
-    /// From bytes in little endian
-    fn from_le_bytes(bytes: Self::Bytes) -> Self;
-
-    // /// To bytes in big endian
-    // fn to_be_bytes(&self) -> Self::Bytes;
-
-    // /// From bytes in big endian
-    // fn from_be_bytes(bytes: Self::Bytes) -> Self;
-}
+pub trait PartialAggregateType: PartialAggregateBounds {}
 
 macro_rules! primitive_partial {
     ($type:ty) => {
-        impl PartialAggregateType for $type {
-            type Bytes = [u8; core::mem::size_of::<Self>()];
-            #[inline]
-            fn to_le_bytes(&self) -> Self::Bytes {
-                Self::to_le_bytes(*self)
-            }
-
-            #[inline]
-            fn from_le_bytes(bytes: Self::Bytes) -> Self {
-                Self::from_le_bytes(bytes)
-            }
-
-            // #[inline]
-            // fn from_be_bytes(bytes: Self::Bytes) -> Self {
-            //     Self::from_be_bytes(bytes)
-            // }
-            // #[inline]
-            // fn to_be_bytes(&self) -> Self::Bytes {
-            //     Self::to_be_bytes(*self)
-            // }
-            // }
-        }
+        impl PartialAggregateType for $type {}
     };
 }
 
@@ -309,62 +242,23 @@ primitive_partial!(f64);
 primitive_partial!(i128);
 primitive_partial!(u128);
 
-// macro_rules! tuple_partial {
-//     ($t1:ty, $t2:ty) => {
-//         impl PartialAggregateType for ($t1, $t2) {
-//             type Bytes = [u8; core::mem::size_of::<Self>()];
-//             #[inline]
-//             fn to_le_bytes(&self) -> Self::Bytes {
-//                 // Self::to_le_bytes(*self)
-//                 unimplemented!();
-//             }
+macro_rules! tuple_partial {
+    ( $( $name:ident )+ ) => {
+        impl<$($name: PartialAggregateType),+> PartialAggregateType for ($($name,)+)
+        {
+        }
+    };
+}
 
-//             #[inline]
-//             fn from_le_bytes(_bytes: Self::Bytes) -> Self {
-//                 // Self::from_le_bytes(bytes)
-//                 unimplemented!();
-//             }
-
-//             // #[inline]
-//             // fn from_be_bytes(bytes: Self::Bytes) -> Self {
-//             //     Self::from_be_bytes(bytes)
-//             // }
-//             // #[inline]
-//             // fn to_be_bytes(&self) -> Self::Bytes {
-//             //     Self::to_be_bytes(*self)
-//             // }
-//             // }
-//         }
-//     };
-// }
-
-// tuple_partial!(u16, u16);
-// tuple_partial!(u32, u32);
-// tuple_partial!(u64, u64);
-// tuple_partial!(f32, f32);
-// tuple_partial!(f64, f64);
-// tuple_partial!(i16, i16);
-// tuple_partial!(i32, i32);
-// tuple_partial!(i64, i64);
-// tuple_partial!(i128, i128);
-
-// macro_rules! tuple_partial {
-//     ( $( $name:ident )+ ) => {
-//         impl<$($name: PartialAggregateType),+> PartialAggregateType for ($($name,)+)
-//         {
-//         }
-//     };
-// }
-
-// tuple_partial!(A);
-// tuple_partial!(A B);
-// tuple_partial!(A B C);
-// tuple_partial!(A B C D);
-// tuple_partial!(A B C D E);
-// tuple_partial!(A B C D E F);
-// tuple_partial!(A B C D E F G);
-// tuple_partial!(A B C D E F G H);
-// tuple_partial!(A B C D E F G H I);
-// tuple_partial!(A B C D E F G H I J);
-// tuple_partial!(A B C D E F G H I J K);
-// tuple_partial!(A B C D E F G H I J K L);
+tuple_partial!(A);
+tuple_partial!(A B);
+tuple_partial!(A B C);
+tuple_partial!(A B C D);
+tuple_partial!(A B C D E);
+tuple_partial!(A B C D E F);
+tuple_partial!(A B C D E F G);
+tuple_partial!(A B C D E F G H);
+tuple_partial!(A B C D E F G H I);
+tuple_partial!(A B C D E F G H I J);
+tuple_partial!(A B C D E F G H I J K);
+tuple_partial!(A B C D E F G H I J K L);

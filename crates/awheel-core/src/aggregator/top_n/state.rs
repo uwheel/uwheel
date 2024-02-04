@@ -65,16 +65,6 @@ where
     A: Aggregator + Copy,
     <A as Aggregator>::PartialAggregate: Ord + Copy,
 {
-    type Bytes = [u8; 16]; // FIX
-    #[inline]
-    fn to_le_bytes(&self) -> Self::Bytes {
-        unimplemented!();
-    }
-
-    #[inline]
-    fn from_le_bytes(_bytes: Self::Bytes) -> Self {
-        unimplemented!();
-    }
 }
 
 impl<Key, const N: usize, A> Deref for TopNState<Key, N, A>

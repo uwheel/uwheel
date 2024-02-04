@@ -7,6 +7,9 @@ pub mod hierarchical;
 
 mod plan;
 
+#[cfg(feature = "cache")]
+mod cache;
+
 #[cfg(feature = "profiler")]
 pub(crate) mod stats;
 #[cfg(feature = "timer")]

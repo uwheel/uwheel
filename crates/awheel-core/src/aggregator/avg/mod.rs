@@ -13,6 +13,15 @@ macro_rules! avg_impl {
             type MutablePartialAggregate = $pa;
             type Aggregate = $type;
             type PartialAggregate = $pa;
+
+            const PREFIX_SUPPORT: bool = true;
+            #[cfg(feature = "simd")]
+            const SIMD_LANES: usize = 0;
+            #[cfg(feature = "simd")]
+            type CombineSimd = fn(&[$pa]) -> $pa;
+
+            type CombineInverse = fn($pa, $pa) -> $pa;
+
             fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
                 (input, 1 as $type)
             }
@@ -35,18 +44,6 @@ macro_rules! avg_impl {
                 let sum = a.0 + b.0;
                 let count = a.1 + b.1;
                 (sum, count)
-            }
-
-            #[cfg(feature = "simd")]
-            #[inline]
-            fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
-                let sum_arr: Vec<_> = slice.iter().map(|(sum, _)| sum).copied().collect();
-                let count_arr: Vec<_> = slice.iter().map(|(_, count)| count).copied().collect();
-
-                let sum = arrow2::compute::aggregate::sum_slice(&sum_arr);
-                let count = arrow2::compute::aggregate::sum_slice(&count_arr);
-
-                Some((sum, count))
             }
 
             #[inline]

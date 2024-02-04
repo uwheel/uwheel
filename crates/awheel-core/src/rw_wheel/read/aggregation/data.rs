@@ -17,9 +17,6 @@ impl<A: Aggregator> Data<A> {
     pub fn create_prefix_array() -> Self {
         Self::PrefixArray(PrefixArray::default())
     }
-    pub fn create_array() -> Self {
-        Self::Array(MutablePartialArray::default())
-    }
     pub fn create_array_with_capacity(capacity: usize) -> Self {
         Self::Array(MutablePartialArray::with_capacity(capacity))
     }

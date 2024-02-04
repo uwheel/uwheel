@@ -45,11 +45,6 @@ use self::{
     data::Data,
 };
 
-/// File format identifier ("WHEEL")
-const MAGIC_NUMBER: [u8; 5] = [0x57, 0x48, 0x45, 0x45, 0x4C];
-/// Wheel version
-const VERSION: u8 = 1;
-
 /// Combine partial aggregates or insert new entry
 #[inline]
 pub fn combine_or_insert<A: Aggregator>(
@@ -168,15 +163,15 @@ impl<A: Aggregator> AggregationWheel<A> {
         let num_slots = crate::capacity_to_slots!(capacity);
 
         // Need to at least hold "capacity" slots.
-        let retention = if let RetentionPolicy::KeepWithLimit(limit) = conf.retention {
-            if limit < capacity {
-                RetentionPolicy::KeepWithLimit(capacity)
-            } else {
-                conf.retention
-            }
-        } else {
-            conf.retention
-        };
+        // let retention = if let RetentionPolicy::KeepWithLimit(limit) = conf.retention {
+        //     if limit < capacity {
+        //         RetentionPolicy::KeepWithLimit(capacity)
+        //     } else {
+        //         conf.retention
+        //     }
+        // } else {
+        //     conf.retention
+        // };
 
         // sanity check
         let data = if conf.prefix_sum {
@@ -197,7 +192,7 @@ impl<A: Aggregator> AggregationWheel<A> {
             tick_size_ms: conf.tick_size_ms,
             drill_down: conf.drill_down,
             compression: conf.compression,
-            retention,
+            retention: conf.retention,
             rotation_count: 0,
             #[cfg(test)]
             total_ticks: 0,
@@ -348,7 +343,7 @@ impl<A: Aggregator> AggregationWheel<A> {
         if !self.data.is_empty() && self.retention.should_drop() {
             self.data.pop_back();
         } else if let RetentionPolicy::KeepWithLimit(limit) = self.retention {
-            if self.data.len() > limit {
+            if self.data.len() > self.capacity + limit {
                 self.data.pop_back();
             }
         };
@@ -403,24 +398,9 @@ impl<A: Aggregator> AggregationWheel<A> {
 
     #[inline]
     #[doc(hidden)]
-    pub fn insert_slot(&mut self, mut slot: WheelSlot<A>) {
+    pub fn insert_slot(&mut self, slot: WheelSlot<A>) {
         // update roll-up aggregates
         self.insert_head(slot.total);
-
-        // if this wheel is configured to store data then update accordingly.
-        if self.retention.should_keep() {
-            // If this wheel should not maintain drill-down slots then make sure it is cleared.
-            if !self.drill_down {
-                slot.drill_down_slots = None;
-            }
-
-            // if there is a configured limit then check it
-            if let RetentionPolicy::KeepWithLimit(limit) = self.retention {
-                if self.data.len() > limit {
-                    self.data.pop_back();
-                }
-            }
-        }
     }
 
     /// Merges a vector of wheels in parallel into an AggregationWheel
@@ -527,206 +507,12 @@ impl<A: Aggregator> AggregationWheel<A> {
     #[inline]
     pub fn is_full(&self) -> bool {
         self.data.len() >= self.capacity
-        // let len = self.slots.len();
-        // + 1 as we want to maintain num_slots of history at all times
-        // len == self.capacity + 1
     }
 
     #[cfg(feature = "profiler")]
     /// Returns a reference to the stats of the [AggregationWheel]
     pub fn stats(&self) -> &Stats {
         &self.stats
-    }
-
-    /// Turn wheel into bytes
-    pub fn as_bytes(&self) -> Vec<u8> {
-        // let mut bytes: Vec<u8> = Vec::new();
-        // // insert header
-        // // Header (5b MAGIC NUMBER) + (1b VERSION)
-        // bytes.extend_from_slice(&MAGIC_NUMBER);
-        // bytes.push(VERSION);
-
-        // // wheel metadata
-        // // fn get_type_name<T>() -> &'static str {
-        // //     let type_str = core::any::type_name::<T>();
-        // //     let parts: Vec<&str> = type_str.split("::").collect();
-        // //     parts.last().copied().unwrap_or(type_str)
-        // // }
-        // // let aggregator_id = get_type_name::<A>();
-        // // dbg!(aggregator_id);
-
-        // let watermark = self.watermark.to_le_bytes();
-        // let rotation_count = (self.rotation_count as u32).to_le_bytes();
-        // let capacity = (self.capacity as u32).to_le_bytes();
-        // let partial_size = (core::mem::size_of::<A::PartialAggregate>() as u32).to_le_bytes();
-        // let drill_down = self.drill_down as u8;
-        // let tick_size_ms = (self.tick_size_ms as u32).to_le_bytes();
-
-        // // metadata
-        // bytes.extend_from_slice(&watermark);
-        // bytes.extend_from_slice(&rotation_count);
-        // bytes.extend_from_slice(&capacity);
-        // bytes.extend_from_slice(&partial_size);
-        // bytes.extend_from_slice(&tick_size_ms);
-        // bytes.push(drill_down);
-        // // bytes.extend_from_slice(&self.retention.to_bytes());
-        // // bytes.extend_from_slice(&self.compression.to_bytes());
-
-        // // Chunk for roll-up slots
-
-        // let (data, is_compressed) = self.slots.serialize_with_policy(self.compression);
-        // let data_size = (data.len() as u32).to_le_bytes();
-
-        // bytes.push(is_compressed as u8); // is_compressed (1b)
-        // bytes.extend_from_slice(&(self.slots.len() as u32).to_le_bytes()); // slots (4b)
-        // bytes.extend_from_slice(&data_size); // data_size (4b)
-        // bytes.extend_from_slice(&data); // data (Nb)
-
-        // // Chunk for optional drill-down slots
-        // // NOTE: todo
-
-        // bytes
-        unimplemented!();
-    }
-
-    /// Convert bytes to a wheel
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        // Check if there are enough bytes to read the header
-        if bytes.len() < 6 {
-            return None;
-        }
-
-        // Read the header
-        let magic_number = &bytes[0..MAGIC_NUMBER.len()];
-        let version = u8::from_le_bytes(bytes[5..6].try_into().unwrap());
-        // dbg!((magic_number, version));
-
-        // Check if the magic number and version match your expectations
-        if magic_number != MAGIC_NUMBER || version != VERSION {
-            return None;
-        }
-        let mut offset = 6;
-        let watermark = u64::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-            bytes[offset + 4],
-            bytes[offset + 5],
-            bytes[offset + 6],
-            bytes[offset + 7],
-        ]);
-        offset += 8;
-        // let watermark = u64::from_le_bytes(bytes[offset..offset].try_into().unwrap());
-        // dbg!(watermark);
-
-        let rotation_count = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-
-        offset += 4;
-
-        let capacity = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-
-        offset += 4;
-
-        let _partial_size = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-
-        offset += 4;
-
-        let tick_size_ms = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-
-        offset += 4;
-
-        let drill_down = u8::from_le_bytes([bytes[offset]]);
-
-        offset += 1;
-
-        // Chunk
-        let is_compressed = u8::from_le_bytes([bytes[offset]]);
-
-        offset += 1;
-
-        let _slots = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-
-        offset += 4;
-
-        let data_size = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-
-        offset += 4;
-
-        // dbg!((
-        //     watermark,
-        //     capacity,
-        //     partial_size,
-        //     rotation_count,
-        //     tick_size_ms,
-        //     drill_down,
-        //     is_compressed,
-        //     slots,
-        //     data_size
-        // ));
-
-        let _slots = {
-            if is_compressed == 1 {
-                // decompress
-                let slots: MutablePartialArray<A> = MutablePartialArray::try_decompress(
-                    &bytes[offset..offset + data_size as usize],
-                );
-                slots
-            } else {
-                let slots: MutablePartialArray<A> =
-                    MutablePartialArray::from_bytes(&bytes[offset..offset + data_size as usize]);
-                slots
-            }
-        };
-
-        Some(Self {
-            capacity: capacity as usize,
-            num_slots: capacity as usize,
-            rotation_count: rotation_count as usize,
-            watermark,
-            data: Data::create_array(),
-            tick_size_ms: tick_size_ms as u64,
-            total: None,
-            compression: Default::default(),
-            retention: Default::default(),
-            drill_down: drill_down != 0,
-            drill_down_slots: Default::default(),
-            prefix_sum: false,
-            #[cfg(test)]
-            total_ticks: 0,
-            #[cfg(feature = "profiler")]
-            stats: Stats::default(),
-        })
     }
 }
 
@@ -759,7 +545,7 @@ mod tests {
     use super::*;
     use crate::{
         aggregator::{min::U64MinAggregator, sum::U64SumAggregator},
-        rw_wheel::read::{aggregation::array::PartialArray, hierarchical::HOUR_TICK_MS},
+        rw_wheel::read::hierarchical::HOUR_TICK_MS,
     };
 
     #[test]
@@ -821,121 +607,26 @@ mod tests {
     }
 
     #[test]
-    fn mutable_partial_array_to_ref() {
-        let mut array = MutablePartialArray::<U64SumAggregator>::default();
+    fn retention_keep_test() {
+        let conf = WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
+        let mut wheel = AggregationWheel::<U64SumAggregator>::new(conf);
 
-        for i in 0..100 {
-            array.push_front(i);
+        for i in 0..60 {
+            wheel.insert_slot(WheelSlot::with_total(Some(i)));
+            wheel.tick();
         }
-        let bytes = array.as_bytes();
-
-        let partial_arr: PartialArray<'_, U64SumAggregator> = PartialArray::from_bytes(bytes);
-        assert_eq!(partial_arr.combine_range(..), Some(4950));
+        assert_eq!(wheel.total_slots(), 60);
     }
+    #[test]
+    fn retention_keep_with_limit_test() {
+        let conf = WheelConf::new(HOUR_TICK_MS, 24)
+            .with_retention_policy(RetentionPolicy::KeepWithLimit(10));
+        let mut wheel = AggregationWheel::<U64SumAggregator>::new(conf);
 
-    // #[test]
-    // fn agg_wheel_merge_test() {
-    //     let conf = WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
-    //     let mut wheel = AggregationWheel::<U64SumAggregator>::new(conf);
-    //     let mut wheel_two = AggregationWheel::<U64SumAggregator>::new(conf);
-
-    //     for i in 0..1000 {
-    //         wheel.insert_slot(WheelSlot::with_total(Some(i)));
-    //         wheel.tick();
-    //         wheel_two.insert_slot(WheelSlot::with_total(Some(i)));
-    //         wheel_two.tick();
-    //     }
-
-    //     assert_eq!(wheel.aggregate(..), Some(499500));
-    //     assert_eq!(wheel.aggregate(..2), Some(1997));
-
-    //     // merge the second wheel into wheel one and confirm results
-    //     wheel.merge(&wheel_two);
-
-    //     assert_eq!(wheel.aggregate(..), Some(499500 * 2));
-    //     assert_eq!(wheel.aggregate(..2), Some(1997 * 2));
-    // }
-
-    // #[test]
-    // fn agg_wheel_encode_decode_test() {
-    //     let conf = WheelConf::new(HOUR_TICK_MS, 24)
-    //         .with_retention_policy(RetentionPolicy::Keep)
-    //         .with_compression_policy(conf::CompressionPolicy::Always);
-    //     let mut wheel = AggregationWheel::<U64SumAggregator>::new(conf);
-
-    //     for i in 0..1000 {
-    //         wheel.insert_slot(WheelSlot::with_total(Some(i)));
-    //         wheel.tick();
-    //     }
-    //     assert_eq!(wheel.aggregate(..), Some(499500));
-    //     let bytes = wheel.as_bytes();
-    //     let decoded: Option<AggregationWheel<U64SumAggregator>> =
-    //         AggregationWheel::from_bytes(&bytes);
-    //     assert!(decoded.is_some());
-    //     assert_eq!(decoded.unwrap().aggregate(..), Some(499500));
-
-    //     let slots = wheel.slots.as_bytes().to_vec();
-    //     let partial: PartialArray<'_, U64SumAggregator> = PartialArray::from_bytes(&slots);
-    //     wheel.merge_from_ref(partial);
-    //     assert_eq!(wheel.aggregate(..), Some(499500 * 2));
-    // }
-
-    //     #[test]
-    //     fn overflow_keep_test() {
-    //         let conf = WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
-    //         let mut wheel = AggregationWheel::<U64SumAggregator>::new(conf);
-
-    //         for i in 0..60 {
-    //             wheel.insert_slot(WheelSlot::with_total(Some(i)));
-    //             wheel.tick();
-    //         }
-    //         wheel.slotz.len()
-    //         assert_eq!(wheel.len(), 24);
-    //         assert_eq!(wheel.table().len(), 60);
-    //     }
-    //     #[test]
-    //     fn overflow_keep_with_limit_test() {
-    //         let conf = WheelConf::new(HOUR_TICK_MS, 24)
-    //             .with_retention_policy(RetentionPolicy::KeepWithLimit(10));
-    //         let mut wheel = AggregationWheel::<U64SumAggregator>::new(conf);
-
-    //         for i in 0..60 {
-    //             wheel.insert_slot(WheelSlot::with_total(Some(i)));
-    //             wheel.tick();
-    //         }
-    //         assert_eq!(wheel.len(), 24);
-    //         assert_eq!(wheel.table().len(), 10);
-    //     }
-
-    //     #[test]
-    //     fn downsample_test() {
-    //         let seconds_conf = WheelConf::new(SECOND_TICK_MS, 60)
-    //             .with_retention_policy(RetentionPolicy::Keep)
-    //             .with_drill_down(true);
-    //         let minutes_conf = WheelConf::new(MINUTE_TICK_MS, 60)
-    //             .with_retention_policy(RetentionPolicy::Keep)
-    //             .with_drill_down(true);
-
-    //         let haw_conf = HawConf::default()
-    //             .with_seconds(seconds_conf)
-    //             .with_minutes(minutes_conf);
-
-    //         let options = Options::default().with_haw_conf(haw_conf);
-    //         let mut wheel = RwWheel::<U64SumAggregator>::with_options(0, options);
-
-    //         for _i in 0..10800 {
-    //             // 3 hours
-    //             wheel.insert(Entry::new(1, wheel.watermark()));
-    //             use crate::time::NumericalDuration;
-    //             wheel.advance(1.seconds());
-    //         }
-
-    //         let result = wheel
-    //             .read()
-    //             .as_ref()
-    //             .minutes_unchecked()
-    //             .table()
-    //             .downsample(0..2, 0..8);
-    //         assert_eq!(result, vec![Some(8), Some(8)]);
-    //     }
+        for i in 0..60 {
+            wheel.insert_slot(WheelSlot::with_total(Some(i)));
+            wheel.tick();
+        }
+        assert_eq!(wheel.total_slots(), 24 + 10);
+    }
 }

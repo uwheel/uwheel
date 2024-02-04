@@ -31,6 +31,7 @@ profiler = ["std", "awheel-core/profiler"]
 timer = ["awheel-core/timer"]
 simd = ["awheel-core/simd", "std"]
 pco = ["awheel-core/pco", "std"]
+hints = ["awheel-core/hints"]
 
 [dependencies]
 awheel-core = { workspace = true, default-features = false }

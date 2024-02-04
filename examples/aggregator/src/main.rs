@@ -4,7 +4,6 @@ use awheel::{
     Entry,
     RwWheel,
 };
-use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
 /// Our user-defined Aggregator capturing the AVG wind speed and temperature of a sensor device.
 #[derive(Clone, Debug, Default)]
@@ -18,7 +17,7 @@ pub struct RawData {
 }
 
 /// Partial Aggregate used (sum + count) in order to calculate AVG
-#[derive(Clone, PartialEq, Debug, Default, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, PartialEq, Debug, Default, Copy)]
 #[repr(C)]
 pub struct PartialAvg {
     count: f64,
@@ -36,7 +35,7 @@ impl PartialAvg {
 }
 
 /// Partial Aggregate State for 2 attributes (Wind speed + Temperature)
-#[derive(Clone, PartialEq, Default, Debug, Copy, AsBytes, FromZeroes, FromBytes)]
+#[derive(Clone, PartialEq, Default, Debug, Copy)]
 #[repr(C)]
 pub struct PartialAggregate {
     wind_speed: PartialAvg,
@@ -99,19 +98,7 @@ impl PartialAggregate {
 }
 
 // Need to implement PartialAggregateType for our custom struct
-impl PartialAggregateType for PartialAggregate {
-    type Bytes = [u8; std::mem::size_of::<Self>()];
-
-    #[inline]
-    fn to_le_bytes(&self) -> Self::Bytes {
-        unimplemented!();
-    }
-
-    #[inline]
-    fn from_le_bytes(_bytes: Self::Bytes) -> Self {
-        unimplemented!();
-    }
-}
+impl PartialAggregateType for PartialAggregate {}
 
 /// Lowered Aggregate State
 #[derive(Debug, Copy, Clone)]

@@ -1,7 +1,6 @@
-use super::{combine_or_insert, conf::CompressionPolicy, into_range};
+use super::{combine_or_insert, into_range};
 use crate::Aggregator;
 use core::ops::{Bound, Range, RangeBounds};
-use zerocopy::{AsBytes, Ref};
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -18,14 +17,6 @@ impl<'a, A: Aggregator> AsRef<[A::PartialAggregate]> for PartialArray<'a, A> {
 }
 
 impl<'a, A: Aggregator> PartialArray<'a, A> {
-    /// Creates a PartialArray from a byte-slice
-    pub fn from_bytes(bytes: &'a [u8]) -> Self {
-        Self {
-            arr: Ref::<_, [A::PartialAggregate]>::new_slice(bytes)
-                .unwrap()
-                .into_slice(),
-        }
-    }
     /// Returns the true if the array is empty
     pub fn is_empty(&self) -> bool {
         self.len() == 0
@@ -104,43 +95,6 @@ pub struct MutablePartialArray<A: Aggregator> {
 }
 
 impl<A: Aggregator> MutablePartialArray<A> {
-    /// Attempts to compress the array into bytes
-    pub fn try_compress(&self) -> (Vec<u8>, bool) {
-        match A::compress(&self.inner) {
-            Some(compressed) => (compressed, true),
-            None => (self.as_bytes().to_vec(), false),
-        }
-    }
-    /// Attemps to docompress the given bytes into a MutablePartialArray
-    pub fn try_decompress(bytes: &[u8]) -> Self {
-        let partials = A::decompress(bytes).unwrap();
-        Self { inner: partials }
-    }
-
-    /// Serializes the array with the given policy and returns whether it was actually compressed
-    pub fn serialize_with_policy(&self, policy: CompressionPolicy) -> (Vec<u8>, bool) {
-        match policy {
-            CompressionPolicy::Always => self.try_compress(),
-            CompressionPolicy::After(limit) if self.len() >= limit => self.try_compress(),
-            _ => (self.as_bytes().to_vec(), false),
-        }
-    }
-
-    /// Encodes the array to bytes
-    pub fn as_bytes(&self) -> &[u8] {
-        self.inner.as_bytes()
-    }
-
-    /// Decode wheel from bytes
-    pub fn from_bytes(bytes: &[u8]) -> Self {
-        let inner = Ref::<_, [A::PartialAggregate]>::new_slice(bytes)
-            .unwrap()
-            .into_slice()
-            .to_vec();
-
-        Self::from_vec(inner)
-    }
-
     /// Creates an array with pre-allocated capacity
     pub fn with_capacity(capacity: usize) -> Self {
         Self {

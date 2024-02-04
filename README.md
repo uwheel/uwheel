@@ -2,15 +2,15 @@
   <img width="300" height="300" src="assets/logo.png">
 </p>
 
-# awheel
+# µWheel
 
-awheel (aggregation wheel) is a lightweight index for unified stream and temporal warehousing.
+µWheel is an Event-driven Aggregate Management System.
 
 Features:
 
 - Versatile
-    - OLAP (Roll-ups, Drill-downs)
-    - Stream Analytics
+    - Event-driven Stream Analytics
+    - Temporal Warehousing
     - Time-Series Analysis
 - Lightweight
     - Pre-aggregation
@@ -20,15 +20,10 @@ Features:
     - Decoupled write and read paths
     - High-throughput ingestion
     - Low-latency queries
+- Embeddable
+    - ``#[no_std]`` compatible (requires ``alloc``)
+    - WASM friendly
 
-## Use cases
-
-- Streaming Window Aggregation
-- Index for speeding up temporal OLAP queries
-- Analytics at the edge
-    - WASM + ``#[no_std]`` compatible
-    - Low memory footprint
-    - Serializable and highly compressible
 
 ## Aggregation Framework
 
