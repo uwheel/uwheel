@@ -83,6 +83,10 @@ where
     pub fn remaining_ticks(&self) -> u64 {
         self.inner.read().remaining_ticks()
     }
+    #[doc(hidden)]
+    pub fn set_optimizer_hints(&self, hints: bool) {
+        self.inner.write().set_optimizer_hints(hints);
+    }
 
     /// Returns Duration that represents where the wheel currently is in its cycle
     #[inline]

@@ -11,7 +11,7 @@ use awheel::{
     RwWheel,
 };
 use clap::{ArgEnum, Parser};
-use duckdb::Result;
+use duckdb::{arrow::datatypes::ArrowNativeTypeOp, Result};
 use hdrhistogram::Histogram;
 use minstant::Instant;
 use std::{fs::File, time::Duration};
@@ -172,7 +172,7 @@ fn run(args: &Args) -> Vec<Run> {
     let mut fiba_4 = FiBA4::default();
     let mut fiba_8 = FiBA8::default();
 
-    // Prepare AggregateWheels
+    // Prepare μWheel
     let mut haw_conf = HawConf::default();
     haw_conf.seconds.set_retention_policy(RetentionPolicy::Keep);
     haw_conf.minutes.set_retention_policy(RetentionPolicy::Keep);
@@ -209,6 +209,7 @@ fn run(args: &Args) -> Vec<Run> {
         // Generate Q2
 
         let q2_queries_seconds = QueryGenerator::generate_q2_seconds(total_queries, watermark);
+        let q2_queries_seconds_hints = q2_queries_seconds.clone();
         let q2_queries_seconds_duckdb = q2_queries_seconds.clone();
         let q2_queries_seconds_btree = q2_queries_seconds.clone();
         let q2_queries_fiba_4 = q2_queries_seconds.clone();
@@ -217,6 +218,7 @@ fn run(args: &Args) -> Vec<Run> {
         // Q2 Minutes
 
         let q2_queries_minutes = QueryGenerator::generate_q2_minutes(total_queries, watermark);
+        let q2_queries_minutes_hints = q2_queries_minutes.clone();
         let q2_queries_minutes_duckdb = q2_queries_minutes.clone();
         let q2_queries_minutes_btree = q2_queries_minutes.clone();
         let q2_queries_minutes_fiba_4 = q2_queries_minutes.clone();
@@ -225,6 +227,7 @@ fn run(args: &Args) -> Vec<Run> {
         // Q2 Hours
 
         let q2_queries_hours = QueryGenerator::generate_q2_hours(total_queries, watermark);
+        let q2_queries_hours_hints = q2_queries_hours.clone();
         let q2_queries_hours_btree = q2_queries_hours.clone();
         let q2_queries_hours_duckdb = q2_queries_hours.clone();
         let q2_queries_hours_fiba_4 = q2_queries_hours.clone();
@@ -445,44 +448,76 @@ fn run(args: &Args) -> Vec<Run> {
 
         println!("DuckDB Q2 Hours {:?}", duckdb_q2_hours.0);
 
-        let wheel_q1 = awheel_run("AggregateWheels Q1", watermark, &wheel, q1_queries);
-        println!("AggregateWheels Q1 {:?}", wheel_q1.0);
-        q1_results.add(Stats::from("AggregateWheels", &wheel_q1));
+        wheel.read().set_optimizer_hints(false);
+        println!("HINTS OFF");
+
+        let wheel_q1 = awheel_run("μWheel Q1", watermark, &wheel, q1_queries);
+        println!("μWheel Q1 {:?}", wheel_q1.0);
+        q1_results.add(Stats::from("μWheel", &wheel_q1));
+
+        let wheel_q2_seconds =
+            awheel_run("μWheel Q2 Seconds", watermark, &wheel, q2_queries_seconds);
+        q2_seconds_results.add(Stats::from("μWheel", &wheel_q2_seconds));
+        println!("μWheel Q2 Seconds {:?}", wheel_q2_seconds.0);
+        println!(
+            "avg ops: {} worst ops: {}",
+            wheel_q2_seconds.2, wheel_q2_seconds.3
+        );
+
+        let wheel_q2_minutes =
+            awheel_run("μWheel Q2 Minutes", watermark, &wheel, q2_queries_minutes);
+        q2_minutes_results.add(Stats::from("μWheel", &wheel_q2_minutes));
+        println!("μWheel Q2 Minutes {:?}", wheel_q2_minutes.0);
+        println!(
+            "avg ops: {} worst ops: {}",
+            wheel_q2_minutes.2, wheel_q2_minutes.3
+        );
+
+        let wheel_q2_hours = awheel_run("μWheel Q2 Hours", watermark, &wheel, q2_queries_hours);
+        q2_hours_results.add(Stats::from("μWheel", &wheel_q2_hours));
+        println!("μWheel Q2 Hours {:?}", wheel_q2_hours.0);
+        println!(
+            "avg ops: {} worst ops: {}",
+            wheel_q2_hours.2, wheel_q2_hours.3
+        );
+
+        wheel.read().set_optimizer_hints(true);
+        println!("HINTS ON");
 
         let wheel_q2_seconds = awheel_run(
-            "AggregateWheels Q2 Seconds",
+            "μWheel Q2 Seconds",
             watermark,
             &wheel,
-            q2_queries_seconds,
+            q2_queries_seconds_hints,
         );
-        q2_seconds_results.add(Stats::from("AggregateWheels", &wheel_q2_seconds));
-        println!("AggregateWheels Q2 Seconds {:?}", wheel_q2_seconds.0);
+        q2_seconds_results.add(Stats::from("μWheel-hints", &wheel_q2_seconds));
+        println!("μWheel-hints Q2 Seconds {:?}", wheel_q2_seconds.0);
         println!(
             "avg ops: {} worst ops: {}",
             wheel_q2_seconds.2, wheel_q2_seconds.3
         );
 
         let wheel_q2_minutes = awheel_run(
-            "AggregateWheels Q2 Minutes",
+            "μWheel-hints Q2 Minutes",
             watermark,
             &wheel,
-            q2_queries_minutes,
+            q2_queries_minutes_hints,
         );
-        q2_minutes_results.add(Stats::from("AggregateWheels", &wheel_q2_minutes));
-        println!("AggregateWheels Q2 Minutes {:?}", wheel_q2_minutes.0);
+        q2_minutes_results.add(Stats::from("μWheel-hints", &wheel_q2_minutes));
+        println!("μWheel-hints Q2 Minutes {:?}", wheel_q2_minutes.0);
         println!(
             "avg ops: {} worst ops: {}",
             wheel_q2_minutes.2, wheel_q2_minutes.3
         );
 
         let wheel_q2_hours = awheel_run(
-            "AggregateWheels Q2 Hours",
+            "μWheel-hints Q2 Hours",
             watermark,
             &wheel,
-            q2_queries_hours,
+            q2_queries_hours_hints,
         );
-        q2_hours_results.add(Stats::from("AggregateWheels", &wheel_q2_hours));
-        println!("AggregateWheels Q2 Hours {:?}", wheel_q2_hours.0);
+        q2_hours_results.add(Stats::from("μWheel-hints", &wheel_q2_hours));
+        println!("μWheel-hints Q2 Hours {:?}", wheel_q2_hours.0);
         println!(
             "avg ops: {} worst ops: {}",
             wheel_q2_hours.2, wheel_q2_hours.3
@@ -624,6 +659,11 @@ fn duckdb_run(
     queries: &[Query],
 ) -> (Duration, Histogram<u64>, usize, usize) {
     let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
+
+    let mut worst_case_ops = 0;
+    let mut sum = 0;
+    let mut count = 0;
+
     let mut base_str = match workload {
         Workload::All => "SELECT AVG(fare_amount), SUM(fare_amount), MIN(fare_amount), MAX(fare_amount), COUNT(fare_amount) FROM rides",
         Workload::Sum => "SELECT SUM(fare_amount) FROM rides",
@@ -671,6 +711,10 @@ fn duckdb_run(
                 TimeInterval::Range(start, end) => {
                     let start_ms = start * 1000;
                     let end_ms = end * 1000;
+                    let aggregates = (end_ms - start_ms) / 1000;
+                    sum += aggregates;
+                    worst_case_ops = U64MaxAggregator::combine(worst_case_ops, aggregates);
+                    count += 1;
                     format!("do_time >= {} AND do_time < {}", start_ms, end_ms)
                 }
                 TimeInterval::Landmark => "".to_string(),
@@ -699,7 +743,8 @@ fn duckdb_run(
         hist.record(now.elapsed().as_nanos() as u64).unwrap();
     }
     let runtime = full.elapsed();
-    (runtime, hist, 0, 0)
+    let avg_ops = sum.div_checked(count).unwrap_or(0);
+    (runtime, hist, avg_ops as usize, worst_case_ops as usize)
 }
 
 #[derive(Debug, serde::Serialize)]

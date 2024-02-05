@@ -1,5 +1,5 @@
 use super::super::Aggregator;
-use crate::aggregator::InverseExt;
+use crate::{aggregator::InverseExt, rw_wheel::read::hierarchical::CombineHint};
 
 #[cfg(feature = "simd")]
 use core::simd::prelude::{SimdFloat, SimdInt, SimdUint};
@@ -155,6 +155,10 @@ macro_rules! sum_impl {
                         + head.iter().copied().sum::<$pa>()
                         + tail.iter().copied().sum::<$pa>()
                 })
+            }
+
+            fn combine_hint() -> Option<CombineHint> {
+                Some(CombineHint::Cheap)
             }
         }
         impl InverseExt for $struct {

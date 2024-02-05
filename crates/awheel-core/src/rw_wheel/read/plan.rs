@@ -1,3 +1,5 @@
+use core::cmp::Ordering;
+
 use super::hierarchical::WheelRange;
 
 #[cfg(not(feature = "std"))]
@@ -17,7 +19,7 @@ pub(crate) type WheelAggregations = smallvec::SmallVec<[WheelAggregation; 8]>;
 pub(crate) type WheelAggregations = Vec<WheelAggregation>;
 
 /// Logical Plan Variants
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum LogicalPlan {
     /// Execution consisting of a single Wheel Aggregation
     WheelAggregation(WheelAggregation),
@@ -50,6 +52,18 @@ impl LogicalPlan {
     }
 }
 
+impl Ord for LogicalPlan {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.cost().cmp(&other.cost())
+    }
+}
+
+impl PartialOrd for LogicalPlan {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// Contains physical execution variants
 #[derive(Debug, PartialEq, Clone)]
 pub enum ExecutionPlan {
@@ -59,7 +73,7 @@ pub enum ExecutionPlan {
     Parallel(LogicalPlan),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WheelAggregation {
     pub(crate) range: WheelRange,
     pub(crate) plan: Aggregation,
@@ -87,7 +101,7 @@ impl WheelAggregation {
 }
 
 /// Aggregation method
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Aggregation {
     /// A scan-based wheel aggregation that needs to reduce N slots
     Scan(usize),
@@ -106,7 +120,7 @@ impl Aggregation {
 }
 
 /// A Combined Aggregation Execution plan consisting of multiple Wheel Aggregations
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct CombinedAggregation {
     pub(crate) aggregations: WheelAggregations,
 }

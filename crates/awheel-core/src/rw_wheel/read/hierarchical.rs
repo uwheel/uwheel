@@ -197,7 +197,7 @@ struct Granularities {
 }
 
 /// A Wheel range representing a closed-open interval of [start, end)
-#[derive(Debug, Copy, Hash, PartialEq, Clone)]
+#[derive(Debug, Copy, Hash, PartialEq, Eq, Clone)]
 pub struct WheelRange {
     pub(crate) start: OffsetDateTime,
     pub(crate) end: OffsetDateTime,
@@ -384,73 +384,26 @@ cfg_sync! {
 /// Enum with combine cost variants
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
-pub enum CombineCost {
+pub enum CombineHint {
     #[default]
     /// Hints to a cheap aggregate function (e.g., SUM)
-    Low,
-    /// Hints to a computationally expensive combine operator (e.g., Bloom Filter)
-    High,
-}
-
-/// Optimization hints
-#[derive(Default, Debug, Clone, Copy)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub struct Hints {
-    /// Hint for combine operation costs
-    combine: CombineCost,
-}
-
-/// Optimization Weights for varying operations
-#[allow(dead_code)]
-#[derive(Default, Debug, Clone, Copy)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub struct Weights {
-    /// Calculated weight for single-wheel aggregation
-    wheel_aggregation: f32,
-    /// Calculated weight for combined aggregations
-    combined_aggregation: f32,
+    Cheap,
+    /// Hints to a computationally expensive combine operator (e.g., Top-N)
+    Expensive,
 }
 
 /// Optimization configuration
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Optimizer {
-    /// User-provided hints
-    user_hints: Hints,
-    weights: Weights,
+    use_hints: bool,
 }
 impl Optimizer {
-    fn set_weights(&mut self, weights: Weights) {
-        self.weights = weights;
-    }
-    #[inline]
-    fn low_combine_cost(&self) -> bool {
-        matches!(self.user_hints.combine, CombineCost::Low)
-    }
-    #[inline]
-    fn high_combine_cost(&self) -> bool {
-        matches!(self.user_hints.combine, CombineCost::High)
+    /// Sets the use hints flag
+    pub fn use_hints(&mut self, use_hints: bool) {
+        self.use_hints = use_hints;
     }
 }
-
-// Weights for Wheel Aggregation
-type Weight = f32;
-type SimdSupport = bool;
-type ExpensiveAgg = bool;
-
-const WHEEL_AGG_WEIGHTS: [(ExpensiveAgg, SimdSupport, Weight); 4] = [
-    (false, false, 0.4), // Cheap Combine + no SIMD
-    (true, false, 1.0),  // Expensive Combine + no SIMD
-    (false, true, 0.1),  // Cheap Combine + SIMD
-    (true, true, 0.7),   // Expensive Combine + SIMD
-];
-
-const COMBINED_AGG_WEIGHTS: [(ExpensiveAgg, SimdSupport, Weight); 4] = [
-    (false, false, 0.8), // Cheap Combine + no SIMD
-    (true, false, 0.1),  // Expensive Combine + no SIMD
-    (false, true, 1.0),  // Cheap Combine + SIMD
-    (true, true, 0.3),   // Expensive Combine + SIMD
-];
 
 /// Hierarchical Aggregation Wheel
 ///
@@ -539,7 +492,7 @@ where
         let mut years = conf.years;
         years.set_watermark(time);
 
-        let mut haw = Self {
+        Self {
             watermark: time,
             frequencies: Default::default(),
             seconds_wheel: MaybeWheel::new(seconds),
@@ -556,28 +509,12 @@ where
             _marker: PhantomData,
             #[cfg(feature = "profiler")]
             stats: Stats::default(),
-        };
+        }
+    }
 
-        let weight = |haw: &Self, array: &[(ExpensiveAgg, SimdSupport, Weight); 4]| {
-            let high_combine = haw.optimizer.high_combine_cost();
-            let simd = haw.is_simd();
-            let total: Weight = array.iter().map(|(_, _, weight)| weight).sum();
-            let weight = array
-                .iter()
-                .find(|(c, s, _)| *c == high_combine && *s == simd)
-                .map(|(_, _, weight)| weight)
-                .unwrap();
-            weight / total // normalized weight
-        };
-
-        // Set optimizer weights before returning
-        let weights = Weights {
-            wheel_aggregation: weight(&haw, &WHEEL_AGG_WEIGHTS),
-            combined_aggregation: weight(&haw, &COMBINED_AGG_WEIGHTS),
-        };
-        haw.optimizer.set_weights(weights);
-
-        haw
+    #[doc(hidden)]
+    pub fn set_optimizer_hints(&mut self, hints: bool) {
+        self.optimizer.use_hints = hints;
     }
 
     /// Returns how many wheel slots are utilised
@@ -785,24 +722,16 @@ where
         // execute plan accordingly
         match exec {
             Some(ExecutionPlan::Seq(plan)) => self.execute_seq_plan(plan),
-            Some(ExecutionPlan::Parallel(_plan)) => unimplemented!(),
+            Some(ExecutionPlan::Parallel(_parallel_plan)) => unimplemented!(),
             None => (None, 0),
         }
     }
 
-    /// Given two logical plans it returns the one with lowest estimated cost
-    #[inline]
-    fn min_plan(&self, p1: LogicalPlan, p2: LogicalPlan) -> LogicalPlan {
-        let cost_p1 = self.cost_function(&p1);
-        let cost_p2 = self.cost_function(&p2);
-        if cost_p1 < cost_p2 {
-            p1
-        } else {
-            p2
-        }
-    }
     #[inline(always)]
     fn create_exec_plan(&self, logical: LogicalPlan) -> Option<ExecutionPlan> {
+        // TODO: take into combine hint into context and how many wheels for combined aggregation
+        // May be worth to execute it in parallel
+        // if let LogicalPlan::CombinedAggregation(combined) = logical {}
         Some(ExecutionPlan::Seq(logical))
     }
 
@@ -830,53 +759,26 @@ where
         }
     }
 
-    // Calculates the estimated cost of a logical plan.
-    //
-    // It does it by taking the aggregate cost and applying a weight to it depending on
-    // what type of wheel operation it is (e.g., Wheel Aggregation vs. Combined).
-    #[allow(clippy::let_and_return)]
+    // Used when optimizer hints is enabled to calculate a bound for executing combined aggregation
     #[inline]
-    fn cost_function(&self, plan: &LogicalPlan) -> usize {
-        let agg_cost = plan.cost() as f32;
-        #[cfg(feature = "hints")]
-        let weight = match plan {
-            LogicalPlan::WheelAggregation(w) if w.is_scan() => {
-                self.optimizer.weights.wheel_aggregation
+    fn combined_aggregation_bound(&self) -> i64 {
+        let simd_support = {
+            #[cfg(feature = "simd")]
+            {
+                A::simd_support()
             }
-            LogicalPlan::CombinedAggregation(_) => self.optimizer.weights.combined_aggregation,
-            _ => 1.0, // For the rest
+            #[cfg(not(feature = "simd"))]
+            false
         };
 
-        #[cfg(not(feature = "hints"))]
-        let weight = 1.0;
-
-        let cost = (agg_cost * weight) as usize;
-        // dbg!(plan, agg_cost, weight, cost);
-        cost
-    }
-
-    // Whether SIMD support is on
-    #[inline]
-    fn is_simd(&self) -> bool {
-        #[cfg(feature = "simd")]
-        {
-            A::combine_simd().is_some()
-        }
-        #[cfg(not(feature = "simd"))]
-        false
-    }
-
-    #[inline]
-    fn upper_scan_bound(&self) -> i64 {
-        if self.optimizer.low_combine_cost() {
-            // TODO: define bounds as consts
-            if self.is_simd() {
-                10000
-            } else {
-                5000
-            }
-        } else {
-            100
+        // TODO: establish constants or configurable bounds
+        match (A::combine_hint(), simd_support) {
+            (Some(CombineHint::Cheap), false) => 1000,
+            (Some(CombineHint::Cheap), true) => 5000,
+            (Some(CombineHint::Expensive), false) => 100,
+            (Some(CombineHint::Expensive), true) => 500,
+            (None, false) => 500,
+            (None, true) => 1000,
         }
     }
 
@@ -910,6 +812,7 @@ where
         &self,
         _combined: CombinedAggregation,
     ) -> (Option<A::PartialAggregate>, usize) {
+        // TODO: split the combined aggregation into parallel one by executing per wheel granularity
         unimplemented!();
     }
 
@@ -938,28 +841,31 @@ where
             return best_plan;
         }
 
-        // Combined Aggregation:
-        // 1. If range can be split into multiple non-overlapping ranges,
-        // 2. If it is considered worth to create the plan as it comes with an overhead
-        if Self::splittable_range(range.duration())
-            && range.scan_estimation() > self.upper_scan_bound()
-        {
-            // TODO: create multiple combinations of combined aggregations
-            // For instance: lowest granularity is seconds and highest is days.
-            // combine seconds together - then do rest using prefix scan on minutes.
+        // Check whether it is worth to create a combined plan as it comes with some overhead
+        let combined_aggregation = {
+            if self.optimizer.use_hints {
+                range.scan_estimation() > self.combined_aggregation_bound()
+            } else {
+                true // always try to generate combined aggregation plan if possible
+            }
+        };
+
+        // Combined Aggregation: If range can be split into multiple non-overlapping ranges + it is deemed worth to create the plan
+        if Self::splittable_range(range.duration()) && combined_aggregation {
+            // NOTE: could create multiple combinations of combined aggregations to check
             let combined_plan = LogicalPlan::CombinedAggregation(
                 self.combined_aggregation_plan(Self::split_wheel_ranges(range)),
             );
-            best_plan = self.min_plan(best_plan, combined_plan);
+            best_plan = cmp::min(best_plan, combined_plan);
         }
 
         // Inverse Landmark Aggregation
-        if end_ms >= self.watermark() && A::combine_inverse().is_some() {
+        if end_ms >= self.watermark() && A::invertible() {
             // [wheel_start, start)
             let inverse_range = WheelRange::new(Self::to_offset_date(wheel_start), range.start);
             let logical = self.create_logical_plan(inverse_range);
             let inverse_plan = LogicalPlan::InverseLandmarkAggregation(Box::new(logical));
-            best_plan = self.min_plan(best_plan, inverse_plan);
+            best_plan = cmp::min(best_plan, inverse_plan);
         }
 
         best_plan

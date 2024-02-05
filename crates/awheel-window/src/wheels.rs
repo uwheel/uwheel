@@ -92,6 +92,21 @@ impl Builder {
             self.haw_conf,
         )
     }
+
+    pub fn build_raw<A: Aggregator>(self) -> RawWindowWheel<A> {
+        assert!(
+            self.range >= self.slide,
+            "Range must be larger or equal to slide"
+        );
+
+        RawWindowWheel::new(
+            self.time,
+            self.write_ahead,
+            self.range.whole_milliseconds() as usize,
+            self.slide.whole_milliseconds() as usize,
+            self.haw_conf,
+        )
+    }
 }
 
 pub struct WindowWheel<A: Aggregator> {
@@ -186,6 +201,96 @@ impl<A: Aggregator> WindowExt<A> for WindowWheel<A> {
                     // update new window end
                     self.state.next_window_end += self.slide as u64;
                 }
+            }
+        }
+        window_results
+    }
+    fn advance_to(&mut self, watermark: u64) -> Vec<(u64, Option<A::Aggregate>)> {
+        let diff = watermark.saturating_sub(self.wheel.read().watermark());
+        #[cfg(feature = "stats")]
+        profile_scope!(&self.stats.advance_ns);
+        self.advance(Duration::milliseconds(diff as i64))
+    }
+    #[inline]
+    fn insert(&mut self, entry: Entry<A::Input>) {
+        #[cfg(feature = "stats")]
+        profile_scope!(&self.stats.insert_ns);
+
+        self.wheel.insert(entry);
+    }
+    /// Returns a reference to the underlying HAW
+    fn wheel(&self) -> &ReadWheel<A> {
+        self.wheel.read()
+    }
+    #[cfg(feature = "stats")]
+    fn stats(&self) -> &crate::stats::Stats {
+        let agg_store_size = self.wheel.read().as_ref().size_bytes();
+        let write_ahead_size = self.wheel.write().size_bytes().unwrap();
+
+        let total = agg_store_size + write_ahead_size;
+
+        self.stats.size_bytes.set(total);
+        &self.stats
+    }
+}
+
+pub struct RawWindowWheel<A: Aggregator> {
+    range: usize,
+    slide: usize,
+    next_window_end: u64,
+    wheel: RwWheel<A>,
+    #[cfg(feature = "stats")]
+    stats: super::stats::Stats,
+}
+
+impl<A: Aggregator> RawWindowWheel<A> {
+    fn new(time: u64, write_ahead: usize, range: usize, slide: usize, haw_conf: HawConf) -> Self {
+        Self {
+            range,
+            slide,
+            next_window_end: time + range as u64,
+            wheel: RwWheel::with_options(
+                time,
+                Options::default()
+                    .with_write_ahead(write_ahead)
+                    .with_haw_conf(haw_conf),
+            ),
+            #[cfg(feature = "stats")]
+            stats: Default::default(),
+        }
+    }
+}
+
+impl<A: Aggregator> WindowExt<A> for RawWindowWheel<A> {
+    fn advance(&mut self, duration: Duration) -> Vec<(u64, Option<A::Aggregate>)> {
+        let ticks = duration.whole_seconds();
+        let mut window_results = Vec::new();
+        for _tick in 0..ticks {
+            self.wheel.advance(1.seconds());
+            let watermark = self.wheel.watermark();
+
+            if watermark == self.next_window_end {
+                let from = watermark - self.range as u64;
+                let to = watermark;
+                let start = OffsetDateTime::from_unix_timestamp(from as i64 / 1000).unwrap();
+                let end = OffsetDateTime::from_unix_timestamp(to as i64 / 1000).unwrap();
+
+                #[cfg(feature = "stats")]
+                profile_scope!(&self.stats.window_computation_ns);
+                let (window, _cost) = self
+                    .wheel
+                    .read()
+                    .as_ref()
+                    .analyze_combine_range(WheelRange::new(start, end));
+
+                #[cfg(feature = "stats")]
+                self.stats
+                    .window_combines
+                    .set(self.stats.window_combines.get() + _cost);
+
+                window_results.push((watermark, window.map(A::lower)));
+
+                self.next_window_end = watermark + self.slide as u64;
             }
         }
         window_results

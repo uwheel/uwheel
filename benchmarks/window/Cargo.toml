@@ -15,7 +15,7 @@ duckdb_index = []
 [dependencies]
 cxx = "1.0"
 duckdb.workspace = true
-awheel = { workspace = true, features = ["window", "stats", "simd"] }
+awheel = { workspace = true, features = ["window", "top_n", "stats", "simd"] }
 mimalloc = { version = "*", default-features = false, optional = true }
 csv = "1.2.2"
 chrono = "0.4"

@@ -7,6 +7,8 @@ use core::{
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
+use crate::rw_wheel::read::hierarchical::CombineHint;
+
 /// An All Aggregator enabling the following functions (MAX, MIN, SUM, COUNT, AVG).
 #[cfg(feature = "all")]
 pub mod all;
@@ -145,11 +147,28 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
         None
     }
 
+    /// Returns ``true`` if the Aggregator supports invertibility
+    fn invertible() -> bool {
+        Self::combine_inverse().is_some()
+    }
+
     /// Returns a function that inverse combines two partial aggregates
     ///
     /// If the aggregator does not support invertability then set it returns ``None``
     #[cfg(feature = "simd")]
     fn combine_simd() -> Option<Self::CombineSimd> {
+        None
+    }
+    /// Returns ``true`` if the aggregator supports SIMD
+    #[cfg(feature = "simd")]
+    fn simd_support() -> bool {
+        Self::combine_simd().is_some()
+    }
+
+    /// Sets a hint whether the combine operation is cheap or expensive
+    ///
+    /// If specified the query optimizer will take this into context when creating plans
+    fn combine_hint() -> Option<CombineHint> {
         None
     }
 }
