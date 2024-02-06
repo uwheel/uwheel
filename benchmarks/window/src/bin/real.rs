@@ -184,81 +184,83 @@ fn sum_aggregation(
 
         let mut runs = Vec::new();
 
-        // let wheel_64: wheels::WindowWheel<U64SumAggregator> = wheels::Builder::default()
+        let wheel_64: wheels::WindowWheel<U64SumAggregator> = wheels::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_optimizer_hints(false)
+            .with_write_ahead(64)
+            .with_watermark(watermark)
+            .build();
+
+        let (runtime, stats, _wheel_results) = run(wheel_64, &events, watermark, watermark_freq);
+
+        dbg!("Finished μWheel 64");
+
+        runs.push(Run {
+            id: "μWheel W64".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+            qps: None,
+        });
+        let wheel_512: wheels::WindowWheel<U64SumAggregator> = wheels::Builder::default()
+            .with_range(range)
+            .with_slide(slide)
+            .with_optimizer_hints(false)
+            .with_write_ahead(512)
+            .with_watermark(watermark)
+            .build();
+
+        let (runtime, stats, _wheel_results) = run(wheel_512, &events, watermark, watermark_freq);
+
+        dbg!("Finished μWheel 512");
+
+        runs.push(Run {
+            id: "μWheel W512".to_string(),
+            total_insertions,
+            runtime,
+            stats,
+            qps: None,
+        });
+
+        // let raw_wheel_64: wheels::RawWindowWheel<U64SumAggregator> = wheels::Builder::default()
         //     .with_range(range)
         //     .with_slide(slide)
         //     .with_write_ahead(64)
         //     .with_watermark(watermark)
-        //     .build();
+        //     .build_raw();
 
-        // let (runtime, stats, _wheel_results) = run(wheel_64, &events, watermark, watermark_freq);
+        // let (runtime, stats, _wheel_results) =
+        //     run(raw_wheel_64, &events, watermark, watermark_freq);
 
-        // dbg!("Finished Wheel 64");
+        // dbg!("Finished Raw μWheel 64");
 
         // runs.push(Run {
-        //     id: "μWheel W64".to_string(),
+        //     id: "μWheel-raw W64".to_string(),
         //     total_insertions,
         //     runtime,
         //     stats,
         //     qps: None,
         // });
-        // let wheel_512: wheels::WindowWheel<U64SumAggregator> = wheels::Builder::default()
+        // let raw_wheel_512: wheels::RawWindowWheel<U64SumAggregator> = wheels::Builder::default()
         //     .with_range(range)
         //     .with_slide(slide)
         //     .with_write_ahead(512)
         //     .with_watermark(watermark)
-        //     .build();
+        //     .build_raw();
 
-        // let (runtime, stats, _wheel_results) = run(wheel_512, &events, watermark, watermark_freq);
+        // let (runtime, stats, _wheel_results) =
+        //     run(raw_wheel_512, &events, watermark, watermark_freq);
 
-        // dbg!("Finished μWheel 512");
+        // dbg!("Finished μWheel-raw 512");
 
         // runs.push(Run {
-        //     id: "μWheel W512".to_string(),
+        //     id: "μWheel-raw W512".to_string(),
         //     total_insertions,
         //     runtime,
         //     stats,
         //     qps: None,
         // });
-
-        let raw_wheel_64: wheels::RawWindowWheel<U64SumAggregator> = wheels::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(64)
-            .with_watermark(watermark)
-            .build_raw();
-
-        let (runtime, stats, _wheel_results) =
-            run(raw_wheel_64, &events, watermark, watermark_freq);
-
-        dbg!("Finished Raw μWheel 64");
-
-        runs.push(Run {
-            id: "μWheel-raw W64".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            qps: None,
-        });
-        let raw_wheel_512: wheels::RawWindowWheel<U64SumAggregator> = wheels::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_write_ahead(512)
-            .with_watermark(watermark)
-            .build_raw();
-
-        let (runtime, stats, _wheel_results) =
-            run(raw_wheel_512, &events, watermark, watermark_freq);
-
-        dbg!("Finished μWheel-raw 512");
-
-        runs.push(Run {
-            id: "μWheel-raw W512".to_string(),
-            total_insertions,
-            runtime,
-            stats,
-            qps: None,
-        });
 
         let fiba_4: WindowTree<tree::FiBA4> =
             WindowTree::new(watermark, range, slide, Slicing::Wheel);

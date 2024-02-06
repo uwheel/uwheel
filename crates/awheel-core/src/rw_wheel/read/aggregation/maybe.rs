@@ -33,6 +33,7 @@ impl<A: Aggregator> MaybeWheel<A> {
             wheel.merge(other.as_ref().unwrap());
         }
     }
+    #[inline]
     pub fn aggregate(
         &self,
         start: OffsetDateTime,

@@ -850,22 +850,25 @@ where
             }
         };
 
-        // Combined Aggregation: If range can be split into multiple non-overlapping ranges + it is deemed worth to create the plan
-        if Self::splittable_range(range.duration()) && combined_aggregation {
-            // NOTE: could create multiple combinations of combined aggregations to check
-            let combined_plan = LogicalPlan::CombinedAggregation(
-                self.combined_aggregation_plan(Self::split_wheel_ranges(range)),
-            );
-            best_plan = cmp::min(best_plan, combined_plan);
-        }
+        // if the range can be split into multiple non-overlapping ranges
+        if Self::splittable_range(range.duration()) {
+            // Check whether to generate a combiend aggregation plan
+            if combined_aggregation {
+                // NOTE: could create multiple combinations of combined aggregations to check
+                let combined_plan = LogicalPlan::CombinedAggregation(
+                    self.combined_aggregation_plan(Self::split_wheel_ranges(range)),
+                );
+                best_plan = cmp::min(best_plan, combined_plan);
+            }
 
-        // Inverse Landmark Aggregation
-        if end_ms >= self.watermark() && A::invertible() {
-            // [wheel_start, start)
-            let inverse_range = WheelRange::new(Self::to_offset_date(wheel_start), range.start);
-            let logical = self.create_logical_plan(inverse_range);
-            let inverse_plan = LogicalPlan::InverseLandmarkAggregation(Box::new(logical));
-            best_plan = cmp::min(best_plan, inverse_plan);
+            // Inverse Landmark Aggregation
+            if start_ms < end_ms && end_ms >= self.watermark() && A::invertible() {
+                // [wheel_start, start)
+                let inverse_range = WheelRange::new(Self::to_offset_date(wheel_start), range.start);
+                let logical = self.create_logical_plan(inverse_range);
+                let inverse_plan = LogicalPlan::InverseLandmarkAggregation(Box::new(logical));
+                best_plan = cmp::min(best_plan, inverse_plan);
+            }
         }
 
         best_plan
