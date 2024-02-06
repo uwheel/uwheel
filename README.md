@@ -70,7 +70,7 @@ See a user-defined aggregator example [here](examples/aggregator/).
 - `all` (_enabled by default_)
     - Enables all aggregation
 - `top_n`
-    - Enables top_n aggregation
+    - Enables Top-N aggregation
 - `window`
     - Enables wheels for streaming window aggregation
 - `simd` (_requires `nightly`_)

@@ -36,8 +36,9 @@ use crate::{
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-#[cfg(not(feature = "std"))]
-use alloc::boxed::Box;
+// NOTE: keep for Inverse Landmark
+// #[cfg(not(feature = "std"))]
+// use alloc::boxed::Box;
 
 #[cfg(feature = "profiler")]
 use super::stats::Stats;
@@ -571,7 +572,7 @@ where
         ts * 1000
     }
     #[inline]
-    fn to_offset_date(ts: u64) -> OffsetDateTime {
+    fn _to_offset_date(ts: u64) -> OffsetDateTime {
         OffsetDateTime::from_unix_timestamp(ts as i64 / 1000).unwrap()
     }
 
@@ -761,7 +762,7 @@ where
 
     // Used when optimizer hints is enabled to calculate a bound for executing combined aggregation
     #[inline]
-    fn combined_aggregation_bound(&self) -> i64 {
+    fn combined_aggregation_hint_bound(&self) -> i64 {
         let simd_support = {
             #[cfg(feature = "simd")]
             {
@@ -820,7 +821,7 @@ where
     #[inline]
     fn create_logical_plan(&self, range: WheelRange) -> LogicalPlan {
         #[cfg(feature = "profiler")]
-        profile_scope!(&self.stats.logical_plans);
+        profile_scope!(&self.stats.logical_plan);
 
         let mut best_plan = LogicalPlan::WheelAggregation(self.wheel_aggregation_plan(range));
 
@@ -837,39 +838,38 @@ where
         }
 
         // Early return if plan supports single-wheel prefix scan or if landmark aggregation is possible (both O(1) complexity)
-        if best_plan.is_prefix_or_landmark() {
+        // Or if the range duration is lower than the lowest granularity, then we cannot execute a combined aggreation
+        if best_plan.is_prefix_or_landmark() || range.duration().whole_seconds() < SECONDS as i64 {
             return best_plan;
         }
 
         // Check whether it is worth to create a combined plan as it comes with some overhead
         let combined_aggregation = {
+            let scan_estimation = range.scan_estimation();
             if self.optimizer.use_hints {
-                range.scan_estimation() > self.combined_aggregation_bound()
+                scan_estimation > self.combined_aggregation_hint_bound()
             } else {
-                true // always try to generate combined aggregation plan if possible
+                true // always generate a combined aggregation plan
             }
         };
 
         // if the range can be split into multiple non-overlapping ranges
-        if Self::splittable_range(range.duration()) {
-            // Check whether to generate a combiend aggregation plan
-            if combined_aggregation {
-                // NOTE: could create multiple combinations of combined aggregations to check
-                let combined_plan = LogicalPlan::CombinedAggregation(
-                    self.combined_aggregation_plan(Self::split_wheel_ranges(range)),
-                );
-                best_plan = cmp::min(best_plan, combined_plan);
-            }
-
-            // Inverse Landmark Aggregation
-            if start_ms < end_ms && end_ms >= self.watermark() && A::invertible() {
-                // [wheel_start, start)
-                let inverse_range = WheelRange::new(Self::to_offset_date(wheel_start), range.start);
-                let logical = self.create_logical_plan(inverse_range);
-                let inverse_plan = LogicalPlan::InverseLandmarkAggregation(Box::new(logical));
-                best_plan = cmp::min(best_plan, inverse_plan);
-            }
+        if combined_aggregation {
+            // NOTE: could create multiple combinations of combined aggregations to check
+            let combined_plan = LogicalPlan::CombinedAggregation(
+                self.combined_aggregation_plan(Self::split_wheel_ranges(range)),
+            );
+            best_plan = cmp::min(best_plan, combined_plan);
         }
+
+        // Inverse Landmark Aggregation
+        // if start_ms < end_ms && end_ms >= self.watermark() && A::invertible() {
+        //     // [wheel_start, start)
+        //     let inverse_range = WheelRange::new(Self::to_offset_date(wheel_start), range.start);
+        //     let logical = self.create_logical_plan(inverse_range);
+        //     let inverse_plan = LogicalPlan::InverseLandmarkAggregation(Box::new(logical));
+        //     best_plan = cmp::min(best_plan, inverse_plan);
+        // }
 
         best_plan
     }
@@ -1429,34 +1429,6 @@ where
         false
     }
 
-    // Returns true if the duration/range is splittable into multiple ranges
-    #[inline]
-    fn splittable_range(duration: time_internal::Duration) -> bool {
-        !Self::is_quantizablez(duration)
-    }
-
-    #[inline]
-    fn is_quantizablez(duration: time_internal::Duration) -> bool {
-        let Granularities {
-            second,
-            minute,
-            hour,
-            day,
-            week,
-            year,
-        } = Self::duration_to_granularities(duration);
-
-        matches!(
-            (second, minute, hour, day, week, year),
-            (Some(_), None, None, None, None, None)
-                | (None, Some(_), None, None, None, None)
-                | (None, None, Some(_), None, None, None)
-                | (None, None, None, Some(_), None, None)
-                | (None, None, None, None, Some(_), None)
-                | (None, None, None, None, None, Some(_))
-        )
-    }
-
     /// Executes a Landmark Window that combines total partial aggregates across all wheels
     #[inline]
     pub fn landmark(&self) -> Option<A::PartialAggregate> {
@@ -1950,12 +1922,12 @@ mod tests {
 
         // Runs a Inverse Landmark Execution
         let result = haw.combine_range(WheelRange::new(start, end));
-        let lplans = haw.create_logical_plan(WheelRange::new(start, end));
-        let physical_plan = haw.create_exec_plan(lplans).unwrap();
-        assert!(matches!(
-            physical_plan,
-            ExecutionPlan::Seq(LogicalPlan::InverseLandmarkAggregation(_))
-        ));
+        // let lplans = haw.create_logical_plan(WheelRange::new(start, end));
+        // let physical_plan = haw.create_exec_plan(lplans).unwrap();
+        // assert!(matches!(
+        //     physical_plan,
+        //     ExecutionPlan::Seq(LogicalPlan::InverseLandmarkAggregation(_))
+        // ));
         // let plan = haw.combine_range_exec_plan(WheelRange::new(start, end));
         assert_eq!(result, Some(241200));
     }

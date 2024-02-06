@@ -29,15 +29,8 @@ pub enum Workload {
 }
 
 // 2023-10-01 01:00:00 + 2023-10-08 00:00:00
-// 1hr, 7 days.
 // const INTERVALS: [Durationz; 2] = [Durationz::hours(1), Durationz::hours(23 + 24 * 6)];
 const INTERVALS: [Durationz; 2] = [Durationz::days(1), Durationz::days(6)];
-// const INTERVALS: [Durationz; 1] = [Durationz::days(1)];
-// const INTERVALS: [Durationz; 3] = [
-//     Durationz::hours(1),  // 2023-10-01 01:00:00
-//     Durationz::hours(23), // 2023-10-02 00:00:00
-//     Durationz::days(6),   // 2023-10-08 00:00:00
-// ];
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -449,7 +442,6 @@ fn run(args: &Args) -> Vec<Run> {
         println!("DuckDB Q2 Hours {:?}", duckdb_q2_hours.0);
 
         wheel.read().set_optimizer_hints(false);
-        println!("HINTS OFF");
 
         let wheel_q1 = awheel_run("μWheel Q1", watermark, &wheel, q1_queries);
         println!("μWheel Q1 {:?}", wheel_q1.0);
@@ -482,7 +474,6 @@ fn run(args: &Args) -> Vec<Run> {
         );
 
         wheel.read().set_optimizer_hints(true);
-        println!("HINTS ON");
 
         let wheel_q2_seconds = awheel_run(
             "μWheel Q2 Seconds",
@@ -620,11 +611,12 @@ where
             QueryType::All => {
                 let _res = match query.interval {
                     TimeInterval::Range(start, end) => {
-                        let (start, end) = into_offset_date_time_start_end(start, end);
+                        let (start_date, end_date) = into_offset_date_time_start_end(start, end);
+
                         let (agg, cost) = wheel
                             .read()
                             .as_ref()
-                            .analyze_combine_range(WheelRange::new(start, end));
+                            .analyze_combine_range(WheelRange::new(start_date, end_date));
                         worst_case_ops = U64MaxAggregator::combine(worst_case_ops, cost as u64);
                         sum += cost;
                         count += 1;
