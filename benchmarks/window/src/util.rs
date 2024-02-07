@@ -433,18 +433,22 @@ pub fn duckdb_append_streaming(batch: Vec<RideData>, db: &mut Connection) -> Res
     Ok(())
 }
 
-pub fn duckdb_append_batch(batch: Vec<RideData>, db: &mut Connection) -> Result<()> {
+pub fn duckdb_append_batch(batch: Vec<RideData>, db: &mut Connection, keyed: bool) -> Result<()> {
     let mut tx = db.transaction()?;
     tx.set_drop_behavior(DropBehavior::Commit);
     let mut app = tx.appender("rides")?;
 
     for (i, ride) in batch.into_iter().enumerate() {
-        app.append_row(params![
-            i as i32,
-            ride.pu_location_id,
-            ride.do_time,
-            ride.fare_amount,
-        ])?;
+        if keyed {
+            app.append_row(params![
+                i as i32,
+                ride.pu_location_id,
+                ride.do_time,
+                ride.fare_amount,
+            ])?;
+        } else {
+            app.append_row(params![i as i32, ride.do_time, ride.fare_amount,])?;
+        }
     }
     app.flush();
     Ok(())
@@ -489,7 +493,7 @@ pub fn duckdb_query_all(query: &str, db: &Connection) -> Result<()> {
     Ok(())
 }
 
-pub fn duckdb_setup(disk: bool, threads: usize) -> (duckdb::Connection, &'static str) {
+pub fn duckdb_setup(disk: bool, threads: usize, keyed: bool) -> (duckdb::Connection, &'static str) {
     let (db, id) = if disk {
         (
             duckdb::Connection::open("duckdb_ingestion.db").unwrap(),
@@ -501,14 +505,25 @@ pub fn duckdb_setup(disk: bool, threads: usize) -> (duckdb::Connection, &'static
             "duckdb [memory]",
         )
     };
-    let create_table_sql = "
+    let create_table_sql = if keyed {
+        "
         create table IF NOT EXISTS rides
         (
             id INTEGER not null, -- primary key,
             pu_location_id UBIGINT not null,
             do_time UBIGINT not null,
             fare_amount UBIGINT not null,
-        );";
+        );"
+    } else {
+        "
+        create table IF NOT EXISTS rides
+        (
+            id INTEGER not null, -- primary key,
+            do_time UBIGINT not null,
+            fare_amount UBIGINT not null,
+        );"
+    };
+
     db.execute_batch(create_table_sql).unwrap();
 
     duckdb_set_threads(threads, &db);
@@ -520,8 +535,8 @@ pub fn duckdb_setup(disk: bool, threads: usize) -> (duckdb::Connection, &'static
         db.execute_batch(index_sql).unwrap();
 
         // Index on key for point queries
-        let index_sql = "create index idx_location ON rides(pu_location_id);";
-        db.execute_batch(index_sql).unwrap();
+        // let index_sql = "create index idx_location ON rides(pu_location_id);";
+        // db.execute_batch(index_sql).unwrap();
     }
 
     (db, id)

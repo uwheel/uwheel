@@ -360,7 +360,6 @@ impl<A: Aggregator> AggregationWheel<A> {
     }
 
     fn size_bytesz(&self) -> Option<usize> {
-        // roll-up slots are stored on the heap, calculate how much bytes we are using for them..
         let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.data.len();
         Some(mem::size_of::<Self>() + inner_slots)
     }
@@ -531,10 +530,8 @@ impl<A: Aggregator> WheelExt for AggregationWheel<A> {
     }
 
     fn size_bytes(&self) -> Option<usize> {
-        // TODO: calculate drill down slots
-
         // roll-up slots are stored on the heap, calculate how much bytes we are using for them..
-        let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.num_slots;
+        let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.data.len();
 
         Some(mem::size_of::<Self>() + inner_slots)
     }

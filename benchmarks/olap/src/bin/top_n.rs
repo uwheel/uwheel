@@ -138,7 +138,7 @@
 //     println!("Running with total entries {}", total_entries);
 
 //     // Prepare DuckDB
-//     let (mut duckdb, id) = duckdb_setup(args.disk);
+//     let (mut duckdb, id) = duckdb_setup(args.disk, 1, true);
 //     for batch in duckdb_batches {
 //         duckdb_append_batch(batch, &mut duckdb).unwrap();
 //     }

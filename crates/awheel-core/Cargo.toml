@@ -34,7 +34,6 @@ profiler = ["dep:awheel-stats", "prettytable-rs", "std"]
 pco = ["dep:pco", "std"]
 simd = ["dep:multiversion"]
 cache = ["schnellru"]
-hints = []
 
 
 [dependencies]

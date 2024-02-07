@@ -162,7 +162,7 @@ fn run(args: &Args) -> Vec<Run> {
     let total_landmark_queries = total_queries;
 
     // Prepare DuckDB
-    let (mut duckdb, _id) = duckdb_setup(args.disk, max_parallelism);
+    let (mut duckdb, _id) = duckdb_setup(args.disk, max_parallelism, false);
 
     // Prepare BTree
     let mut btree: BTree<U64SumAggregator> = BTree::default();
@@ -242,7 +242,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         // Insert data to DuckDB
         for batch in duckdb_batches {
-            duckdb_append_batch(batch, &mut duckdb).unwrap();
+            duckdb_append_batch(batch, &mut duckdb, false).unwrap();
         }
 
         for batch in batches {
@@ -265,26 +265,82 @@ fn run(args: &Args) -> Vec<Run> {
         let mut q2_minutes_results = QueryDescription::from("q2-minutes");
         let mut q2_hours_results = QueryDescription::from("q2-hours");
 
-        let btree_q1 = tree_run("BTree Q1", watermark, &btree, q1_queries_btree);
-        q1_results.add(Stats::from("BTree", &btree_q1));
-        println!("BTree Q1 {:?}", btree_q1.0);
+        wheel.read().set_optimizer_hints(false);
 
-        let btree_q2 = tree_run("BTree Q2", watermark, &btree, q2_queries_seconds_btree);
-        println!("BTree Q2 Seconds {:?}", btree_q2.0);
-        q2_seconds_results.add(Stats::from("BTree", &btree_q2));
+        let wheel_q1 = awheel_run("μWheel Q1", watermark, &wheel, q1_queries);
+        println!("μWheel Q1 {:?}", wheel_q1.0);
+        q1_results.add(Stats::from("μWheel", &wheel_q1));
 
-        let btree_q2_minutes = tree_run(
-            "BTree Q2 Minutes",
-            watermark,
-            &btree,
-            q2_queries_minutes_btree,
+        let wheel_q2_seconds =
+            awheel_run("μWheel Q2 Seconds", watermark, &wheel, q2_queries_seconds);
+        q2_seconds_results.add(Stats::from("μWheel", &wheel_q2_seconds));
+        println!("μWheel Q2 Seconds {:?}", wheel_q2_seconds.0);
+        println!(
+            "avg ops: {} worst ops: {}",
+            wheel_q2_seconds.2, wheel_q2_seconds.3
         );
-        println!("BTree Q2 Minutes {:?}", btree_q2_minutes.0);
-        q2_minutes_results.add(Stats::from("BTree", &btree_q2_minutes));
 
-        let btree_q2_hours = tree_run("BTree Q2 Hours", watermark, &btree, q2_queries_hours_btree);
-        println!("BTree Q2 Hours  {:?}", btree_q2_hours.0);
-        q2_hours_results.add(Stats::from("BTree", &btree_q2_hours));
+        let wheel_q2_minutes =
+            awheel_run("μWheel Q2 Minutes", watermark, &wheel, q2_queries_minutes);
+        q2_minutes_results.add(Stats::from("μWheel", &wheel_q2_minutes));
+        println!("μWheel Q2 Minutes {:?}", wheel_q2_minutes.0);
+        println!(
+            "avg ops: {} worst ops: {}",
+            wheel_q2_minutes.2, wheel_q2_minutes.3
+        );
+
+        let wheel_q2_hours = awheel_run("μWheel Q2 Hours", watermark, &wheel, q2_queries_hours);
+        q2_hours_results.add(Stats::from("μWheel", &wheel_q2_hours));
+        println!("μWheel Q2 Hours {:?}", wheel_q2_hours.0);
+        println!(
+            "avg ops: {} worst ops: {}",
+            wheel_q2_hours.2, wheel_q2_hours.3
+        );
+
+        wheel.read().set_optimizer_hints(true);
+
+        let wheel_q1 = awheel_run("μWheel-hints Q1", watermark, &wheel, q1_queries_hints);
+        println!("μWheel-hints Q1 {:?}", wheel_q1.0);
+        q1_results.add(Stats::from("μWheel-hints", &wheel_q1));
+
+        let wheel_q2_seconds = awheel_run(
+            "μWheel Q2 Seconds",
+            watermark,
+            &wheel,
+            q2_queries_seconds_hints,
+        );
+        q2_seconds_results.add(Stats::from("μWheel-hints", &wheel_q2_seconds));
+        println!("μWheel-hints Q2 Seconds {:?}", wheel_q2_seconds.0);
+        println!(
+            "avg ops: {} worst ops: {}",
+            wheel_q2_seconds.2, wheel_q2_seconds.3
+        );
+
+        let wheel_q2_minutes = awheel_run(
+            "μWheel-hints Q2 Minutes",
+            watermark,
+            &wheel,
+            q2_queries_minutes_hints,
+        );
+        q2_minutes_results.add(Stats::from("μWheel-hints", &wheel_q2_minutes));
+        println!("μWheel-hints Q2 Minutes {:?}", wheel_q2_minutes.0);
+        println!(
+            "avg ops: {} worst ops: {}",
+            wheel_q2_minutes.2, wheel_q2_minutes.3
+        );
+
+        let wheel_q2_hours = awheel_run(
+            "μWheel-hints Q2 Hours",
+            watermark,
+            &wheel,
+            q2_queries_hours_hints,
+        );
+        q2_hours_results.add(Stats::from("μWheel-hints", &wheel_q2_hours));
+        println!("μWheel-hints Q2 Hours {:?}", wheel_q2_hours.0);
+        println!(
+            "avg ops: {} worst ops: {}",
+            wheel_q2_hours.2, wheel_q2_hours.3
+        );
 
         let fiba_4_q1 = tree_run("FiBA Bfinger4 Q1", watermark, &fiba_4, q1_queries_fiba_4);
         q1_results.add(Stats::from("FiBA Bfinger4", &fiba_4_q1));
@@ -355,6 +411,27 @@ fn run(args: &Args) -> Vec<Run> {
             "avg ops: {}, worst ops: {}",
             fiba_q2_hours.2, fiba_q2_hours.3
         );
+
+        let btree_q1 = tree_run("BTree Q1", watermark, &btree, q1_queries_btree);
+        q1_results.add(Stats::from("BTree", &btree_q1));
+        println!("BTree Q1 {:?}", btree_q1.0);
+
+        let btree_q2 = tree_run("BTree Q2", watermark, &btree, q2_queries_seconds_btree);
+        println!("BTree Q2 Seconds {:?}", btree_q2.0);
+        q2_seconds_results.add(Stats::from("BTree", &btree_q2));
+
+        let btree_q2_minutes = tree_run(
+            "BTree Q2 Minutes",
+            watermark,
+            &btree,
+            q2_queries_minutes_btree,
+        );
+        println!("BTree Q2 Minutes {:?}", btree_q2_minutes.0);
+        q2_minutes_results.add(Stats::from("BTree", &btree_q2_minutes));
+
+        let btree_q2_hours = tree_run("BTree Q2 Hours", watermark, &btree, q2_queries_hours_btree);
+        println!("BTree Q2 Hours  {:?}", btree_q2_hours.0);
+        q2_hours_results.add(Stats::from("BTree", &btree_q2_hours));
 
         let duckdb_id_fmt = |threads: usize| format!("duckdb-threads-{}", threads);
 
@@ -449,85 +526,8 @@ fn run(args: &Args) -> Vec<Run> {
 
         println!("DuckDB Q2 Hours {:?}", duckdb_q2_hours.0);
 
-        wheel.read().set_optimizer_hints(false);
-
-        let wheel_q1 = awheel_run("μWheel Q1", watermark, &wheel, q1_queries);
-        println!("μWheel Q1 {:?}", wheel_q1.0);
-        q1_results.add(Stats::from("μWheel", &wheel_q1));
-
-        let wheel_q2_seconds =
-            awheel_run("μWheel Q2 Seconds", watermark, &wheel, q2_queries_seconds);
-        q2_seconds_results.add(Stats::from("μWheel", &wheel_q2_seconds));
-        println!("μWheel Q2 Seconds {:?}", wheel_q2_seconds.0);
-        println!(
-            "avg ops: {} worst ops: {}",
-            wheel_q2_seconds.2, wheel_q2_seconds.3
-        );
-
-        let wheel_q2_minutes =
-            awheel_run("μWheel Q2 Minutes", watermark, &wheel, q2_queries_minutes);
-        q2_minutes_results.add(Stats::from("μWheel", &wheel_q2_minutes));
-        println!("μWheel Q2 Minutes {:?}", wheel_q2_minutes.0);
-        println!(
-            "avg ops: {} worst ops: {}",
-            wheel_q2_minutes.2, wheel_q2_minutes.3
-        );
-
-        let wheel_q2_hours = awheel_run("μWheel Q2 Hours", watermark, &wheel, q2_queries_hours);
-        q2_hours_results.add(Stats::from("μWheel", &wheel_q2_hours));
-        println!("μWheel Q2 Hours {:?}", wheel_q2_hours.0);
-        println!(
-            "avg ops: {} worst ops: {}",
-            wheel_q2_hours.2, wheel_q2_hours.3
-        );
-
-        wheel.read().set_optimizer_hints(true);
-
-        let wheel_q1 = awheel_run("μWheel-hints Q1", watermark, &wheel, q1_queries_hints);
-        println!("μWheel-hints Q1 {:?}", wheel_q1.0);
-        q1_results.add(Stats::from("μWheel-hints", &wheel_q1));
-
-        let wheel_q2_seconds = awheel_run(
-            "μWheel Q2 Seconds",
-            watermark,
-            &wheel,
-            q2_queries_seconds_hints,
-        );
-        q2_seconds_results.add(Stats::from("μWheel-hints", &wheel_q2_seconds));
-        println!("μWheel-hints Q2 Seconds {:?}", wheel_q2_seconds.0);
-        println!(
-            "avg ops: {} worst ops: {}",
-            wheel_q2_seconds.2, wheel_q2_seconds.3
-        );
-
-        let wheel_q2_minutes = awheel_run(
-            "μWheel-hints Q2 Minutes",
-            watermark,
-            &wheel,
-            q2_queries_minutes_hints,
-        );
-        q2_minutes_results.add(Stats::from("μWheel-hints", &wheel_q2_minutes));
-        println!("μWheel-hints Q2 Minutes {:?}", wheel_q2_minutes.0);
-        println!(
-            "avg ops: {} worst ops: {}",
-            wheel_q2_minutes.2, wheel_q2_minutes.3
-        );
-
-        let wheel_q2_hours = awheel_run(
-            "μWheel-hints Q2 Hours",
-            watermark,
-            &wheel,
-            q2_queries_hours_hints,
-        );
-        q2_hours_results.add(Stats::from("μWheel-hints", &wheel_q2_hours));
-        println!("μWheel-hints Q2 Hours {:?}", wheel_q2_hours.0);
-        println!(
-            "avg ops: {} worst ops: {}",
-            wheel_q2_hours.2, wheel_q2_hours.3
-        );
-
         let duck_info = duckdb_memory_usage(&duckdb);
-        let wheels_memory_bytes = wheel.size_bytes();
+        let wheels_memory_bytes = wheel.read().as_ref().size_bytes();
         let fiba_bfinger4_memory_bytes = fiba_4.size_bytes();
         let fiba_bfinger8_memory_bytes = fiba_8.size_bytes();
         let btree_memory_bytes = btree.size_bytes();

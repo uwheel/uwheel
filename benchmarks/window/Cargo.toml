@@ -8,7 +8,6 @@ default = ["duckdb_index"]
 debug = []
 sync = ["awheel/sync"]
 simd = ["awheel/simd"]
-hints = ["awheel/hints"]
 profiler = ["awheel/profiler"]
 duckdb_index = []
 
