@@ -24,18 +24,22 @@ Features:
     - ``#[no_std]`` compatible (requires ``alloc``)
     - WASM friendly
 
+## How it works
+
+µWheel is designed around event-time (Low Watermarking) indexed aggregate wheels.
+Writes are handled by a writer wheel, which supports in-place aggregation and is
+optimized for single-threaded ingestion. Reads, on the other hand, are managed through a hierarchically event-time-indexed
+
 
 ## Aggregation Framework
-
-The Aggregation Interface is inspired by the work of [Tangwongsan et al.](http://www.vldb.org/pvldb/vol8/p702-tangwongsan.pdf). Some additional functions have been added as aggregation wheels are designed around the notion of Low Watermarking. Aggregates above the watermark are considered mutable whereas the ones below are immutable.
 
 
 * ``lift(input) -> MutablePartialAggregate``
     * Lifts input data into a mutable aggregate
 * ``combine_mutable(mutable, input)``
-    * Combines the input data into the mutable aggregate
+    * Combines the input data into a mutable aggregate
 * ``freeze(mutable) -> PartialAggregate``
-    * Freezes the mutable aggregate into a immutable one
+    * Freezes the mutable aggregate into an immutable one
 * ``combine(a, a) -> a``
     * Combines ⊕ two partial aggregates into a new one
 * ``lower(a) -> Aggregate``

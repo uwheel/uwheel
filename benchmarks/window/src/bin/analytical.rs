@@ -100,17 +100,20 @@ pub struct Run {
     events_per_second: u64,
     wheels_memory_bytes: usize,
     btree_memory_bytes: usize,
-    fiba_memory_bytes: usize,
+    fiba_bfinger4_memory_bytes: usize,
+    fiba_bfinger8_memory_bytes: usize,
     duckdb_memory: String,
     queries: Vec<QueryDescription>,
 }
 
 impl Run {
+    #[allow(clippy::too_many_arguments)]
     pub fn from(
         watermark: u64,
         events_per_second: u64,
         wheels_memory_bytes: usize,
-        fiba_memory_bytes: usize,
+        fiba_bfinger4_memory_bytes: usize,
+        fiba_bfinger8_memory_bytes: usize,
         btree_memory_bytes: usize,
         duckdb_memory: String,
         queries: Vec<QueryDescription>,
@@ -119,7 +122,8 @@ impl Run {
             watermark,
             events_per_second,
             wheels_memory_bytes,
-            fiba_memory_bytes,
+            fiba_bfinger4_memory_bytes,
+            fiba_bfinger8_memory_bytes,
             btree_memory_bytes,
             duckdb_memory,
             queries,
@@ -169,7 +173,6 @@ fn run(args: &Args) -> Vec<Run> {
     let mut haw_conf = HawConf::default();
     haw_conf.seconds.set_retention_policy(RetentionPolicy::Keep);
     haw_conf.minutes.set_retention_policy(RetentionPolicy::Keep);
-    // haw_conf.minutes.set_prefix_sum(true);
     haw_conf.hours.set_retention_policy(RetentionPolicy::Keep);
     haw_conf.days.set_retention_policy(RetentionPolicy::Keep);
 
@@ -194,6 +197,7 @@ fn run(args: &Args) -> Vec<Run> {
         // Generate Q1
 
         let q1_queries = QueryGenerator::generate_q1(total_landmark_queries);
+        let q1_queries_hints = q1_queries.clone();
         let q1_queries_duckdb = q1_queries.clone();
         let q1_queries_btree = q1_queries.clone();
         let q1_queries_fiba_4 = q1_queries.clone();
@@ -385,13 +389,17 @@ fn run(args: &Args) -> Vec<Run> {
         let max_parallelism = 1;
         duckdb_set_threads(max_parallelism, &duckdb);
 
-        let duckdb_q1 = duckdb_run(
+        let mut duckdb_q1 = duckdb_run(
             "DuckDB Q1",
             watermark,
             workload,
             &duckdb,
             &q1_queries_duckdb,
         );
+
+        // should have same ops
+        duckdb_q1.2 = btree_q1.2;
+        duckdb_q1.3 = btree_q1.3;
 
         q1_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q1));
 
@@ -475,6 +483,10 @@ fn run(args: &Args) -> Vec<Run> {
 
         wheel.read().set_optimizer_hints(true);
 
+        let wheel_q1 = awheel_run("μWheel-hints Q1", watermark, &wheel, q1_queries_hints);
+        println!("μWheel-hints Q1 {:?}", wheel_q1.0);
+        q1_results.add(Stats::from("μWheel-hints", &wheel_q1));
+
         let wheel_q2_seconds = awheel_run(
             "μWheel Q2 Seconds",
             watermark,
@@ -516,7 +528,8 @@ fn run(args: &Args) -> Vec<Run> {
 
         let duck_info = duckdb_memory_usage(&duckdb);
         let wheels_memory_bytes = wheel.size_bytes();
-        let fiba_memory_bytes = fiba_8.size_bytes();
+        let fiba_bfinger4_memory_bytes = fiba_4.size_bytes();
+        let fiba_bfinger8_memory_bytes = fiba_8.size_bytes();
         let btree_memory_bytes = btree.size_bytes();
         let duckdb_memory_bytes = duck_info.memory_usage;
 
@@ -533,7 +546,8 @@ fn run(args: &Args) -> Vec<Run> {
             watermark,
             events_per_sec as u64,
             wheels_memory_bytes,
-            fiba_memory_bytes,
+            fiba_bfinger4_memory_bytes,
+            fiba_bfinger8_memory_bytes,
             btree_memory_bytes,
             duckdb_memory_bytes,
             queries,
@@ -574,7 +588,13 @@ where
                         count += 1;
                         agg
                     }
-                    TimeInterval::Landmark => tree.query(),
+                    TimeInterval::Landmark => {
+                        let (agg, cost) = tree.analyze_query();
+                        worst_case_ops = U64MaxAggregator::combine(worst_case_ops, cost as u64);
+                        sum += cost;
+                        count += 1;
+                        agg
+                    }
                 };
                 #[cfg(feature = "debug")]
                 dbg!(_res);

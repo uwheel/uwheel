@@ -10,6 +10,7 @@ use cxx::UniquePtr;
 pub trait Tree<A: Aggregator>: Default {
     fn insert(&mut self, ts: u64, agg: A::PartialAggregate);
     fn query(&self) -> Option<A::PartialAggregate>;
+    fn analyze_query(&self) -> (Option<A::PartialAggregate>, usize);
     fn range_query(&self, from: u64, to: u64) -> Option<A::PartialAggregate>;
     fn analyze_range_query(&self, from: u64, to: u64) -> (Option<A::PartialAggregate>, usize);
     fn evict_range(&mut self, to: u64);
@@ -51,6 +52,18 @@ impl<A: Aggregator> Tree<A> for BTree<A> {
         }
         (Some(res), ops)
     }
+    #[inline]
+    fn analyze_query(&self) -> (Option<A::PartialAggregate>, usize) {
+        let mut ops = 0;
+        let mut res = A::IDENTITY;
+
+        for (_ts, agg) in self.inner.range(..) {
+            res = A::combine(res, *agg);
+            ops += 1;
+        }
+        (Some(res), ops)
+    }
+
     #[inline]
     fn query(&self) -> Option<A::PartialAggregate> {
         let mut res: Option<A::PartialAggregate> = None;
@@ -111,6 +124,18 @@ impl<A: Aggregator> Tree<A> for BTreeMap<u64, A::PartialAggregate> {
         }
         (Some(res), ops)
     }
+
+    #[inline]
+    fn analyze_query(&self) -> (Option<A::PartialAggregate>, usize) {
+        let mut ops = 0;
+        let mut res = A::IDENTITY;
+        for (_ts, agg) in self.range(..) {
+            res = A::combine(res, *agg);
+            ops += 1;
+        }
+        (Some(res), ops)
+    }
+
     #[inline]
     fn query(&self) -> Option<A::PartialAggregate> {
         let mut res: Option<A::PartialAggregate> = None;
@@ -142,6 +167,7 @@ impl<A: Aggregator> Tree<A> for BTreeMap<u64, A::PartialAggregate> {
         unimplemented!();
     }
 }
+
 pub struct FiBA4 {
     fiba: UniquePtr<crate::bfinger_four::FiBA_SUM_4>,
 }
@@ -157,6 +183,15 @@ impl Tree<U64SumAggregator> for FiBA4 {
     #[inline]
     fn insert(&mut self, ts: u64, agg: u64) {
         self.fiba.pin_mut().insert(&ts, &agg);
+    }
+
+    #[inline]
+    fn analyze_query(&self) -> (Option<u64>, usize) {
+        let ops_before = self.combine_ops();
+        let result = Some(self.fiba.query());
+        let ops_after = self.combine_ops();
+        let ops = ops_after - ops_before;
+        (result, ops)
     }
     #[inline]
     fn query(&self) -> Option<u64> {
@@ -211,6 +246,15 @@ impl Tree<U64SumAggregator> for FiBA8 {
     #[inline]
     fn query(&self) -> Option<u64> {
         Some(self.fiba.query())
+    }
+
+    #[inline]
+    fn analyze_query(&self) -> (Option<u64>, usize) {
+        let ops_before = self.combine_ops();
+        let result = Some(self.fiba.query());
+        let ops_after = self.combine_ops();
+        let ops = ops_after - ops_before;
+        (result, ops)
     }
     #[inline]
     fn range_query(&self, from: u64, to: u64) -> Option<u64> {
