@@ -162,17 +162,6 @@ impl<A: Aggregator> AggregationWheel<A> {
         let capacity = conf.capacity;
         let num_slots = crate::capacity_to_slots!(capacity);
 
-        // Need to at least hold "capacity" slots.
-        // let retention = if let RetentionPolicy::KeepWithLimit(limit) = conf.retention {
-        //     if limit < capacity {
-        //         RetentionPolicy::KeepWithLimit(capacity)
-        //     } else {
-        //         conf.retention
-        //     }
-        // } else {
-        //     conf.retention
-        // };
-
         // sanity check
         let data = if conf.prefix_sum {
             assert!(A::PREFIX_SUPPORT, "Cannot configure prefix-sum");
