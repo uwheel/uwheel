@@ -285,3 +285,180 @@ impl Tree<U64SumAggregator> for FiBA8 {
         self.fiba.combine_operations()
     }
 }
+
+pub struct Bclassic2 {
+    fiba: UniquePtr<crate::bclassic_two::Bclassic_2>,
+}
+impl Default for Bclassic2 {
+    fn default() -> Self {
+        Self {
+            fiba: crate::bclassic_two::create_bclassic_2_with_sum(),
+        }
+    }
+}
+
+impl Tree<U64SumAggregator> for Bclassic2 {
+    #[inline]
+    fn insert(&mut self, ts: u64, agg: u64) {
+        self.fiba.pin_mut().insert(&ts, &agg);
+    }
+
+    #[inline]
+    fn analyze_query(&self) -> (Option<u64>, usize) {
+        let ops_before = self.combine_ops();
+        let result = Some(self.fiba.query());
+        let ops_after = self.combine_ops();
+        let ops = ops_after - ops_before;
+        (result, ops)
+    }
+    #[inline]
+    fn query(&self) -> Option<u64> {
+        Some(self.fiba.query())
+    }
+    #[inline]
+    fn range_query(&self, from: u64, to: u64) -> Option<u64> {
+        Some(self.fiba.range(from, to - 1))
+    }
+
+    #[inline]
+    fn analyze_range_query(&self, from: u64, to: u64) -> (Option<u64>, usize) {
+        let ops_before = self.combine_ops();
+        let result = Some(self.fiba.range(from, to - 1));
+        let ops_after = self.combine_ops();
+        let ops = ops_after - ops_before;
+        (result, ops)
+    }
+
+    #[inline]
+    fn evict_range(&mut self, to: u64) {
+        self.fiba.pin_mut().bulk_evict(&(to - 1));
+    }
+    fn evict(&mut self) {
+        self.fiba.pin_mut().evict();
+    }
+    fn size_bytes(&self) -> usize {
+        self.fiba.memory_usage()
+    }
+    #[inline]
+    fn combine_ops(&self) -> usize {
+        self.fiba.combine_operations()
+    }
+}
+
+pub struct Bclassic4 {
+    fiba: UniquePtr<crate::bclassic_four::Bclassic_4>,
+}
+impl Default for Bclassic4 {
+    fn default() -> Self {
+        Self {
+            fiba: crate::bclassic_four::create_bclassic_4_with_sum(),
+        }
+    }
+}
+
+impl Tree<U64SumAggregator> for Bclassic4 {
+    #[inline]
+    fn insert(&mut self, ts: u64, agg: u64) {
+        self.fiba.pin_mut().insert(&ts, &agg);
+    }
+
+    #[inline]
+    fn analyze_query(&self) -> (Option<u64>, usize) {
+        let ops_before = self.combine_ops();
+        let result = Some(self.fiba.query());
+        let ops_after = self.combine_ops();
+        let ops = ops_after - ops_before;
+        (result, ops)
+    }
+    #[inline]
+    fn query(&self) -> Option<u64> {
+        Some(self.fiba.query())
+    }
+    #[inline]
+    fn range_query(&self, from: u64, to: u64) -> Option<u64> {
+        Some(self.fiba.range(from, to - 1))
+    }
+
+    #[inline]
+    fn analyze_range_query(&self, from: u64, to: u64) -> (Option<u64>, usize) {
+        let ops_before = self.combine_ops();
+        let result = Some(self.fiba.range(from, to - 1));
+        let ops_after = self.combine_ops();
+        let ops = ops_after - ops_before;
+        (result, ops)
+    }
+
+    #[inline]
+    fn evict_range(&mut self, to: u64) {
+        self.fiba.pin_mut().bulk_evict(&(to - 1));
+    }
+    fn evict(&mut self) {
+        self.fiba.pin_mut().evict();
+    }
+    fn size_bytes(&self) -> usize {
+        self.fiba.memory_usage()
+    }
+    #[inline]
+    fn combine_ops(&self) -> usize {
+        self.fiba.combine_operations()
+    }
+}
+
+pub struct Bclassic8 {
+    fiba: UniquePtr<crate::bclassic_eight::Bclassic_8>,
+}
+impl Default for Bclassic8 {
+    fn default() -> Self {
+        Self {
+            fiba: crate::bclassic_eight::create_bclassic_8_with_sum(),
+        }
+    }
+}
+
+impl Tree<U64SumAggregator> for Bclassic8 {
+    #[inline]
+    fn insert(&mut self, ts: u64, agg: u64) {
+        self.fiba.pin_mut().insert(&ts, &agg);
+    }
+    #[inline]
+    fn query(&self) -> Option<u64> {
+        Some(self.fiba.query())
+    }
+
+    #[inline]
+    fn analyze_query(&self) -> (Option<u64>, usize) {
+        let ops_before = self.combine_ops();
+        let result = Some(self.fiba.query());
+        let ops_after = self.combine_ops();
+        let ops = ops_after - ops_before;
+        (result, ops)
+    }
+    #[inline]
+    fn range_query(&self, from: u64, to: u64) -> Option<u64> {
+        Some(self.fiba.range(from, to - 1))
+    }
+
+    #[inline]
+    fn analyze_range_query(&self, from: u64, to: u64) -> (Option<u64>, usize) {
+        let ops_before = self.combine_ops();
+        let result = Some(self.fiba.range(from, to - 1));
+        let ops_after = self.combine_ops();
+        let ops = ops_after - ops_before;
+        (result, ops)
+    }
+
+    #[inline]
+    fn evict_range(&mut self, to: u64) {
+        self.fiba.pin_mut().bulk_evict(&(to - 1));
+    }
+    fn evict(&mut self) {
+        self.fiba.pin_mut().evict();
+    }
+    fn size_bytes(&self) -> usize {
+        self.fiba.memory_usage()
+    }
+    #[inline]
+    fn combine_ops(&self) -> usize {
+        self.fiba.combine_operations()
+    }
+}

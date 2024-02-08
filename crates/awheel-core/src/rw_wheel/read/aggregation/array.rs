@@ -109,6 +109,10 @@ impl<A: Aggregator> MutablePartialArray<A> {
     pub fn from_slice<I: AsRef<[A::PartialAggregate]>>(slice: I) -> Self {
         Self::from_vec(slice.as_ref().to_vec())
     }
+    #[doc(hidden)]
+    pub fn size_bytes(&self) -> usize {
+        core::mem::size_of::<A::PartialAggregate>() * self.inner.len()
+    }
 
     /// Extends the array from a slice of partial aggregates
     pub fn extend_from_slice<I: AsRef<[A::PartialAggregate]>>(&mut self, slice: I) {
@@ -241,12 +245,17 @@ impl<A: Aggregator> PrefixArray<A> {
     fn rebuild_prefix(&mut self) {
         self.prefix = MutablePartialArray::from_vec(A::build_prefix(self.slots.as_ref()));
     }
-    pub(crate) fn _from_array(array: MutablePartialArray<A>) -> Self {
+    pub(crate) fn _from_array(array: &MutablePartialArray<A>) -> Self {
         let prefix = MutablePartialArray::from_vec(A::build_prefix(array.as_ref()));
         Self {
-            slots: array,
+            slots: array.clone(),
             prefix,
         }
+    }
+    #[doc(hidden)]
+    pub fn size_bytes(&self) -> usize {
+        let bytes = core::mem::size_of::<A::PartialAggregate>() * self.slots.len();
+        bytes * 2 // since slots + prefix same size
     }
     pub(crate) fn len(&self) -> usize {
         self.slots.len()
@@ -285,6 +294,7 @@ impl<A: Aggregator> PrefixArray<A> {
             Bound::Excluded(&n) => n - 1,
             Bound::Unbounded => len,
         };
+        // dbg!(start, end, len);
         A::prefix_query(self.prefix.as_ref(), start, end)
     }
 }

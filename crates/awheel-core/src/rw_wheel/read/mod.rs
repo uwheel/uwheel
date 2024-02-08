@@ -88,6 +88,11 @@ where
         self.inner.write().set_optimizer_hints(hints);
     }
 
+    #[doc(hidden)]
+    pub fn convert_all_to_prefix(&self) {
+        self.inner.write().convert_all_to_prefix();
+    }
+
     /// Returns Duration that represents where the wheel currently is in its cycle
     #[inline]
     pub fn current_time_in_cycle(&self) -> Duration {

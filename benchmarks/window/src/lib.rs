@@ -84,6 +84,78 @@ pub mod bfinger_eight {
     }
 }
 
+#[cxx::bridge]
+pub mod bclassic_two {
+    unsafe extern "C++" {
+        include!("window/include/FiBA.h");
+
+        type Bclassic_2;
+
+        fn create_bclassic_2_with_sum() -> UniquePtr<Bclassic_2>;
+
+        fn evict(self: Pin<&mut Bclassic_2>);
+        fn bulk_evict(self: Pin<&mut Bclassic_2>, time: &u64);
+        fn insert(self: Pin<&mut Bclassic_2>, time: &u64, value: &u64);
+        fn query(&self) -> u64;
+        fn range(&self, time_from: u64, time_to: u64) -> u64;
+
+        fn oldest(&self) -> u64;
+        fn youngest(&self) -> u64;
+
+        fn size(&self) -> usize;
+        fn memory_usage(&self) -> usize;
+        fn combine_operations(&self) -> usize;
+    }
+}
+
+#[cxx::bridge]
+pub mod bclassic_four {
+    unsafe extern "C++" {
+        include!("window/include/FiBA.h");
+
+        type Bclassic_4;
+
+        fn create_bclassic_4_with_sum() -> UniquePtr<Bclassic_4>;
+
+        fn evict(self: Pin<&mut Bclassic_4>);
+        fn bulk_evict(self: Pin<&mut Bclassic_4>, time: &u64);
+        fn insert(self: Pin<&mut Bclassic_4>, time: &u64, value: &u64);
+        fn query(&self) -> u64;
+        fn range(&self, time_from: u64, time_to: u64) -> u64;
+
+        fn oldest(&self) -> u64;
+        fn youngest(&self) -> u64;
+
+        fn size(&self) -> usize;
+        fn memory_usage(&self) -> usize;
+        fn combine_operations(&self) -> usize;
+    }
+}
+
+#[cxx::bridge]
+pub mod bclassic_eight {
+    unsafe extern "C++" {
+        include!("window/include/FiBA.h");
+
+        type Bclassic_8;
+
+        fn create_bclassic_8_with_sum() -> UniquePtr<Bclassic_8>;
+
+        fn evict(self: Pin<&mut Bclassic_8>);
+        fn bulk_evict(self: Pin<&mut Bclassic_8>, time: &u64);
+        fn insert(self: Pin<&mut Bclassic_8>, time: &u64, value: &u64);
+        fn query(&self) -> u64;
+        fn range(&self, time_from: u64, time_to: u64) -> u64;
+
+        fn oldest(&self) -> u64;
+        fn youngest(&self) -> u64;
+
+        fn size(&self) -> usize;
+        fn memory_usage(&self) -> usize;
+        fn combine_operations(&self) -> usize;
+    }
+}
+
 pub struct Run {
     pub id: String,
     pub total_insertions: u64,

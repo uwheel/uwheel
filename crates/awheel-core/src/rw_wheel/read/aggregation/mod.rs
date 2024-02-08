@@ -293,6 +293,21 @@ impl<A: Aggregator> AggregationWheel<A> {
         })
     }
 
+    /// Returns ``true`` if the underlying data is a PrefixArray
+    #[inline]
+    pub fn is_prefix(&self) -> bool {
+        matches!(self.data, Data::PrefixArray(_))
+    }
+
+    #[doc(hidden)]
+    pub fn to_prefix_array(&mut self) {
+        assert!(A::invertible());
+        if let Data::Array(array) = &self.data {
+            let mut prefix_data = Data::array_to_prefix(array);
+            core::mem::swap(&mut self.data, &mut prefix_data);
+        }
+    }
+
     /// Returns the number of queryable slots
     #[inline]
     pub fn total_slots(&self) -> usize {
@@ -349,8 +364,8 @@ impl<A: Aggregator> AggregationWheel<A> {
     }
 
     fn size_bytesz(&self) -> Option<usize> {
-        let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.data.len();
-        Some(mem::size_of::<Self>() + inner_slots)
+        let data_size = self.data.size_bytes(); // as it is on the heap
+        Some(mem::size_of::<Self>() + data_size)
     }
 
     /// Clears the wheel

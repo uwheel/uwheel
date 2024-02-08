@@ -2068,9 +2068,15 @@ namespace fiba_nofl {
 typedef btree::Aggregate<uint64_t, 2, btree::Kind::finger, Sum<uint64_t>> FiBA_SUM;
 typedef btree::Aggregate<uint64_t, 4, btree::Kind::finger, Sum<uint64_t>> FiBA_SUM_4;
 typedef btree::Aggregate<uint64_t, 8, btree::Kind::finger, Sum<uint64_t>> FiBA_SUM_8;
+typedef btree::Aggregate<uint64_t, 2, btree::Kind::classic, Sum<uint64_t>> Bclassic_2;
+typedef btree::Aggregate<uint64_t, 4, btree::Kind::classic, Sum<uint64_t>> Bclassic_4;
+typedef btree::Aggregate<uint64_t, 8, btree::Kind::classic, Sum<uint64_t>> Bclassic_8;
 
 std::unique_ptr<FiBA_SUM> create_fiba_with_sum();
 std::unique_ptr<FiBA_SUM_4> create_fiba_4_with_sum();
 std::unique_ptr<FiBA_SUM_8> create_fiba_8_with_sum();
+std::unique_ptr<Bclassic_2> create_bclassic_2_with_sum();
+std::unique_ptr<Bclassic_4> create_bclassic_4_with_sum();
+std::unique_ptr<Bclassic_8> create_bclassic_8_with_sum();
 
 #endif

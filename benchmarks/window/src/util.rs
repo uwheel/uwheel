@@ -658,7 +658,7 @@ pub fn generate_hours_range(watermark: u64) -> (u64, u64) {
     // Generate a random duration between 1 and (10080 - random_start_minutes) minutes
     let max_duration = (end_timestamp / 3600) - random_start_hours;
 
-    let duration_hours = fastrand::u64(0..=max_duration);
+    let duration_hours = fastrand::u64(1..=max_duration);
     let end_time_seconds = start_time_seconds + duration_hours * 3600;
 
     let end_time_seconds = std::cmp::min(end_time_seconds, end_timestamp);

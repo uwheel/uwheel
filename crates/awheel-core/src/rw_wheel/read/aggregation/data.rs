@@ -11,7 +11,7 @@ pub enum Data<A: Aggregator> {
 }
 
 impl<A: Aggregator> Data<A> {
-    pub fn _array_to_prefix(array: MutablePartialArray<A>) -> Self {
+    pub fn array_to_prefix(array: &MutablePartialArray<A>) -> Self {
         Self::PrefixArray(PrefixArray::_from_array(array))
     }
     pub fn create_prefix_array() -> Self {
@@ -19,6 +19,12 @@ impl<A: Aggregator> Data<A> {
     }
     pub fn create_array_with_capacity(capacity: usize) -> Self {
         Self::Array(MutablePartialArray::with_capacity(capacity))
+    }
+    pub fn size_bytes(&self) -> usize {
+        match self {
+            Data::Array(arr) => arr.size_bytes(),
+            Data::PrefixArray(arr) => arr.size_bytes(),
+        }
     }
     pub fn is_empty(&self) -> bool {
         self.len() == 0

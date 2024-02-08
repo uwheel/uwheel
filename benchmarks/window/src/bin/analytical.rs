@@ -16,7 +16,8 @@ use hdrhistogram::Histogram;
 use minstant::Instant;
 use std::{fs::File, time::Duration};
 use window::{
-    tree::{BTree, FiBA4, FiBA8, Tree},
+    // tree::{BTree, Bclassic2, Bclassic4, Bclassic8, FiBA4, FiBA8, Tree},
+    tree::{BTree, Bclassic2, Bclassic4, Bclassic8, Tree},
     util::*,
 };
 
@@ -99,21 +100,30 @@ pub struct Run {
     watermark: u64,
     events_per_second: u64,
     wheels_memory_bytes: usize,
+    wheels_prefix_memory_bytes: usize,
     btree_memory_bytes: usize,
-    fiba_bfinger4_memory_bytes: usize,
-    fiba_bfinger8_memory_bytes: usize,
+    // fiba_bfinger4_memory_bytes: usize,
+    // fiba_bfinger8_memory_bytes: usize,
+    bclassic2_memory_bytes: usize,
+    bclassic4_memory_bytes: usize,
+    bclassic8_memory_bytes: usize,
     duckdb_memory: String,
     queries: Vec<QueryDescription>,
 }
 
 impl Run {
+    // Beautiful indeed
     #[allow(clippy::too_many_arguments)]
     pub fn from(
         watermark: u64,
         events_per_second: u64,
         wheels_memory_bytes: usize,
-        fiba_bfinger4_memory_bytes: usize,
-        fiba_bfinger8_memory_bytes: usize,
+        wheels_prefix_memory_bytes: usize,
+        // fiba_bfinger4_memory_bytes: usize,
+        // fiba_bfinger8_memory_bytes: usize,
+        bclassic2_memory_bytes: usize,
+        bclassic4_memory_bytes: usize,
+        bclassic8_memory_bytes: usize,
         btree_memory_bytes: usize,
         duckdb_memory: String,
         queries: Vec<QueryDescription>,
@@ -122,8 +132,12 @@ impl Run {
             watermark,
             events_per_second,
             wheels_memory_bytes,
-            fiba_bfinger4_memory_bytes,
-            fiba_bfinger8_memory_bytes,
+            wheels_prefix_memory_bytes,
+            // fiba_bfinger4_memory_bytes,
+            // fiba_bfinger8_memory_bytes,
+            bclassic2_memory_bytes,
+            bclassic4_memory_bytes,
+            bclassic8_memory_bytes,
             btree_memory_bytes,
             duckdb_memory,
             queries,
@@ -166,8 +180,11 @@ fn run(args: &Args) -> Vec<Run> {
 
     // Prepare BTree
     let mut btree: BTree<U64SumAggregator> = BTree::default();
-    let mut fiba_4 = FiBA4::default();
-    let mut fiba_8 = FiBA8::default();
+    // let mut fiba_4 = FiBA4::default();
+    // let mut fiba_8 = FiBA8::default();
+    let mut bclassic_2 = Bclassic2::default();
+    let mut bclassic_4 = Bclassic4::default();
+    let mut bclassic_8 = Bclassic8::default();
 
     // Prepare μWheel
     let mut haw_conf = HawConf::default();
@@ -198,45 +215,64 @@ fn run(args: &Args) -> Vec<Run> {
 
         let q1_queries = QueryGenerator::generate_q1(total_landmark_queries);
         let q1_queries_hints = q1_queries.clone();
+        let q1_queries_prefix = q1_queries.clone();
         let q1_queries_duckdb = q1_queries.clone();
         let q1_queries_btree = q1_queries.clone();
-        let q1_queries_fiba_4 = q1_queries.clone();
-        let q1_queries_fiba = q1_queries.clone();
+        // let q1_queries_fiba_4 = q1_queries.clone();
+        // let q1_queries_fiba = q1_queries.clone();
+        let q1_queries_bclassic_2 = q1_queries.clone();
+        let q1_queries_bclassic_4 = q1_queries.clone();
+        let q1_queries_bclassic_8 = q1_queries.clone();
 
         // Generate Q2
 
         let q2_queries_seconds = QueryGenerator::generate_q2_seconds(total_queries, watermark);
         let q2_queries_seconds_hints = q2_queries_seconds.clone();
+        let q2_queries_seconds_prefix = q2_queries_seconds.clone();
         let q2_queries_seconds_duckdb = q2_queries_seconds.clone();
         let q2_queries_seconds_btree = q2_queries_seconds.clone();
-        let q2_queries_fiba_4 = q2_queries_seconds.clone();
-        let q2_queries_fiba = q2_queries_seconds.clone();
+        // let q2_queries_fiba_4 = q2_queries_seconds.clone();
+        // let q2_queries_fiba = q2_queries_seconds.clone();
+        let q2_queries_bclassic_2 = q2_queries_seconds.clone();
+        let q2_queries_bclassic_4 = q2_queries_seconds.clone();
+        let q2_queries_bclassic_8 = q2_queries_seconds.clone();
 
         // Q2 Minutes
 
         let q2_queries_minutes = QueryGenerator::generate_q2_minutes(total_queries, watermark);
         let q2_queries_minutes_hints = q2_queries_minutes.clone();
+        let q2_queries_minutes_prefix = q2_queries_minutes.clone();
         let q2_queries_minutes_duckdb = q2_queries_minutes.clone();
         let q2_queries_minutes_btree = q2_queries_minutes.clone();
-        let q2_queries_minutes_fiba_4 = q2_queries_minutes.clone();
-        let q2_queries_minutes_fiba = q2_queries_minutes.clone();
+        // let q2_queries_minutes_fiba_4 = q2_queries_minutes.clone();
+        // let q2_queries_minutes_fiba = q2_queries_minutes.clone();
+        let q2_queries_minutes_bclassic2 = q2_queries_minutes.clone();
+        let q2_queries_minutes_bclassic4 = q2_queries_minutes.clone();
+        let q2_queries_minutes_bclassic8 = q2_queries_minutes.clone();
 
         // Q2 Hours
 
         let q2_queries_hours = QueryGenerator::generate_q2_hours(total_queries, watermark);
         let q2_queries_hours_hints = q2_queries_hours.clone();
+        let q2_queries_hours_prefix = q2_queries_hours.clone();
         let q2_queries_hours_btree = q2_queries_hours.clone();
         let q2_queries_hours_duckdb = q2_queries_hours.clone();
-        let q2_queries_hours_fiba_4 = q2_queries_hours.clone();
-        let q2_queries_hours_fiba = q2_queries_hours.clone();
+        // let q2_queries_hours_fiba_4 = q2_queries_hours.clone();
+        // let q2_queries_hours_fiba = q2_queries_hours.clone();
+        let q2_queries_hours_bclassic2 = q2_queries_hours.clone();
+        let q2_queries_hours_bclassic4 = q2_queries_hours.clone();
+        let q2_queries_hours_bclassic8 = q2_queries_hours.clone();
 
         println!("Inserting data, may take a while...");
 
         for batch in btree_batches {
             for record in batch {
                 btree.insert(record.do_time, record.fare_amount);
-                fiba_4.insert(record.do_time, record.fare_amount);
-                fiba_8.insert(record.do_time, record.fare_amount);
+                // fiba_4.insert(record.do_time, record.fare_amount);
+                // fiba_8.insert(record.do_time, record.fare_amount);
+                bclassic_2.insert(record.do_time, record.fare_amount);
+                bclassic_4.insert(record.do_time, record.fare_amount);
+                bclassic_8.insert(record.do_time, record.fare_amount);
             }
         }
 
@@ -342,74 +378,265 @@ fn run(args: &Args) -> Vec<Run> {
             wheel_q2_hours.2, wheel_q2_hours.3
         );
 
-        let fiba_4_q1 = tree_run("FiBA Bfinger4 Q1", watermark, &fiba_4, q1_queries_fiba_4);
-        q1_results.add(Stats::from("FiBA Bfinger4", &fiba_4_q1));
-        println!("FiBA Bfinger4 Q1 {:?}", fiba_4_q1.0);
+        wheel.read().set_optimizer_hints(false);
+        let wheel_non_prefix_size = wheel.read().as_ref().size_bytes();
+        wheel.read().convert_all_to_prefix();
 
-        let fiba_4_q2 = tree_run("FiBA Bfinger4 Q2", watermark, &fiba_4, q2_queries_fiba_4);
-        q2_seconds_results.add(Stats::from("FiBA Bfinger4", &fiba_4_q2));
-        println!("FiBA Bfinger4 Q2 Seconds {:?}", fiba_4_q2.0);
-        println!("avg ops: {}, worst ops: {}", fiba_4_q2.2, fiba_4_q2.3);
+        let wheel_q1 = awheel_run("μWheel-prefix Q1", watermark, &wheel, q1_queries_prefix);
+        println!("μWheel-prefix Q1 {:?}", wheel_q1.0);
+        q1_results.add(Stats::from("μWheel-prefix", &wheel_q1));
 
-        let fiba_q2_minutes = tree_run(
-            "FiBA Q2 Minutes",
+        let wheel_q2_seconds = awheel_run(
+            "μWheel-prefix Q2 Seconds",
             watermark,
-            &fiba_8,
-            q2_queries_minutes_fiba_4,
+            &wheel,
+            q2_queries_seconds_prefix,
         );
-        q2_minutes_results.add(Stats::from("FiBA Bfinger4", &fiba_q2_minutes));
-        println!("FiBA Bfinger4 Q2 Minutes {:?}", fiba_q2_minutes.0);
+        q2_seconds_results.add(Stats::from("μWheel-prefix", &wheel_q2_seconds));
+        println!("μWheel-prefix Q2 Seconds {:?}", wheel_q2_seconds.0);
+        println!(
+            "avg ops: {} worst ops: {}",
+            wheel_q2_seconds.2, wheel_q2_seconds.3
+        );
+
+        let wheel_q2_minutes = awheel_run(
+            "μWheel-prefix Q2 Minutes",
+            watermark,
+            &wheel,
+            q2_queries_minutes_prefix,
+        );
+        q2_minutes_results.add(Stats::from("μWheel-prefix", &wheel_q2_minutes));
+        println!("μWheel-prefix Q2 Minutes {:?}", wheel_q2_minutes.0);
+        println!(
+            "avg ops: {} worst ops: {}",
+            wheel_q2_minutes.2, wheel_q2_minutes.3
+        );
+
+        let wheel_q2_hours = awheel_run(
+            "μWheel-prefix Q2 Hours",
+            watermark,
+            &wheel,
+            q2_queries_hours_prefix,
+        );
+        q2_hours_results.add(Stats::from("μWheel-prefix", &wheel_q2_hours));
+        println!("μWheel-prefix Q2 Hours {:?}", wheel_q2_hours.0);
+        println!(
+            "avg ops: {} worst ops: {}",
+            wheel_q2_hours.2, wheel_q2_hours.3
+        );
+
+        // let fiba_4_q1 = tree_run("FiBA Bfinger4 Q1", watermark, &fiba_4, q1_queries_fiba_4);
+        // q1_results.add(Stats::from("FiBA Bfinger4", &fiba_4_q1));
+        // println!("FiBA Bfinger4 Q1 {:?}", fiba_4_q1.0);
+
+        // let fiba_4_q2 = tree_run("FiBA Bfinger4 Q2", watermark, &fiba_4, q2_queries_fiba_4);
+        // q2_seconds_results.add(Stats::from("FiBA Bfinger4", &fiba_4_q2));
+        // println!("FiBA Bfinger4 Q2 Seconds {:?}", fiba_4_q2.0);
+        // println!("avg ops: {}, worst ops: {}", fiba_4_q2.2, fiba_4_q2.3);
+
+        // let fiba_q2_minutes = tree_run(
+        //     "FiBA Q2 Minutes",
+        //     watermark,
+        //     &fiba_8,
+        //     q2_queries_minutes_fiba_4,
+        // );
+        // q2_minutes_results.add(Stats::from("FiBA Bfinger4", &fiba_q2_minutes));
+        // println!("FiBA Bfinger4 Q2 Minutes {:?}", fiba_q2_minutes.0);
+        // println!(
+        //     "avg ops: {}, worst ops: {}",
+        //     fiba_q2_minutes.2, fiba_q2_minutes.3
+        // );
+
+        // let fiba_q2_hours = tree_run(
+        //     "FiBA Bfinger4 Q2 hours",
+        //     watermark,
+        //     &fiba_8,
+        //     q2_queries_hours_fiba_4,
+        // );
+        // q2_hours_results.add(Stats::from("FiBA Bfinger4", &fiba_q2_hours));
+        // println!("FiBA Bfinger4 Q2 Hours {:?}", fiba_q2_hours.0);
+        // println!(
+        //     "avg ops: {}, worst ops: {}",
+        //     fiba_q2_hours.2, fiba_q2_hours.3
+        // );
+
+        // let fiba_q1 = tree_run("FiBA Bfinger8 Q1", watermark, &fiba_8, q1_queries_fiba);
+        // q1_results.add(Stats::from("FiBA Bfinger8", &fiba_q1));
+        // println!("FiBA Bfinger8 Q1 {:?}", fiba_q1.0);
+
+        // let fiba_q2 = tree_run("FiBA Bfinger8 Q2 ", watermark, &fiba_8, q2_queries_fiba);
+        // q2_seconds_results.add(Stats::from("FiBA Bfinger8", &fiba_q2));
+        // println!("FiBA Bfinger8 Q2 Seconds {:?}", fiba_q2.0);
+        // println!("avg ops: {}, worst ops: {}", fiba_q2.2, fiba_q2.3);
+
+        // let fiba_q2_minutes = tree_run(
+        //     "FiBA Bfinger8 Q2 Minutes",
+        //     watermark,
+        //     &fiba_8,
+        //     q2_queries_minutes_fiba,
+        // );
+        // q2_minutes_results.add(Stats::from("FiBA Bfinger8", &fiba_q2_minutes));
+        // println!("FiBA Bfinger8 Q2 Minutes {:?}", fiba_q2_minutes.0);
+        // println!(
+        //     "avg ops: {}, worst ops: {}",
+        //     fiba_q2_minutes.2, fiba_q2_minutes.3
+        // );
+
+        // let fiba_q2_hours = tree_run(
+        //     "FiBA Bfinger8 Q2 hours",
+        //     watermark,
+        //     &fiba_8,
+        //     q2_queries_hours_fiba,
+        // );
+        // q2_hours_results.add(Stats::from("FiBA Bfinger8", &fiba_q2_hours));
+        // println!("FiBA Bfinger8 Q2 Hours {:?}", fiba_q2_hours.0);
+        // println!(
+        //     "avg ops: {}, worst ops: {}",
+        //     fiba_q2_hours.2, fiba_q2_hours.3
+        // );
+
+        let bclassic2_q1 = tree_run(
+            "Bclassic2 Q1",
+            watermark,
+            &bclassic_2,
+            q1_queries_bclassic_2,
+        );
+        q1_results.add(Stats::from("Bclassic2", &bclassic2_q1));
+        println!("Bclassic2 Q1 {:?}", bclassic2_q1.0);
+
+        let bclassic_2_q2 = tree_run(
+            "Bclassic2 Q2",
+            watermark,
+            &bclassic_2,
+            q2_queries_bclassic_2,
+        );
+        q2_seconds_results.add(Stats::from("Bclassic2", &bclassic_2_q2));
+        println!("Bclassic2 Q2 Seconds {:?}", bclassic_2_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
-            fiba_q2_minutes.2, fiba_q2_minutes.3
+            bclassic_2_q2.2, bclassic_2_q2.3
         );
 
-        let fiba_q2_hours = tree_run(
-            "FiBA Bfinger4 Q2 hours",
+        let bclassic_2_q2 = tree_run(
+            "Bclassic2 Q2 Minutes",
             watermark,
-            &fiba_8,
-            q2_queries_hours_fiba_4,
+            &bclassic_2,
+            q2_queries_minutes_bclassic2,
         );
-        q2_hours_results.add(Stats::from("FiBA Bfinger4", &fiba_q2_hours));
-        println!("FiBA Bfinger4 Q2 Hours {:?}", fiba_q2_hours.0);
+        q2_minutes_results.add(Stats::from("Bclassic2", &bclassic_2_q2));
+        println!("Bclassic2 Q2 Minutes {:?}", bclassic_2_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
-            fiba_q2_hours.2, fiba_q2_hours.3
+            bclassic_2_q2.2, bclassic_2_q2.3
         );
 
-        let fiba_q1 = tree_run("FiBA Bfinger8 Q1", watermark, &fiba_8, q1_queries_fiba);
-        q1_results.add(Stats::from("FiBA Bfinger8", &fiba_q1));
-        println!("FiBA Bfinger8 Q1 {:?}", fiba_q1.0);
-
-        let fiba_q2 = tree_run("FiBA Bfinger8 Q2 ", watermark, &fiba_8, q2_queries_fiba);
-        q2_seconds_results.add(Stats::from("FiBA Bfinger8", &fiba_q2));
-        println!("FiBA Bfinger8 Q2 Seconds {:?}", fiba_q2.0);
-        println!("avg ops: {}, worst ops: {}", fiba_q2.2, fiba_q2.3);
-
-        let fiba_q2_minutes = tree_run(
-            "FiBA Bfinger8 Q2 Minutes",
+        let bclassic_2_q2 = tree_run(
+            "Bclassic2 Q2 Hours",
             watermark,
-            &fiba_8,
-            q2_queries_minutes_fiba,
+            &bclassic_2,
+            q2_queries_hours_bclassic2,
         );
-        q2_minutes_results.add(Stats::from("FiBA Bfinger8", &fiba_q2_minutes));
-        println!("FiBA Bfinger8 Q2 Minutes {:?}", fiba_q2_minutes.0);
+        q2_hours_results.add(Stats::from("Bclassic2", &bclassic_2_q2));
+        println!("Bclassic2 Q2 Hours {:?}", bclassic_2_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
-            fiba_q2_minutes.2, fiba_q2_minutes.3
+            bclassic_2_q2.2, bclassic_2_q2.3
         );
 
-        let fiba_q2_hours = tree_run(
-            "FiBA Bfinger8 Q2 hours",
+        let bclassic4_q1 = tree_run(
+            "Bclassic4 Q1",
             watermark,
-            &fiba_8,
-            q2_queries_hours_fiba,
+            &bclassic_4,
+            q1_queries_bclassic_4,
         );
-        q2_hours_results.add(Stats::from("FiBA Bfinger8", &fiba_q2_hours));
-        println!("FiBA Bfinger8 Q2 Hours {:?}", fiba_q2_hours.0);
+        q1_results.add(Stats::from("Bclassic4", &bclassic4_q1));
+        println!("Bclassic4 Q1 {:?}", bclassic4_q1.0);
+
+        let bclassic_4_q2 = tree_run(
+            "Bclassic4 Q2",
+            watermark,
+            &bclassic_4,
+            q2_queries_bclassic_4,
+        );
+        q2_seconds_results.add(Stats::from("Bclassic4", &bclassic_4_q2));
+        println!("Bclassic4 Q2 Seconds {:?}", bclassic_4_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
-            fiba_q2_hours.2, fiba_q2_hours.3
+            bclassic_4_q2.2, bclassic_4_q2.3
+        );
+
+        let bclassic_4_q2 = tree_run(
+            "Bclassic4 Q2 Minutes",
+            watermark,
+            &bclassic_4,
+            q2_queries_minutes_bclassic4,
+        );
+        q2_minutes_results.add(Stats::from("Bclassic4", &bclassic_4_q2));
+        println!("Bclassic4 Q2 Minutes {:?}", bclassic_4_q2.0);
+        println!(
+            "avg ops: {}, worst ops: {}",
+            bclassic_4_q2.2, bclassic_4_q2.3
+        );
+
+        let bclassic_4_q2 = tree_run(
+            "Bclassic4 Q2 Hours",
+            watermark,
+            &bclassic_4,
+            q2_queries_hours_bclassic4,
+        );
+        q2_hours_results.add(Stats::from("Bclassic4", &bclassic_4_q2));
+        println!("Bclassic4 Q2 Hours {:?}", bclassic_4_q2.0);
+        println!(
+            "avg ops: {}, worst ops: {}",
+            bclassic_4_q2.2, bclassic_4_q2.3
+        );
+
+        let bclassic8_q1 = tree_run(
+            "Bclassic8 Q1",
+            watermark,
+            &bclassic_8,
+            q1_queries_bclassic_8,
+        );
+        q1_results.add(Stats::from("Bclassic8", &bclassic8_q1));
+        println!("Bclassic8 Q1 {:?}", bclassic8_q1.0);
+
+        let bclassic_8_q2 = tree_run(
+            "Bclassic8 Q2",
+            watermark,
+            &bclassic_8,
+            q2_queries_bclassic_8,
+        );
+        q2_seconds_results.add(Stats::from("Bclassic8", &bclassic_8_q2));
+        println!("Bclassic8 Q2 Seconds {:?}", bclassic_8_q2.0);
+        println!(
+            "avg ops: {}, worst ops: {}",
+            bclassic_8_q2.2, bclassic_8_q2.3
+        );
+
+        let bclassic_8_q2 = tree_run(
+            "Bclassic8 Q2 Minutes",
+            watermark,
+            &bclassic_8,
+            q2_queries_minutes_bclassic8,
+        );
+        q2_minutes_results.add(Stats::from("Bclassic8", &bclassic_8_q2));
+        println!("Bclassic8 Q2 Minutes {:?}", bclassic_8_q2.0);
+        println!(
+            "avg ops: {}, worst ops: {}",
+            bclassic_8_q2.2, bclassic_8_q2.3
+        );
+
+        let bclassic_8_q2 = tree_run(
+            "Bclassic8 Q2 Hours",
+            watermark,
+            &bclassic_8,
+            q2_queries_hours_bclassic8,
+        );
+        q2_hours_results.add(Stats::from("Bclassic8", &bclassic_8_q2));
+        println!("Bclassic8 Q2 Hours {:?}", bclassic_8_q2.0);
+        println!(
+            "avg ops: {}, worst ops: {}",
+            bclassic_8_q2.2, bclassic_8_q2.3
         );
 
         let btree_q1 = tree_run("BTree Q1", watermark, &btree, q1_queries_btree);
@@ -433,7 +660,8 @@ fn run(args: &Args) -> Vec<Run> {
         println!("BTree Q2 Hours  {:?}", btree_q2_hours.0);
         q2_hours_results.add(Stats::from("BTree", &btree_q2_hours));
 
-        let duckdb_id_fmt = |threads: usize| format!("duckdb-threads-{}", threads);
+        let duckdb_id_fmt = |threads: usize| format!("DuckDB-threads-{}", threads);
+        // let duckdb_id_fmt = |_threads: usize| format!("DuckDB");
 
         // let duckdb_q1 = duckdb_run(
         //     "DuckDB Q1",
@@ -527,11 +755,24 @@ fn run(args: &Args) -> Vec<Run> {
         println!("DuckDB Q2 Hours {:?}", duckdb_q2_hours.0);
 
         let duck_info = duckdb_memory_usage(&duckdb);
-        let wheels_memory_bytes = wheel.read().as_ref().size_bytes();
-        let fiba_bfinger4_memory_bytes = fiba_4.size_bytes();
-        let fiba_bfinger8_memory_bytes = fiba_8.size_bytes();
+        let wheels_memory_bytes = wheel_non_prefix_size;
+        let wheels_prefix_memory_bytes = wheel.read().as_ref().size_bytes();
+        // let fiba_bfinger4_memory_bytes = fiba_4.size_bytes();
+        // let fiba_bfinger8_memory_bytes = fiba_8.size_bytes();
+        let bclassic2_memory_bytes = bclassic_2.size_bytes();
+        let bclassic4_memory_bytes = bclassic_4.size_bytes();
+        let bclassic8_memory_bytes = bclassic_8.size_bytes();
         let btree_memory_bytes = btree.size_bytes();
         let duckdb_memory_bytes = duck_info.memory_usage;
+        dbg!(
+            wheels_memory_bytes,
+            wheels_prefix_memory_bytes,
+            // fiba_bfinger4_memory_bytes,
+            // fiba_bfinger8_memory_bytes,
+            bclassic2_memory_bytes,
+            bclassic4_memory_bytes,
+            bclassic8_memory_bytes
+        );
 
         // update watermark
         current_date = watermark;
@@ -546,8 +787,12 @@ fn run(args: &Args) -> Vec<Run> {
             watermark,
             events_per_sec as u64,
             wheels_memory_bytes,
-            fiba_bfinger4_memory_bytes,
-            fiba_bfinger8_memory_bytes,
+            wheels_prefix_memory_bytes,
+            // fiba_bfinger4_memory_bytes,
+            // fiba_bfinger8_memory_bytes,
+            bclassic2_memory_bytes,
+            bclassic4_memory_bytes,
+            bclassic8_memory_bytes,
             btree_memory_bytes,
             duckdb_memory_bytes,
             queries,

@@ -111,8 +111,10 @@ impl<A: Aggregator> MaybeWheel<A> {
     }
 
     /// Returns whether this wheel supports prefix-sum range queries
+    #[inline]
     pub fn prefix_support(&self) -> bool {
-        A::PREFIX_SUPPORT && self.conf.prefix_sum
+        self.inner.as_ref().map(|w| w.is_prefix()).unwrap_or(false)
+        // A::PREFIX_SUPPORT && self.conf.prefix_sum
     }
 
     pub fn size_bytes(&self) -> usize {

@@ -682,6 +682,15 @@ where
         self.combine_range_inner(range)
     }
 
+    // for benching purposes right now
+    #[doc(hidden)]
+    pub fn convert_all_to_prefix(&mut self) {
+        self.seconds_wheel.as_mut().unwrap().to_prefix_array();
+        self.minutes_wheel.as_mut().unwrap().to_prefix_array();
+        self.hours_wheel.as_mut().unwrap().to_prefix_array();
+        self.days_wheel.as_mut().unwrap().to_prefix_array();
+    }
+
     fn _optimize_check(&self) {
         for (_granularity, _freq) in self.frequencies.outliers() {
             // Check whether this wheel granularity can be optimized for queries
@@ -701,10 +710,7 @@ where
         let range = range.into();
         let WheelRange { start, end } = range;
 
-        assert!(
-            end >= start,
-            "End date needs to be equal or larger than start date"
-        );
+        assert!(end > start, "End date needs to be larger than start date");
 
         #[cfg(feature = "cache")]
         {
@@ -771,11 +777,16 @@ where
             #[cfg(not(feature = "simd"))]
             false
         };
+        // #[cfg(feature = "simd")]
+        // {
+        //     let remainder = slots % A::SIMD_LANES;
+        //     slots = (slots / A::SIMD_LANES) + remainder;
+        // }
 
         // TODO: establish constants or configurable bounds
         match (A::combine_hint(), simd_support) {
             (Some(CombineHint::Cheap), false) => 1000,
-            (Some(CombineHint::Cheap), true) => 5000,
+            (Some(CombineHint::Cheap), true) => 15000,
             (Some(CombineHint::Expensive), false) => 100,
             (Some(CombineHint::Expensive), true) => 500,
             (None, false) => 500,
