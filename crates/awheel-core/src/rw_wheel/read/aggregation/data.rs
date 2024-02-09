@@ -14,6 +14,9 @@ impl<A: Aggregator> Data<A> {
     pub fn array_to_prefix(array: &MutablePartialArray<A>) -> Self {
         Self::PrefixArray(PrefixArray::_from_array(array))
     }
+    pub fn prefix_to_array(array: &PrefixArray<A>) -> Self {
+        Self::Array(MutablePartialArray::from_slice(array.slots_slice()))
+    }
     pub fn create_prefix_array() -> Self {
         Self::PrefixArray(PrefixArray::default())
     }

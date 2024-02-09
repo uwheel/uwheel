@@ -93,6 +93,11 @@ where
         self.inner.write().convert_all_to_prefix();
     }
 
+    #[doc(hidden)]
+    pub fn convert_all_to_array(&self) {
+        self.inner.write().convert_all_to_array();
+    }
+
     /// Returns Duration that represents where the wheel currently is in its cycle
     #[inline]
     pub fn current_time_in_cycle(&self) -> Duration {

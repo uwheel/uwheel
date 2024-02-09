@@ -754,9 +754,13 @@ fn run(args: &Args) -> Vec<Run> {
 
         println!("DuckDB Q2 Hours {:?}", duckdb_q2_hours.0);
 
+        let wheels_prefix_memory_bytes = wheel.read().as_ref().size_bytes();
+
+        // Convert wheels back to array before next interval
+        wheel.read().convert_all_to_array();
+
         let duck_info = duckdb_memory_usage(&duckdb);
         let wheels_memory_bytes = wheel_non_prefix_size;
-        let wheels_prefix_memory_bytes = wheel.read().as_ref().size_bytes();
         // let fiba_bfinger4_memory_bytes = fiba_4.size_bytes();
         // let fiba_bfinger8_memory_bytes = fiba_8.size_bytes();
         let bclassic2_memory_bytes = bclassic_2.size_bytes();

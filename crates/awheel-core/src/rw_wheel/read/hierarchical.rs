@@ -691,6 +691,15 @@ where
         self.days_wheel.as_mut().unwrap().to_prefix_array();
     }
 
+    // for benching purposes right now
+    #[doc(hidden)]
+    pub fn convert_all_to_array(&mut self) {
+        self.seconds_wheel.as_mut().unwrap().to_array();
+        self.minutes_wheel.as_mut().unwrap().to_array();
+        self.hours_wheel.as_mut().unwrap().to_array();
+        self.days_wheel.as_mut().unwrap().to_array();
+    }
+
     fn _optimize_check(&self) {
         for (_granularity, _freq) in self.frequencies.outliers() {
             // Check whether this wheel granularity can be optimized for queries

@@ -308,6 +308,15 @@ impl<A: Aggregator> AggregationWheel<A> {
         }
     }
 
+    #[doc(hidden)]
+    pub fn to_array(&mut self) {
+        assert!(A::invertible());
+        if let Data::PrefixArray(prefix_array) = &self.data {
+            let mut array_data = Data::prefix_to_array(prefix_array);
+            core::mem::swap(&mut self.data, &mut array_data);
+        }
+    }
+
     /// Returns the number of queryable slots
     #[inline]
     pub fn total_slots(&self) -> usize {
