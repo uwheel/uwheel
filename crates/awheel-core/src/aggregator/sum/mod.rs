@@ -1,10 +1,10 @@
 use super::super::Aggregator;
-use crate::{aggregator::InverseExt, rw_wheel::read::hierarchical::CombineHint};
+use crate::rw_wheel::read::hierarchical::CombineHint;
 
 #[cfg(feature = "simd")]
 use core::simd::prelude::{SimdFloat, SimdInt, SimdUint};
 #[cfg(feature = "simd")]
-use core::simd::{f32x16, f64x8, i32x16, i64x8, u32x16, u64x32};
+use core::simd::{f32x32, f64x32, i16x64, i32x32, i64x32, u16x64, u32x32, u64x32};
 
 #[cfg(feature = "simd")]
 use multiversion::multiversion;
@@ -19,15 +19,9 @@ macro_rules! sum_impl {
         pub struct $struct;
 
         impl Aggregator for $struct {
-            #[cfg(feature = "simd")]
-            const SIMD_LANES: usize = <$simd>::LEN;
-            #[cfg(feature = "simd")]
             type CombineSimd = fn(&[$pa]) -> $pa;
-
             type CombineInverse = fn($pa, $pa) -> $pa;
-
             const IDENTITY: Self::PartialAggregate = 0 as $pa;
-            const PREFIX_SUPPORT: bool = true;
 
             type Input = $type;
             type MutablePartialAggregate = $pa;
@@ -56,21 +50,6 @@ macro_rules! sum_impl {
             #[cfg(feature = "simd")]
             #[multiversion(targets = "simd")]
             #[inline]
-            fn combine_slice(slice: &[$pa]) -> Option<$pa> {
-                let (head, chunks, tail) = slice.as_simd();
-                let chunk = chunks
-                    .iter()
-                    .fold(<$simd>::default(), |acc, chunk| acc + *chunk);
-                Some(
-                    chunk.reduce_sum()
-                        + head.iter().copied().sum::<$pa>()
-                        + tail.iter().copied().sum::<$pa>(),
-                )
-            }
-
-            #[cfg(feature = "simd")]
-            #[multiversion(targets = "simd")]
-            #[inline]
             fn merge_slices(dst: &mut [$pa], src: &[$pa]) {
                 let (src_head, src_chunks, src_tail) = src.as_simd::<{ <$simd>::LEN }>();
                 let (dst_head, dst_chunks, dst_tail) = dst.as_simd_mut::<{ <$simd>::LEN }>();
@@ -91,18 +70,6 @@ macro_rules! sum_impl {
                 }
             }
 
-            // #[inline]
-            // #[cfg(feature = "simd")]
-            // #[multiversion(targets = "simd")]
-            // fn build_prefix(_slice: &[$pa]) -> Vec<$pa> {
-            //     // let mut result = Vec::with_capacity(slice.len());
-            //     // TODO: use explicit SIMD instructions to build prefix-sum array
-            //     // let chunks = slice.chunks_exact(<$simd>::LANES);
-            //     // let remainder = chunks.remainder();
-            //     // for chunk in chunks {}
-            //     unimplemented!();
-            // }
-
             #[inline]
             fn prefix_query(
                 slice: &[Self::PartialAggregate],
@@ -121,22 +88,6 @@ macro_rules! sum_impl {
                 a.into()
             }
 
-            #[cfg(feature = "pco")]
-            fn compress(_data: &[Self::PartialAggregate]) -> Option<Vec<u8>> {
-                Some(pco::standalone::auto_compress(
-                    _data,
-                    pco::DEFAULT_COMPRESSION_LEVEL,
-                ))
-            }
-
-            #[cfg(feature = "pco")]
-            fn decompress(_bytes: &[u8]) -> Option<Vec<Self::PartialAggregate>> {
-                Some(
-                    pco::standalone::auto_decompress::<Self::PartialAggregate>(&_bytes)
-                        .expect("failed to decompress"),
-                )
-            }
-
             #[inline]
             fn combine_inverse() -> Option<Self::CombineInverse> {
                 Some(|a, b| if a > b { a - b } else { 0 as $pa })
@@ -145,80 +96,81 @@ macro_rules! sum_impl {
             #[cfg(feature = "simd")]
             #[inline]
             fn combine_simd() -> Option<Self::CombineSimd> {
-                Some(|slice: &[$pa]| {
-                    let (head, chunks, tail) = slice.as_simd();
-                    let chunk = chunks
-                        .iter()
-                        .fold(<$simd>::default(), |acc, chunk| acc + *chunk);
-
-                    chunk.reduce_sum()
-                        + head.iter().copied().sum::<$pa>()
-                        + tail.iter().copied().sum::<$pa>()
-                })
+                Some(|slice: &[$pa]| Self::simd_sum(slice))
             }
 
             fn combine_hint() -> Option<CombineHint> {
                 Some(CombineHint::Cheap)
             }
         }
-        impl InverseExt for $struct {
+        impl $struct {
+            #[cfg(feature = "simd")]
+            #[multiversion(targets = "simd")]
             #[inline]
-            fn inverse_combine(
-                a: Self::PartialAggregate,
-                b: Self::PartialAggregate,
-            ) -> Self::PartialAggregate {
-                if a > b {
-                    a - b
-                } else {
-                    0 as $pa
-                }
+            fn simd_sum(slice: &[$pa]) -> $pa {
+                let (head, chunks, tail) = slice.as_simd();
+                let chunk = chunks
+                    .iter()
+                    .fold(<$simd>::default(), |acc, chunk| acc + *chunk);
+                chunk.reduce_sum()
+                    + head.iter().copied().sum::<$pa>()
+                    + tail.iter().copied().sum::<$pa>()
             }
+
+            // #[inline]
+            // #[cfg(feature = "simd")]
+            // #[multiversion(targets = "simd")]
+            // fn simd_build_prefix(_slice: &[$pa]) -> Vec<$pa> {
+            //     // let mut result = Vec::with_capacity(slice.len());
+            //     // TODO: use explicit SIMD instructions to build prefix-sum array
+            //     // let chunks = slice.chunks_exact(<$simd>::LANES);
+            //     // let remainder = chunks.remainder();
+            //     // for chunk in chunks {}
+            //     unimplemented!();
+            // }
         }
     };
 }
 
-// #[cfg(not(feature = "simd"))]
-// integer_sum_impl!(U16SumAggregator, u16, u16);
-// #[cfg(feature = "simd")]
-// integer_sum_impl!(U16SumAggregator, u16, u16, u16x32);
+#[cfg(not(feature = "simd"))]
+sum_impl!(U16SumAggregator, u16, u16);
+#[cfg(feature = "simd")]
+sum_impl!(U16SumAggregator, u16, u16, u16x64);
 
 #[cfg(not(feature = "simd"))]
 sum_impl!(U32SumAggregator, u32, u32);
 #[cfg(feature = "simd")]
-sum_impl!(U32SumAggregator, u32, u32, u32x16);
+sum_impl!(U32SumAggregator, u32, u32, u32x32);
 
 #[cfg(not(feature = "simd"))]
 sum_impl!(U64SumAggregator, u64, u64);
 #[cfg(feature = "simd")]
 sum_impl!(U64SumAggregator, u64, u64, u64x32);
 
-// #[cfg(not(feature = "simd"))]
-// integer_sum_impl!(I16SumAggregator, i16, i16);
-// #[cfg(feature = "simd")]
-// integer_sum_impl!(I16SumAggregator, i16, i16, i16x32);
+#[cfg(not(feature = "simd"))]
+sum_impl!(I16SumAggregator, i16, i16);
+#[cfg(feature = "simd")]
+sum_impl!(I16SumAggregator, i16, i16, i16x64);
 
 #[cfg(not(feature = "simd"))]
 sum_impl!(I32SumAggregator, i32, i32);
 #[cfg(feature = "simd")]
-sum_impl!(I32SumAggregator, i32, i32, i32x16);
+sum_impl!(I32SumAggregator, i32, i32, i32x32);
 
 #[cfg(not(feature = "simd"))]
 sum_impl!(I64SumAggregator, i64, i64);
 #[cfg(feature = "simd")]
-sum_impl!(I64SumAggregator, i64, i64, i64x8);
-
-// #[cfg(not(feature = "simd"))]
-// integer_sum_impl!(I128SumAggregator, i128, i128);
+sum_impl!(I64SumAggregator, i64, i64, i64x32);
 
 #[cfg(not(feature = "simd"))]
 sum_impl!(F32SumAggregator, f32, f32);
 #[cfg(feature = "simd")]
-sum_impl!(F32SumAggregator, f32, f32, f32x16);
+sum_impl!(F32SumAggregator, f32, f32, f32x32);
 
 #[cfg(not(feature = "simd"))]
 sum_impl!(F64SumAggregator, f64, f64);
 #[cfg(feature = "simd")]
-sum_impl!(F64SumAggregator, f64, f64, f64x8);
+sum_impl!(F64SumAggregator, f64, f64, f64x32);
 
 #[cfg(test)]
 mod tests {
@@ -245,5 +197,13 @@ mod tests {
         assert_eq!(U64SumAggregator::prefix_query(&prefix_sum, 0, 1), Some(3));
         assert_eq!(U64SumAggregator::prefix_query(&prefix_sum, 1, 2), Some(5));
         assert_eq!(U64SumAggregator::prefix_query(&prefix_sum, 0, 2), Some(6));
+    }
+
+    #[cfg(feature = "simd")]
+    #[test]
+    fn combine_simd() {
+        let values = (0..1000u64).collect::<Vec<u64>>();
+        let native_sum = values.iter().sum();
+        assert_eq!(U64SumAggregator::combine_slice(&values), Some(native_sum));
     }
 }

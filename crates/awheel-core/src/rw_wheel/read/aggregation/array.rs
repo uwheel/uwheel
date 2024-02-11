@@ -269,7 +269,7 @@ impl<A: Aggregator> PrefixArray<A> {
         self.rebuild_prefix();
     }
     pub(crate) fn slots_slice(&self) -> &[A::PartialAggregate] {
-        &self.slots.as_ref()
+        self.slots.as_ref()
     }
     #[inline]
     pub(crate) fn get(&self, slot: usize) -> Option<&A::PartialAggregate> {

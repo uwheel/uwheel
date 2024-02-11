@@ -99,13 +99,8 @@ pub struct AllAggregator;
 
 impl Aggregator for AllAggregator {
     const IDENTITY: Self::PartialAggregate = AggState::identity();
-    const PREFIX_SUPPORT: bool = false;
 
-    #[cfg(feature = "simd")]
-    const SIMD_LANES: usize = 0;
-    #[cfg(feature = "simd")]
     type CombineSimd = fn(&[Self::PartialAggregate]) -> Self::PartialAggregate;
-
     type CombineInverse =
         fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate;
 

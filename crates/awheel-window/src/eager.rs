@@ -4,7 +4,7 @@ use crate::{state::State, WindowExt};
 
 use super::util::{pairs_capacity, PairType};
 use awheel_core::{
-    aggregator::{Aggregator, InverseExt},
+    aggregator::Aggregator,
     rw_wheel::{
         read::{aggregation::combine_or_insert, ReadWheel},
         write::DEFAULT_WRITE_AHEAD_SLOTS,
@@ -142,7 +142,7 @@ impl Builder {
         self
     }
     /// Consumes the builder and returns a [EagerWindowWheel]
-    pub fn build<A: Aggregator + InverseExt>(self) -> EagerWindowWheel<A> {
+    pub fn build<A: Aggregator>(self) -> EagerWindowWheel<A> {
         assert!(
             self.range >= self.slide,
             "Range must be larger or equal to slide"
@@ -154,7 +154,7 @@ impl Builder {
 /// Wrapper on top of HAW to implement Sliding Window Aggregation
 ///
 /// Requires an aggregation function that supports invertibility
-pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
+pub struct EagerWindowWheel<A: Aggregator> {
     range: usize,
     slide: usize,
     // Inverse Wheel maintaining partial aggregates per slide
@@ -171,8 +171,9 @@ pub struct EagerWindowWheel<A: Aggregator + InverseExt> {
     stats: super::stats::Stats,
 }
 
-impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
+impl<A: Aggregator> EagerWindowWheel<A> {
     fn new(time: u64, write_ahead: usize, range: usize, slide: usize) -> Self {
+        assert!(A::invertible(), "Agg function must be invertible");
         let state = State::new(time, range, slide);
         let pair_slots = pairs_capacity(range, slide);
         Self {
@@ -233,12 +234,12 @@ impl<A: Aggregator + InverseExt> EagerWindowWheel<A> {
         // Function: combine(inverse_combine(last_rotation, slice), current_rotation);
         // ⊕((⊖(last_rotation, slice)), current_rotation)
         A::combine(
-            A::inverse_combine(last_rotation, inverse),
+            A::combine_inverse().unwrap()(last_rotation, inverse),
             current_rotation.unwrap_or_default(),
         )
     }
 }
-impl<A: Aggregator + InverseExt> WindowExt<A> for EagerWindowWheel<A> {
+impl<A: Aggregator> WindowExt<A> for EagerWindowWheel<A> {
     fn advance(&mut self, duration: Duration) -> Vec<(u64, Option<A::Aggregate>)> {
         let ticks = duration.whole_seconds();
         let mut window_results = Vec::new();

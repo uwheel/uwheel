@@ -164,7 +164,10 @@ impl<A: Aggregator> AggregationWheel<A> {
 
         // sanity check
         let data = if conf.prefix_sum {
-            assert!(A::PREFIX_SUPPORT, "Cannot configure prefix-sum");
+            assert!(
+                A::invertible(),
+                "Cannot configure prefix-sum without invertible agg function"
+            );
             Data::create_prefix_array()
         } else {
             Data::create_array_with_capacity(num_slots)

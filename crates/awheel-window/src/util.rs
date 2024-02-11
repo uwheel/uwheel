@@ -1,7 +1,4 @@
-use awheel_core::{
-    aggregator::{Aggregator, InverseExt},
-    time_internal::Duration,
-};
+use awheel_core::{aggregator::Aggregator, time_internal::Duration};
 
 use super::WindowExt;
 
@@ -182,10 +179,7 @@ fn count_intervals(range: Duration) -> i64 {
 
 /// Calculates query cost for each version and returns the window
 /// wheel that requires the least amount of aggregate operations.
-pub fn window_wheel<A: Aggregator + InverseExt>(
-    range: Duration,
-    slide: Duration,
-) -> Box<dyn WindowExt<A>> {
+pub fn window_wheel<A: Aggregator>(range: Duration, slide: Duration) -> Box<dyn WindowExt<A>> {
     let eager_cost = eager_window_query_cost(range, slide);
     let lazy_cost = lazy_window_query_cost(range, slide);
     if lazy_cost < eager_cost {

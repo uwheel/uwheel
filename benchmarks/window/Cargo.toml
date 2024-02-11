@@ -13,6 +13,14 @@ duckdb_index = []
 
 [dependencies]
 cxx = "1.0"
+datafusion = "35.0.0"
+tokio = { version = "1.0", features = [
+  "macros",
+  "rt",
+  "rt-multi-thread",
+  "sync",
+  "parking_lot",
+] }
 duckdb.workspace = true
 awheel = { workspace = true, features = ["window", "top_n", "stats", "simd"] }
 mimalloc = { version = "*", default-features = false, optional = true }

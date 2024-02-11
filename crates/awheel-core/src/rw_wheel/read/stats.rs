@@ -25,6 +25,8 @@ pub struct Stats {
     pub combined_aggregation: Sketch,
     /// A sketch for recording latencies of executing a wheel aggregation
     pub wheel_aggregation: Sketch,
+    /// A sketch for recording latencies of executing inverse landmark aggregations
+    pub inverse_landmark: Sketch,
 }
 
 impl core::fmt::Debug for Stats {
@@ -46,6 +48,7 @@ impl core::fmt::Debug for Stats {
                 &self.combined_aggregation.percentiles(),
             )
             .field("wheel_aggregation", &self.wheel_aggregation.percentiles())
+            .field("inverse_landmark", &self.inverse_landmark.percentiles())
             .finish()
     }
 }

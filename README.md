@@ -29,6 +29,7 @@ Features:
 µWheel is designed around event-time (Low Watermarking) indexed aggregate wheels.
 Writes are handled by a writer wheel, which supports in-place aggregation and is
 optimized for single-threaded ingestion. Reads, on the other hand, are managed through a hierarchically event-time-indexed
+reader wheel which uses a wheel-centric query optimizer.
 
 
 ## Aggregation Framework
@@ -48,14 +49,14 @@ optimized for single-threaded ingestion. Reads, on the other hand, are managed t
 
 **Pre-defined Aggregators:**
 
-| Function | Description | Types |
-| ---- | ------| ----- |
-| SUM |  Sum of all inputs | u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
-| AVG |  Arithmetic mean of all inputs | u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
-| MIN |  Minimum value of all inputs |  u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
-| MAX |  Maximum value of all inputs | u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
-| ALL |  Pre-computed SUM, AVG, MIN, MAX, COUNT | f64 |
-| TOP N  |  Top N of all inputs | ``Aggregator`` with aggregate data that implements ``Ord`` |
+| Function | Description | Types | SIMD |
+| ---- | ------| ----- |----- |
+| SUM |  Sum of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &check; |
+| AVG |  Arithmetic mean of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &cross; |
+| MIN |  Minimum value of all inputs |  u16, u32, u64, i32, i16, i64, f32, f64 | &check;|
+| MAX |  Maximum value of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &check;|
+| ALL |  Pre-computed SUM, AVG, MIN, MAX, COUNT | f64 | &cross;|
+| TOP N  |  Top N of all inputs | ``Aggregator`` with aggregate data that implements ``Ord`` | &cross;|
 
 
 See a user-defined aggregator example [here](examples/aggregator/).
@@ -76,7 +77,7 @@ See a user-defined aggregator example [here](examples/aggregator/).
 - `top_n`
     - Enables Top-N aggregation
 - `window`
-    - Enables wheels for streaming window aggregation
+    - Enables optimizations for streaming window aggregation queries
 - `simd` (_requires `nightly`_)
     - Enables support to speed up aggregation functions with SIMD operations
 - `sync` (_implicitly enables `std`_)

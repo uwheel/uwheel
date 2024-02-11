@@ -30,7 +30,6 @@ serde = ["awheel-core/serde"]
 profiler = ["std", "awheel-core/profiler"]
 timer = ["awheel-core/timer"]
 simd = ["awheel-core/simd", "std"]
-pco = ["awheel-core/pco", "std"]
 
 [dependencies]
 awheel-core = { workspace = true, default-features = false }

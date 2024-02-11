@@ -1,5 +1,4 @@
 use super::super::Aggregator;
-use crate::aggregator::InverseExt;
 
 macro_rules! avg_impl {
     ($struct:tt, $type:ty, $pa:tt) => {
@@ -14,12 +13,7 @@ macro_rules! avg_impl {
             type Aggregate = $type;
             type PartialAggregate = $pa;
 
-            const PREFIX_SUPPORT: bool = true;
-            #[cfg(feature = "simd")]
-            const SIMD_LANES: usize = 0;
-            #[cfg(feature = "simd")]
             type CombineSimd = fn(&[$pa]) -> $pa;
-
             type CombineInverse = fn($pa, $pa) -> $pa;
 
             fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
@@ -50,18 +44,15 @@ macro_rules! avg_impl {
             fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a.0 / a.1
             }
-        }
-        impl InverseExt for $struct {
             #[inline]
-            fn inverse_combine(
-                a: Self::PartialAggregate,
-                b: Self::PartialAggregate,
-            ) -> Self::PartialAggregate {
-                let (a_sum, a_count) = a;
-                let (b_sum, b_count) = b;
-                let inv_sum = a_sum - b_sum;
-                let inv_count = a_count - b_count;
-                (inv_sum, inv_count)
+            fn combine_inverse() -> Option<Self::CombineInverse> {
+                Some(|a, b| {
+                    let (a_sum, a_count) = a;
+                    let (b_sum, b_count) = b;
+                    let inv_sum = a_sum - b_sum;
+                    let inv_count = a_count - b_count;
+                    (inv_sum, inv_count)
+                })
             }
         }
     };

@@ -13,7 +13,7 @@ use time::OffsetDateTime;
 use super::{
     super::write::WriteAheadWheel,
     aggregation::{conf::RetentionPolicy, maybe::MaybeWheel, AggregationWheel},
-    plan::{ExecutionPlan, LogicalPlan, WheelAggregation, WheelRanges},
+    plan::{ExecutionPlan, WheelAggregation, WheelRanges},
     Kind,
     Lazy,
 };
@@ -393,11 +393,50 @@ pub enum CombineHint {
     Expensive,
 }
 
+/// Default aggregation limit for cheap combine function + no SIMD
+pub const DEFAULT_CHEAP_COMBINE_NO_SIMD: usize = 1000;
+/// Default aggregation limit for cheap combine function + SIMD
+pub const DEFAULT_CHEAP_COMBINE_SIMD: usize = 15000;
+/// Default aggregation limit for expensive combine function + no SIMD
+pub const DEFAULT_EXPENSIVE_COMBINE_NO_SIMD: usize = 100;
+/// Default aggregation limit for expensive combine function + SIMD
+pub const DEFAULT_EXPENSIVE_COMBINE_SIMD: usize = 500;
+/// Default aggregation limit for unknown combine cost + no SIMD
+pub const DEFAULT_UNKNOWN_COST_NO_SIMD: usize = 500;
+/// Default aggregation limit for unknown combine cost + SIMD
+pub const DEFAULT_UNKNOWN_COST_SIMD: usize = 1000;
+
+/// Optimizer Heuristics
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Debug, Clone, Copy)]
+pub struct Heuristics {
+    cheap_combine_no_simd: usize,
+    cheap_combine_simd: usize,
+    expensive_combine_no_simd: usize,
+    expensive_combine_simd: usize,
+    unknown_cost_no_simd: usize,
+    unknown_cost_simd: usize,
+}
+
+impl Default for Heuristics {
+    fn default() -> Self {
+        Self {
+            cheap_combine_no_simd: DEFAULT_CHEAP_COMBINE_NO_SIMD,
+            cheap_combine_simd: DEFAULT_CHEAP_COMBINE_SIMD,
+            expensive_combine_no_simd: DEFAULT_EXPENSIVE_COMBINE_NO_SIMD,
+            expensive_combine_simd: DEFAULT_EXPENSIVE_COMBINE_SIMD,
+            unknown_cost_no_simd: DEFAULT_UNKNOWN_COST_NO_SIMD,
+            unknown_cost_simd: DEFAULT_UNKNOWN_COST_SIMD,
+        }
+    }
+}
+
 /// Optimization configuration
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Optimizer {
     use_hints: bool,
+    heuristics: Heuristics,
 }
 impl Optimizer {
     /// Sets the use hints flag
@@ -572,7 +611,7 @@ where
         ts * 1000
     }
     #[inline]
-    fn _to_offset_date(ts: u64) -> OffsetDateTime {
+    fn to_offset_date(ts: u64) -> OffsetDateTime {
         OffsetDateTime::from_unix_timestamp(ts as i64 / 1000).unwrap()
     }
 
@@ -658,7 +697,7 @@ where
     /// Returns the execution plan for a given combine range query
     #[inline]
     pub fn explain_combine_range(&self, range: impl Into<WheelRange>) -> Option<ExecutionPlan> {
-        self.create_exec_plan(self.create_logical_plan(range.into()))
+        Some(self.create_exec_plan(range.into()))
     }
 
     /// Combines partial aggregates within the given date range and lowers it to a final aggregate
@@ -729,78 +768,57 @@ where
             }
         }
 
-        // create the best possible logical plan
-        let logical_plan = self.create_logical_plan(range);
+        // create the best possible execution plan
+        let exec = self.create_exec_plan(range);
 
-        // create execution plan out of logical
-        let exec = self.create_exec_plan(logical_plan);
-
-        // execute plan accordingly
         match exec {
-            Some(ExecutionPlan::Seq(plan)) => self.execute_seq_plan(plan),
-            Some(ExecutionPlan::Parallel(_parallel_plan)) => unimplemented!(),
-            None => (None, 0),
-        }
-    }
-
-    #[inline(always)]
-    fn create_exec_plan(&self, logical: LogicalPlan) -> Option<ExecutionPlan> {
-        // TODO: take into combine hint into context and how many wheels for combined aggregation
-        // May be worth to execute it in parallel
-        // if let LogicalPlan::CombinedAggregation(combined) = logical {}
-        Some(ExecutionPlan::Seq(logical))
-    }
-
-    #[inline]
-    fn execute_seq_plan(&self, plan: LogicalPlan) -> (Option<A::PartialAggregate>, usize) {
-        match plan {
-            LogicalPlan::WheelAggregation(wheel_agg) => {
+            ExecutionPlan::WheelAggregation(wheel_agg) => {
                 (self.wheel_aggregation(wheel_agg.range), wheel_agg.cost())
             }
-            LogicalPlan::CombinedAggregation(combined) => self.combined_aggregation(combined),
-            LogicalPlan::LandmarkAggregation => self.analyze_landmark(),
-            LogicalPlan::InverseLandmarkAggregation(lp) => {
-                let landmark = self.landmark().unwrap_or(A::IDENTITY);
-                let (result, cost) = match *lp {
-                    LogicalPlan::WheelAggregation(w) => {
-                        (self.wheel_aggregation(*w.range()), w.cost())
-                    }
-                    LogicalPlan::CombinedAggregation(c) => self.combined_aggregation(c),
-                    _ => panic!("Should not happen"),
-                };
-                let inverse_combine = A::combine_inverse().unwrap(); // assumed to be safe as it has been verified by the plan generation
-                let inversed = inverse_combine(landmark, result.unwrap_or(A::IDENTITY));
-                (Some(inversed), cost)
+            ExecutionPlan::CombinedAggregation(combined) => self.combined_aggregation(combined),
+            ExecutionPlan::LandmarkAggregation => self.analyze_landmark(),
+            ExecutionPlan::InverseLandmarkAggregation(wheel_agg) => {
+                self.inverse_landmark_aggregation(wheel_agg)
             }
         }
     }
 
     // Used when optimizer hints is enabled to calculate a bound for executing combined aggregation
     #[inline]
-    fn combined_aggregation_hint_bound(&self) -> i64 {
-        let simd_support = {
-            #[cfg(feature = "simd")]
-            {
-                A::simd_support()
-            }
-            #[cfg(not(feature = "simd"))]
-            false
-        };
+    fn combined_aggregation_hint_bound(&self) -> usize {
         // #[cfg(feature = "simd")]
         // {
         //     let remainder = slots % A::SIMD_LANES;
         //     slots = (slots / A::SIMD_LANES) + remainder;
         // }
+        let heuristics = &self.optimizer.heuristics;
 
-        // TODO: establish constants or configurable bounds
-        match (A::combine_hint(), simd_support) {
-            (Some(CombineHint::Cheap), false) => 1000,
-            (Some(CombineHint::Cheap), true) => 15000,
-            (Some(CombineHint::Expensive), false) => 100,
-            (Some(CombineHint::Expensive), true) => 500,
-            (None, false) => 500,
-            (None, true) => 1000,
+        match (A::combine_hint(), A::simd_support()) {
+            (Some(CombineHint::Cheap), false) => heuristics.cheap_combine_no_simd,
+            (Some(CombineHint::Cheap), true) => heuristics.cheap_combine_simd,
+            (Some(CombineHint::Expensive), false) => heuristics.expensive_combine_no_simd,
+            (Some(CombineHint::Expensive), true) => heuristics.expensive_combine_simd,
+            (None, false) => heuristics.unknown_cost_no_simd,
+            (None, true) => heuristics.unknown_cost_simd,
         }
+    }
+
+    /// Performs a given Combined Aggregation and returns the partial aggregate and the cost of the operation
+    fn inverse_landmark_aggregation(
+        &self,
+        wheel_aggregation: WheelAggregation,
+    ) -> (Option<A::PartialAggregate>, usize) {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.inverse_landmark);
+
+        // get landmark partial
+        let (landmark, lcost) = self.analyze_landmark();
+        // get [wheel_start, start) agg
+        let agg = self.wheel_aggregation(wheel_aggregation.range);
+        // apply inverse combine to get the result
+        let combine_inverse = A::combine_inverse().unwrap(); // assumed to be safe as it has been verified by the plan generation
+        let inversed = combine_inverse(landmark.unwrap_or(A::IDENTITY), agg.unwrap_or(A::IDENTITY));
+        (Some(inversed), lcost + wheel_aggregation.cost())
     }
 
     /// Performs a given Combined Aggregation and returns the partial aggregate and the cost of the operation
@@ -828,22 +846,13 @@ where
         (agg, cost)
     }
 
-    #[inline]
-    fn _parallel_combined_aggregation(
-        &self,
-        _combined: CombinedAggregation,
-    ) -> (Option<A::PartialAggregate>, usize) {
-        // TODO: split the combined aggregation into parallel one by executing per wheel granularity
-        unimplemented!();
-    }
-
     /// Returns the best logical plan possible for a given wheel range
     #[inline]
-    fn create_logical_plan(&self, range: WheelRange) -> LogicalPlan {
+    fn create_exec_plan(&self, range: WheelRange) -> ExecutionPlan {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.logical_plan);
 
-        let mut best_plan = LogicalPlan::WheelAggregation(self.wheel_aggregation_plan(range));
+        let mut best_plan = ExecutionPlan::WheelAggregation(self.wheel_aggregation_plan(range));
 
         let wheel_start = self
             .watermark()
@@ -854,7 +863,7 @@ where
 
         // Landmark optimization: landmark covers the whole range
         if start_ms <= wheel_start && end_ms >= self.watermark() {
-            best_plan = LogicalPlan::LandmarkAggregation;
+            best_plan = ExecutionPlan::LandmarkAggregation;
         }
 
         // Early return if plan supports single-wheel prefix scan or if landmark aggregation is possible (both O(1) complexity)
@@ -863,9 +872,21 @@ where
             return best_plan;
         }
 
+        // Inverse Landmark Aggregation optimization
+        if A::invertible() && end_ms >= self.watermark() {
+            // [wheel_start, start)
+            let wheel_agg = self.wheel_aggregation_plan(WheelRange::new(
+                Self::to_offset_date(wheel_start),
+                range.start,
+            ));
+            let inverse_plan = ExecutionPlan::InverseLandmarkAggregation(wheel_agg);
+
+            best_plan = cmp::min(best_plan, inverse_plan);
+        }
+
         // Check whether it is worth to create a combined plan as it comes with some overhead
         let combined_aggregation = {
-            let scan_estimation = range.scan_estimation();
+            let scan_estimation = best_plan.cost();
             if self.optimizer.use_hints {
                 scan_estimation > self.combined_aggregation_hint_bound()
             } else {
@@ -876,20 +897,11 @@ where
         // if the range can be split into multiple non-overlapping ranges
         if combined_aggregation {
             // NOTE: could create multiple combinations of combined aggregations to check
-            let combined_plan = LogicalPlan::CombinedAggregation(
+            let combined_plan = ExecutionPlan::CombinedAggregation(
                 self.combined_aggregation_plan(Self::split_wheel_ranges(range)),
             );
             best_plan = cmp::min(best_plan, combined_plan);
         }
-
-        // Inverse Landmark Aggregation
-        // if start_ms < end_ms && end_ms >= self.watermark() && A::invertible() {
-        //     // [wheel_start, start)
-        //     let inverse_range = WheelRange::new(Self::to_offset_date(wheel_start), range.start);
-        //     let logical = self.create_logical_plan(inverse_range);
-        //     let inverse_plan = LogicalPlan::InverseLandmarkAggregation(Box::new(logical));
-        //     best_plan = cmp::min(best_plan, inverse_plan);
-        // }
 
         best_plan
     }
@@ -1875,7 +1887,7 @@ mod tests {
             .unwrap();
         dbg!(&plan);
         let combined_plan = match plan {
-            ExecutionPlan::Seq(LogicalPlan::CombinedAggregation(plan)) => plan,
+            ExecutionPlan::CombinedAggregation(plan) => plan,
             _ => panic!("not supposed to happen"),
         };
 
@@ -1942,13 +1954,8 @@ mod tests {
 
         // Runs a Inverse Landmark Execution
         let result = haw.combine_range(WheelRange::new(start, end));
-        // let lplans = haw.create_logical_plan(WheelRange::new(start, end));
-        // let physical_plan = haw.create_exec_plan(lplans).unwrap();
-        // assert!(matches!(
-        //     physical_plan,
-        //     ExecutionPlan::Seq(LogicalPlan::InverseLandmarkAggregation(_))
-        // ));
-        // let plan = haw.combine_range_exec_plan(WheelRange::new(start, end));
+        let plan = haw.create_exec_plan(WheelRange::new(start, end));
+        assert!(matches!(plan, ExecutionPlan::InverseLandmarkAggregation(_)));
         assert_eq!(result, Some(241200));
     }
 }

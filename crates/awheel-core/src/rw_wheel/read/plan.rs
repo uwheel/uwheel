@@ -5,9 +5,6 @@ use super::hierarchical::WheelRange;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-#[cfg(not(feature = "std"))]
-use alloc::boxed::Box;
-
 #[cfg(feature = "smallvec")]
 pub(crate) type WheelRanges = smallvec::SmallVec<[WheelRange; 8]>;
 #[cfg(not(feature = "smallvec"))]
@@ -18,9 +15,9 @@ pub(crate) type WheelAggregations = smallvec::SmallVec<[WheelAggregation; 8]>;
 #[cfg(not(feature = "smallvec"))]
 pub(crate) type WheelAggregations = Vec<WheelAggregation>;
 
-/// Logical Plan Variants
+/// Execution Plan Variants
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum LogicalPlan {
+pub enum ExecutionPlan {
     /// Execution consisting of a single Wheel Aggregation
     WheelAggregation(WheelAggregation),
     /// Execution consisting of multiple Wheel Aggregations
@@ -28,49 +25,40 @@ pub enum LogicalPlan {
     /// Execution can be queried through a landmark window
     LandmarkAggregation,
     /// Execution can be queried through a combination of landmark window + inverse combine
-    InverseLandmarkAggregation(Box<LogicalPlan>),
+    InverseLandmarkAggregation(WheelAggregation),
 }
 
-impl LogicalPlan {
-    /// Returns `true``if logical plan is a single-wheel prefix sum or landmark`
+impl ExecutionPlan {
+    /// Returns `true``if execution plan is a single-wheel prefix sum or landmark`
     #[inline]
     pub fn is_prefix_or_landmark(&self) -> bool {
         match self {
-            LogicalPlan::WheelAggregation(w) => w.is_prefix(),
-            LogicalPlan::LandmarkAggregation => true,
+            ExecutionPlan::WheelAggregation(w) => w.is_prefix(),
+            ExecutionPlan::LandmarkAggregation => true,
             _ => false,
         }
     }
     /// Returns the expected aggregate cost |⊕| of the plan
     pub fn cost(&self) -> usize {
         match self {
-            LogicalPlan::WheelAggregation(w) => w.cost(),
-            LogicalPlan::CombinedAggregation(c) => c.cost(),
-            LogicalPlan::LandmarkAggregation => 6,
-            LogicalPlan::InverseLandmarkAggregation(lp) => lp.cost() + 6 + 2, // 6 Wheels + 2 combine operations at end
+            ExecutionPlan::WheelAggregation(w) => w.cost(),
+            ExecutionPlan::CombinedAggregation(c) => c.cost(),
+            ExecutionPlan::LandmarkAggregation => 6,
+            ExecutionPlan::InverseLandmarkAggregation(w) => w.cost() + 6 + 2, // 6 Wheels + 2 combine operations at end
         }
     }
 }
 
-impl Ord for LogicalPlan {
+impl Ord for ExecutionPlan {
     fn cmp(&self, other: &Self) -> Ordering {
         self.cost().cmp(&other.cost())
     }
 }
 
-impl PartialOrd for LogicalPlan {
+impl PartialOrd for ExecutionPlan {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
-}
-
-/// Contains physical execution variants
-#[derive(Debug, PartialEq, Clone)]
-pub enum ExecutionPlan {
-    /// Sequential Aggregation
-    Seq(LogicalPlan),
-    /// Parallel Aggregation
-    Parallel(LogicalPlan),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

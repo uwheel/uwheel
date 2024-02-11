@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone)]
-/// Delta State that may be used to update or initiate a [ReadWheel]
+/// Delta State that may be used to update or initiate a ReadWheel
 pub struct DeltaState<T> {
     /// Oldest timestamp for the set deltas
     ///

@@ -31,17 +31,16 @@ serde = [
 sync = ["dep:parking_lot", "std"]
 timer = []
 profiler = ["dep:awheel-stats", "prettytable-rs", "std"]
-pco = ["dep:pco", "std"]
 simd = ["dep:multiversion"]
 cache = ["schnellru"]
 
 
 [dependencies]
 time = { version = "0.3.30", default-features = false }
+
 schnellru = { version = "0.2.1", optional = true }
 multiversion = { version = "0.7.3", default-features = false, optional = true }
 rayon = { version = "1.8.0", optional = true }
-pco = { version = "0.0.0-alpha.1", optional = true }
 awheel-stats = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
 hashbrown = { workspace = true, optional = true }

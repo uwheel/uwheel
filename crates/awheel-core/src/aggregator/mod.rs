@@ -31,11 +31,6 @@ pub mod top_n;
 
 /// Aggregation interface that library users must implement to use awheel
 pub trait Aggregator: Default + Debug + Clone + 'static {
-    #[cfg(feature = "simd")]
-    /// Returns the number of lanes Combine SIMD is using
-    const SIMD_LANES: usize;
-
-    #[cfg(feature = "simd")]
     /// Combine Simd Function
     type CombineSimd: Fn(&[Self::PartialAggregate]) -> Self::PartialAggregate;
 
@@ -47,9 +42,6 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
 
     /// Identity value for the Aggregator's Partial Aggregate
     const IDENTITY: Self::PartialAggregate;
-
-    /// Indicates whether the implemented aggregator supports prefix-sum range queries
-    const PREFIX_SUPPORT: bool;
 
     /// Input type that can be inserted into [Self::MutablePartialAggregate]
     type Input: InputBounds;
@@ -83,13 +75,17 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     /// A default implementation is provided that iterates over the aggregates and combines them
     /// individually. If your aggregation supports SIMD, then implement the function accordingly.
     #[inline]
+    #[doc(hidden)]
     fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
-        slice.iter().fold(None, |accumulator, &item| {
-            Some(match accumulator {
-                Some(acc) => Self::combine(acc, item),
-                None => item,
-            })
-        })
+        match Self::combine_simd() {
+            Some(combine_simd) => Some(combine_simd(slice)),
+            None => slice.iter().fold(None, |accumulator, &item| {
+                Some(match accumulator {
+                    Some(acc) => Self::combine(acc, item),
+                    None => item,
+                })
+            }),
+        }
     }
 
     /// Merges two slices of partial aggregates together
@@ -97,6 +93,7 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     /// A default implementation is provided that iterates over the aggregates and merges them
     /// individually. If your aggregation supports SIMD, then implement the function accordingly.
     #[inline]
+    #[doc(hidden)]
     fn merge_slices(s1: &mut [Self::PartialAggregate], s2: &[Self::PartialAggregate]) {
         // NOTE: merges at most s2.len() aggregates
         for (self_slot, other_slot) in s1.iter_mut().zip(s2.iter()).take(s2.len()) {
@@ -130,16 +127,6 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
         None
     }
 
-    /// User-defined compression function of partial aggregates
-    fn compress(_data: &[Self::PartialAggregate]) -> Option<Vec<u8>> {
-        None
-    }
-
-    /// User-defined decompress function of partial aggregates
-    fn decompress(_bytes: &[u8]) -> Option<Vec<Self::PartialAggregate>> {
-        None
-    }
-
     /// Returns a function that inverse combines two partial aggregates
     ///
     /// If the aggregator does not support invertability then set it returns ``None``
@@ -148,19 +135,17 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     }
 
     /// Returns ``true`` if the Aggregator supports invertibility
+    #[doc(hidden)]
     fn invertible() -> bool {
         Self::combine_inverse().is_some()
     }
 
-    /// Returns a function that inverse combines two partial aggregates
-    ///
-    /// If the aggregator does not support invertability then set it returns ``None``
-    #[cfg(feature = "simd")]
+    /// Returns a function that combines aggregates using explicit SIMD instructions
     fn combine_simd() -> Option<Self::CombineSimd> {
         None
     }
     /// Returns ``true`` if the aggregator supports SIMD
-    #[cfg(feature = "simd")]
+    #[doc(hidden)]
     fn simd_support() -> bool {
         Self::combine_simd().is_some()
     }
@@ -173,14 +158,6 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     }
 }
 
-/// Extension trait for inverse combine operations
-pub trait InverseExt: Aggregator {
-    /// Inverse combine two partial aggregates to a new partial aggregate
-    fn inverse_combine(
-        a: Self::PartialAggregate,
-        b: Self::PartialAggregate,
-    ) -> Self::PartialAggregate;
-}
 #[cfg(not(feature = "serde"))]
 /// Bounds for Aggregator Input
 pub trait InputBounds: Debug + Clone + Copy + Send {}
