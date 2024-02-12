@@ -6,6 +6,7 @@ use awheel::{
     Aggregator,
 };
 use cxx::UniquePtr;
+use segment_tree::{ops::Add, SegmentPoint};
 
 pub trait Tree<A: Aggregator>: Default {
     fn insert(&mut self, ts: u64, agg: A::PartialAggregate);
@@ -460,5 +461,79 @@ impl Tree<U64SumAggregator> for Bclassic8 {
     #[inline]
     fn combine_ops(&self) -> usize {
         self.fiba.combine_operations()
+    }
+}
+
+#[derive(Default)]
+pub struct SegmentTree {
+    min_ts: u64,
+    // 2n * sizeof(N)
+    inner: SegmentPoint<u64, segment_tree::ops::Add>,
+}
+
+impl SegmentTree {
+    pub fn build(min_ts: u64, values: &[u64]) -> Self {
+        Self {
+            min_ts: min_ts / 1000, // convert to secs
+            inner: SegmentPoint::build(values.to_vec(), Add),
+        }
+    }
+}
+
+impl Tree<U64SumAggregator> for SegmentTree {
+    #[inline]
+    fn insert(&mut self, _ts: u64, _agg: u64) {}
+    #[inline]
+    fn query(&self) -> Option<u64> {
+        // query the whole SegmentTree
+        Some(self.inner.query(0, self.inner.len()).0)
+    }
+
+    #[inline]
+    fn analyze_query(&self) -> (Option<u64>, usize) {
+        let (res, ops) = self.inner.query(0, self.inner.len());
+        (Some(res), ops)
+    }
+    #[inline]
+    fn range_query(&self, from: u64, to: u64) -> Option<u64> {
+        let from_as_secs = from / 1000;
+        let to_as_secs = to / 1000;
+        let distance = to_as_secs - from_as_secs;
+
+        let start_pos = from_as_secs - self.min_ts;
+        let mut end_pos = start_pos + distance;
+        if end_pos == 0 {
+            end_pos = self.inner.len() as u64;
+        }
+        // O(log(len)) time
+        let (result, _) = self.inner.query(start_pos as usize, end_pos as usize);
+        Some(result)
+    }
+
+    #[inline]
+    fn analyze_range_query(&self, from: u64, to: u64) -> (Option<u64>, usize) {
+        let from_as_secs = from / 1000;
+        let to_as_secs = to / 1000;
+        let distance = to_as_secs - from_as_secs;
+
+        let start_pos = from_as_secs - self.min_ts;
+        let mut end_pos = start_pos + distance;
+        if end_pos == 0 {
+            end_pos = self.inner.len() as u64;
+        }
+        // O(log(len)) time
+        let (result, ops) = self.inner.query(start_pos as usize, end_pos as usize);
+        (Some(result), ops)
+    }
+
+    #[inline]
+    fn evict_range(&mut self, _to: u64) {}
+    fn evict(&mut self) {}
+    fn size_bytes(&self) -> usize {
+        self.inner.len() * std::mem::size_of::<u64>()
+    }
+    #[inline]
+    fn combine_ops(&self) -> usize {
+        0
     }
 }

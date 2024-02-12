@@ -52,9 +52,9 @@ reader wheel which uses a wheel-centric query optimizer.
 | Function | Description | Types | SIMD |
 | ---- | ------| ----- |----- |
 | SUM |  Sum of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &check; |
-| AVG |  Arithmetic mean of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &cross; |
 | MIN |  Minimum value of all inputs |  u16, u32, u64, i32, i16, i64, f32, f64 | &check;|
 | MAX |  Maximum value of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &check;|
+| AVG |  Arithmetic mean of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &cross; |
 | ALL |  Pre-computed SUM, AVG, MIN, MAX, COUNT | f64 | &cross;|
 | TOP N  |  Top N of all inputs | ``Aggregator`` with aggregate data that implements ``Ord`` | &cross;|
 

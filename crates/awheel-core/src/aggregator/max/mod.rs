@@ -71,11 +71,8 @@ macro_rules! max_impl {
                     <$simd>::from_array([$pa::MIN; <$simd>::LEN]),
                     |acc, chunk| acc.simd_max(*chunk),
                 );
-                let max_chunk = chunk.reduce_max();
-                let head = head.iter().copied().fold($pa::MIN, <$type>::max);
-                let tail = tail.iter().copied().fold($pa::MIN, <$type>::max);
-                let max_remainder = <$type>::max(head, tail);
-                <$type>::max(max_chunk, max_remainder)
+                let head_max = head.iter().copied().fold(chunk.reduce_max(), <$type>::max);
+                tail.iter().copied().fold(head_max, <$type>::max)
             }
         }
     };

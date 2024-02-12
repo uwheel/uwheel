@@ -21,6 +21,8 @@ tokio = { version = "1.0", features = [
   "sync",
   "parking_lot",
 ] }
+# segment-tree = "2"
+segment-tree = { git = "https://github.com/Max-Meldrum/segment-tree.git", branch = "ops_count" }
 duckdb.workspace = true
 awheel = { workspace = true, features = ["window", "top_n", "stats", "simd"] }
 mimalloc = { version = "*", default-features = false, optional = true }

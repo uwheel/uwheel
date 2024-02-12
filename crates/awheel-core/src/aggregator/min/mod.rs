@@ -69,11 +69,8 @@ macro_rules! min_impl {
                     <$simd>::from_array([$pa::MAX; <$simd>::LEN]),
                     |acc, chunk| acc.simd_min(*chunk),
                 );
-                let min_chunk = chunk.reduce_min();
-                let head = head.iter().copied().fold($pa::MAX, <$type>::min);
-                let tail = tail.iter().copied().fold($pa::MAX, <$type>::min);
-                let min_remainder = <$type>::min(head, tail);
-                <$type>::min(min_chunk, min_remainder)
+                let head_min = head.iter().copied().fold(chunk.reduce_min(), <$type>::min);
+                tail.iter().copied().fold(head_min, <$type>::min)
             }
         }
     };

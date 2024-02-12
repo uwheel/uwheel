@@ -1,5 +1,10 @@
 use awheel_core::{
-    aggregator::{max::U64MaxAggregator, min::U64MinAggregator, sum::U64SumAggregator},
+    aggregator::{
+        avg::U64AvgAggregator,
+        max::U64MaxAggregator,
+        min::U64MinAggregator,
+        sum::U64SumAggregator,
+    },
     *,
 };
 use criterion::{
@@ -38,6 +43,14 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 combine_partials::<U64MaxAggregator>(combines as u64, b);
             },
         );
+
+        group.bench_with_input(
+            BenchmarkId::from_parameter(format!("combine-{}-avg-u64", combines)),
+            combines,
+            |b, &combines| {
+                combine_avg_partials::<U64AvgAggregator>(combines as u64, b);
+            },
+        );
     }
 
     group.finish();
@@ -47,6 +60,22 @@ fn combine_partials<A: Aggregator<PartialAggregate = u64>>(combines: u64, benche
     bencher.iter_batched(
         || {
             let partials: Vec<_> = (0..combines).map(|_| fastrand::u64(1..100000u64)).collect();
+            partials
+        },
+        |partials: Vec<A::PartialAggregate>| black_box(A::combine_slice(&partials)),
+        BatchSize::PerIteration,
+    );
+}
+
+fn combine_avg_partials<A: Aggregator<PartialAggregate = (u64, u64)>>(
+    combines: u64,
+    bencher: &mut Bencher,
+) {
+    bencher.iter_batched(
+        || {
+            let partials: Vec<_> = (0..combines)
+                .map(|_| (fastrand::u64(1..100000u64), 1))
+                .collect();
             partials
         },
         |partials: Vec<A::PartialAggregate>| black_box(A::combine_slice(&partials)),

@@ -12,4 +12,4 @@ RUSTFLAGS='-C target-cpu=native' cargo run --release  --bin analytical --  --que
 #RUSTFLAGS='-C target-cpu=native' cargo run --release --features "simd" --bin query_bench --  --queries 10000
 
 # for debugging results
-# cargo run --release --features "debug" --bin analytical -- --queries 2
+# RUSTFLAGS='-C target-cpu=native' cargo run --release --features "debug" --bin analytical -- --queries 1

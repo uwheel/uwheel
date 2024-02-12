@@ -22,7 +22,7 @@ use minstant::Instant;
 use std::{fs::File, sync::Arc, time::Duration};
 use window::{
     // tree::{BTree, Bclassic2, Bclassic4, Bclassic8, FiBA4, FiBA8, Tree},
-    tree::{BTree, Bclassic2, Bclassic4, Bclassic8, Tree},
+    tree::{BTree, Bclassic2, Bclassic4, Bclassic8, SegmentTree, Tree},
     util::*,
 };
 
@@ -107,6 +107,7 @@ pub struct Run {
     wheels_memory_bytes: usize,
     wheels_prefix_memory_bytes: usize,
     btree_memory_bytes: usize,
+    segment_tree_memory_bytes: usize,
     // fiba_bfinger4_memory_bytes: usize,
     // fiba_bfinger8_memory_bytes: usize,
     bclassic2_memory_bytes: usize,
@@ -124,6 +125,7 @@ impl Run {
         events_per_second: u64,
         wheels_memory_bytes: usize,
         wheels_prefix_memory_bytes: usize,
+        segment_tree_memory_bytes: usize,
         // fiba_bfinger4_memory_bytes: usize,
         // fiba_bfinger8_memory_bytes: usize,
         bclassic2_memory_bytes: usize,
@@ -138,6 +140,7 @@ impl Run {
             events_per_second,
             wheels_memory_bytes,
             wheels_prefix_memory_bytes,
+            segment_tree_memory_bytes,
             // fiba_bfinger4_memory_bytes,
             // fiba_bfinger8_memory_bytes,
             bclassic2_memory_bytes,
@@ -250,6 +253,10 @@ fn run(args: &Args) -> Vec<Run> {
                 bclassic_8.insert(record.do_time, record.fare_amount);
             }
         }
+
+        // Build a segment tree based on the current values
+        let start_ts = watermark - interval.whole_milliseconds() as u64;
+        let segment_tree = SegmentTree::build(start_ts, &raw_values);
 
         // Insert data to DuckDB
         for batch in duckdb_batches {
@@ -466,6 +473,39 @@ fn run(args: &Args) -> Vec<Run> {
         //     "avg ops: {}, worst ops: {}",
         //     fiba_q2_hours.2, fiba_q2_hours.3
         // );
+
+        let segment_tree_q1 = tree_run("SegmentTree Q1", watermark, &segment_tree, &q1_queries);
+        println!("SegmentTree Q1 {:?}", segment_tree_q1.0);
+        q1_results.add(Stats::from("SegmentTree", &segment_tree_q1));
+        let segment_tree_q2_seconds = tree_run(
+            "Segment Tree Q2 Seconds",
+            watermark,
+            &segment_tree,
+            &q2_queries_seconds,
+        );
+        println!("SegmentTree Q2 Seconds {:?}", segment_tree_q2_seconds.0);
+        println!(
+            "avg ops: {} worst ops: {}",
+            segment_tree_q2_seconds.2, segment_tree_q2_seconds.3
+        );
+
+        q2_seconds_results.add(Stats::from("SegmentTree", &segment_tree_q2_seconds));
+        let segment_tree_q2_minutes = tree_run(
+            "SegmentTree Q2 Minutes ",
+            watermark,
+            &segment_tree,
+            &q2_queries_minutes,
+        );
+        println!("SegmentTree Q2 Minutes {:?}", segment_tree_q2_minutes.0);
+        q2_minutes_results.add(Stats::from("SegmentTree", &segment_tree_q2_minutes));
+        let segment_tree_q2_hours = tree_run(
+            "SegmentTree Q2 Hours",
+            watermark,
+            &segment_tree,
+            &q2_queries_hours,
+        );
+        println!("SegmentTree Q2 Hours {:?}", segment_tree_q2_hours.0);
+        q2_hours_results.add(Stats::from("SegmentTree", &segment_tree_q2_hours));
 
         let bclassic2_q1 = tree_run("Bclassic2 Q1", watermark, &bclassic_2, &q1_queries);
         q1_results.add(Stats::from("Bclassic2", &bclassic2_q1));
@@ -723,6 +763,7 @@ fn run(args: &Args) -> Vec<Run> {
         let wheels_memory_bytes = wheel_non_prefix_size;
         // let fiba_bfinger4_memory_bytes = fiba_4.size_bytes();
         // let fiba_bfinger8_memory_bytes = fiba_8.size_bytes();
+        let segment_tree_memory_bytes = segment_tree.size_bytes();
         let bclassic2_memory_bytes = bclassic_2.size_bytes();
         let bclassic4_memory_bytes = bclassic_4.size_bytes();
         let bclassic8_memory_bytes = bclassic_8.size_bytes();
@@ -733,6 +774,7 @@ fn run(args: &Args) -> Vec<Run> {
             wheels_prefix_memory_bytes,
             // fiba_bfinger4_memory_bytes,
             // fiba_bfinger8_memory_bytes,
+            segment_tree_memory_bytes,
             bclassic2_memory_bytes,
             bclassic4_memory_bytes,
             bclassic8_memory_bytes
@@ -752,6 +794,7 @@ fn run(args: &Args) -> Vec<Run> {
             events_per_sec as u64,
             wheels_memory_bytes,
             wheels_prefix_memory_bytes,
+            segment_tree_memory_bytes,
             // fiba_bfinger4_memory_bytes,
             // fiba_bfinger8_memory_bytes,
             bclassic2_memory_bytes,
