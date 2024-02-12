@@ -21,7 +21,6 @@ use hdrhistogram::Histogram;
 use minstant::Instant;
 use std::{fs::File, sync::Arc, time::Duration};
 use window::{
-    // tree::{BTree, Bclassic2, Bclassic4, Bclassic8, FiBA4, FiBA8, Tree},
     tree::{BTree, Bclassic2, Bclassic4, Bclassic8, SegmentTree, Tree},
     util::*,
 };
@@ -282,7 +281,7 @@ fn run(args: &Args) -> Vec<Run> {
         let mut q2_seconds_results = QueryDescription::from("q2-seconds");
         let mut q2_minutes_results = QueryDescription::from("q2-minutes");
         let mut q2_hours_results = QueryDescription::from("q2-hours");
-        let df_threads = 1;
+        let _df_threads = 1;
 
         wheel.read().set_optimizer_hints(false);
 
@@ -725,34 +724,34 @@ fn run(args: &Args) -> Vec<Run> {
 
         println!("DuckDB Q2 Hours {:?}", duckdb_q2_hours.0);
 
-        let datafusion_q1 = datafusion_run(&raw_timestamps, &raw_values, df_threads, &q1_queries);
-        println!("Datafusion Q1 {:?}", datafusion_q1.0);
+        // let datafusion_q1 = datafusion_run(&raw_timestamps, &raw_values, df_threads, &q1_queries);
+        // println!("Datafusion Q1 {:?}", datafusion_q1.0);
 
-        let datafusion_q2_seconds = datafusion_run(
-            &raw_timestamps,
-            &raw_values,
-            df_threads,
-            &q2_queries_seconds,
-        );
+        // let datafusion_q2_seconds = datafusion_run(
+        //     &raw_timestamps,
+        //     &raw_values,
+        //     df_threads,
+        //     &q2_queries_seconds,
+        // );
 
-        q2_seconds_results.add(Stats::from("datafusion", &datafusion_q2_seconds));
-        println!("Datafusion Q2 Seconds {:?}", datafusion_q2_seconds.0);
+        // q2_seconds_results.add(Stats::from("datafusion", &datafusion_q2_seconds));
+        // println!("Datafusion Q2 Seconds {:?}", datafusion_q2_seconds.0);
 
-        let datafusion_q2_minutes = datafusion_run(
-            &raw_timestamps,
-            &raw_values,
-            df_threads,
-            &q2_queries_minutes,
-        );
+        // let datafusion_q2_minutes = datafusion_run(
+        //     &raw_timestamps,
+        //     &raw_values,
+        //     df_threads,
+        //     &q2_queries_minutes,
+        // );
 
-        q2_minutes_results.add(Stats::from("datafusion", &datafusion_q2_minutes));
-        println!("Datafusion Q2 Minutes {:?}", datafusion_q2_minutes.0);
+        // q2_minutes_results.add(Stats::from("datafusion", &datafusion_q2_minutes));
+        // println!("Datafusion Q2 Minutes {:?}", datafusion_q2_minutes.0);
 
-        let datafusion_q2_hours =
-            datafusion_run(&raw_timestamps, &raw_values, df_threads, &q2_queries_hours);
+        // let datafusion_q2_hours =
+        //     datafusion_run(&raw_timestamps, &raw_values, df_threads, &q2_queries_hours);
 
-        q2_hours_results.add(Stats::from("datafusion", &datafusion_q2_hours));
-        println!("Datafusion Q2 Hours {:?}", datafusion_q2_hours.0);
+        // q2_hours_results.add(Stats::from("datafusion", &datafusion_q2_hours));
+        // println!("Datafusion Q2 Hours {:?}", datafusion_q2_hours.0);
 
         let wheels_prefix_memory_bytes = wheel.read().as_ref().size_bytes();
 
@@ -809,7 +808,7 @@ fn run(args: &Args) -> Vec<Run> {
     runs
 }
 
-fn datafusion_run(
+fn _datafusion_run(
     timestamps: &[u64],
     values: &[u64],
     threads: usize,
