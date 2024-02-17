@@ -72,6 +72,12 @@ impl Sketch {
     pub fn add(&self, data: f64) {
         self.inner.borrow_mut().add(data)
     }
+    pub fn merge(&self, other: Self) {
+        self.inner
+            .borrow_mut()
+            .merge(&other.inner.borrow())
+            .unwrap()
+    }
     pub fn percentiles(&self) -> Percentiles {
         sketch_percentiles(&self.inner.borrow())
     }

@@ -94,7 +94,7 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     /// individually. If your aggregation supports SIMD, then implement the function accordingly.
     #[inline]
     #[doc(hidden)]
-    fn merge_slices(s1: &mut [Self::PartialAggregate], s2: &[Self::PartialAggregate]) {
+    fn merge(s1: &mut [Self::PartialAggregate], s2: &[Self::PartialAggregate]) {
         // NOTE: merges at most s2.len() aggregates
         for (self_slot, other_slot) in s1.iter_mut().zip(s2.iter()).take(s2.len()) {
             *self_slot = Self::combine(*self_slot, *other_slot);
@@ -104,6 +104,7 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     /// Builds a prefix-sum vec given slice of partial aggregates
     ///
     /// Only used for aggregation functions that support range queries using prefix-sum
+    #[doc(hidden)]
     #[inline]
     fn build_prefix(slice: &[Self::PartialAggregate]) -> Vec<Self::PartialAggregate> {
         slice
@@ -118,13 +119,20 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     /// Answers a range query in O(1) using a prefix-sum slice
     ///
     /// If the aggregator does not support prefix range query then it returns `None`
+    #[doc(hidden)]
     #[inline]
     fn prefix_query(
-        _slice: &[Self::PartialAggregate],
-        _start: usize,
-        _end: usize,
+        slice: &[Self::PartialAggregate],
+        start: usize,
+        end: usize,
     ) -> Option<Self::PartialAggregate> {
-        None
+        Self::combine_inverse().map(|inverse| {
+            if start == 0 {
+                slice[end]
+            } else {
+                inverse(slice[end], slice[start - 1])
+            }
+        })
     }
 
     /// Returns a function that inverse combines two partial aggregates

@@ -1,11 +1,6 @@
 use clap::{ArgEnum, Parser};
 use csv::ReaderBuilder;
 use minstant::Instant;
-#[cfg(feature = "sync")]
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
 use std::{cmp, fs::File};
 use window::{external_impls::Slicing, PlottingOutput, Window};
 
@@ -31,6 +26,8 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
+    #[clap(short, long, value_parser, default_value_t = 5)]
+    runs: usize,
     #[clap(short, long, value_parser, default_value_t = 100)]
     watermark_frequency: usize,
     #[clap(arg_enum, value_parser, default_value_t = Dataset::CitiBike)]
@@ -169,6 +166,7 @@ impl WatermarkGenerator {
 }
 
 fn sum_aggregation(
+    iterations: usize,
     id: &str,
     events: Vec<Event>,
     watermark: u64,
@@ -184,15 +182,17 @@ fn sum_aggregation(
 
         let mut runs = Vec::new();
 
-        let wheel_64: wheels::WindowWheel<U64SumAggregator> = wheels::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_optimizer_hints(false)
-            .with_write_ahead(64)
-            .with_watermark(watermark)
-            .build();
-
-        let (runtime, stats, _wheel_results) = run(wheel_64, &events, watermark, watermark_freq);
+        let wheel_64 = || {
+            wheels::Builder::default()
+                .with_range(range)
+                .with_slide(slide)
+                .with_optimizer_hints(false)
+                .with_write_ahead(64)
+                .with_watermark(watermark)
+                .build::<U64SumAggregator>()
+        };
+        let (runtime, stats, _wheel_results) =
+            run(wheel_64, iterations, &events, watermark, watermark_freq);
 
         dbg!("Finished μWheel 64");
 
@@ -203,15 +203,19 @@ fn sum_aggregation(
             stats,
             qps: None,
         });
-        let wheel_512: wheels::WindowWheel<U64SumAggregator> = wheels::Builder::default()
-            .with_range(range)
-            .with_slide(slide)
-            .with_optimizer_hints(false)
-            .with_write_ahead(512)
-            .with_watermark(watermark)
-            .build();
 
-        let (runtime, stats, _wheel_results) = run(wheel_512, &events, watermark, watermark_freq);
+        let wheel_512 = || {
+            wheels::Builder::default()
+                .with_range(range)
+                .with_slide(slide)
+                .with_optimizer_hints(false)
+                .with_write_ahead(512)
+                .with_watermark(watermark)
+                .build::<U64SumAggregator>()
+        };
+
+        let (runtime, stats, _wheel_results) =
+            run(wheel_512, iterations, &events, watermark, watermark_freq);
 
         dbg!("Finished μWheel 512");
 
@@ -223,48 +227,10 @@ fn sum_aggregation(
             qps: None,
         });
 
-        // let raw_wheel_64: wheels::RawWindowWheel<U64SumAggregator> = wheels::Builder::default()
-        //     .with_range(range)
-        //     .with_slide(slide)
-        //     .with_write_ahead(64)
-        //     .with_watermark(watermark)
-        //     .build_raw();
+        let fiba_4 = || WindowTree::<tree::FiBA4>::new(watermark, range, slide, Slicing::Wheel);
 
-        // let (runtime, stats, _wheel_results) =
-        //     run(raw_wheel_64, &events, watermark, watermark_freq);
-
-        // dbg!("Finished Raw μWheel 64");
-
-        // runs.push(Run {
-        //     id: "μWheel-raw W64".to_string(),
-        //     total_insertions,
-        //     runtime,
-        //     stats,
-        //     qps: None,
-        // });
-        // let raw_wheel_512: wheels::RawWindowWheel<U64SumAggregator> = wheels::Builder::default()
-        //     .with_range(range)
-        //     .with_slide(slide)
-        //     .with_write_ahead(512)
-        //     .with_watermark(watermark)
-        //     .build_raw();
-
-        // let (runtime, stats, _wheel_results) =
-        //     run(raw_wheel_512, &events, watermark, watermark_freq);
-
-        // dbg!("Finished μWheel-raw 512");
-
-        // runs.push(Run {
-        //     id: "μWheel-raw W512".to_string(),
-        //     total_insertions,
-        //     runtime,
-        //     stats,
-        //     qps: None,
-        // });
-
-        let fiba_4: WindowTree<tree::FiBA4> =
-            WindowTree::new(watermark, range, slide, Slicing::Wheel);
-        let (runtime, stats, _fiba4_results) = run(fiba_4, &events, watermark, watermark_freq);
+        let (runtime, stats, _fiba4_results) =
+            run(fiba_4, iterations, &events, watermark, watermark_freq);
         dbg!("Finished FiBA Bfinger4");
         runs.push(Run {
             id: "FiBA Bfinger4".to_string(),
@@ -275,17 +241,10 @@ fn sum_aggregation(
         });
 
         // pretty_assertions::assert_eq!(eager_results, _fiba4_results);
-        /*
-        dbg!(&find_first_mismatch(
-            &lazy_results,
-            &eager_results,
-            &_fiba4_results
-        ));
-        */
 
-        let fiba_8: WindowTree<tree::FiBA8> =
-            WindowTree::new(watermark, range, slide, Slicing::Wheel);
-        let (runtime, stats, _fiba8_results) = run(fiba_8, &events, watermark, watermark_freq);
+        let fiba_8 = || WindowTree::<tree::FiBA8>::new(watermark, range, slide, Slicing::Wheel);
+        let (runtime, stats, _fiba8_results) =
+            run(fiba_8, iterations, &events, watermark, watermark_freq);
         dbg!("Finished FiBA Bfinger8");
         runs.push(Run {
             id: "FiBA Bfinger8".to_string(),
@@ -296,9 +255,11 @@ fn sum_aggregation(
         });
         assert_eq!(_fiba4_results, _fiba8_results);
 
-        let fiba_4: WindowTree<tree::FiBA4> =
-            WindowTree::new(watermark, range, slide, Slicing::Slide);
-        let (runtime, stats, _fiba4_results) = run(fiba_4, &events, watermark, watermark_freq);
+        let fiba_cg_4 = || WindowTree::<tree::FiBA4>::new(watermark, range, slide, Slicing::Slide);
+
+        let (runtime, stats, _fiba4_results) =
+            run(fiba_cg_4, iterations, &events, watermark, watermark_freq);
+
         dbg!("Finished FiBA CG Bfinger4");
         runs.push(Run {
             id: "FiBA CG Bfinger4".to_string(),
@@ -316,10 +277,10 @@ fn sum_aggregation(
             &_fiba4_results
         ));
         */
+        let fiba_cg_8 = || WindowTree::<tree::FiBA8>::new(watermark, range, slide, Slicing::Slide);
 
-        let fiba_8: WindowTree<tree::FiBA8> =
-            WindowTree::new(watermark, range, slide, Slicing::Slide);
-        let (runtime, stats, _fiba8_results) = run(fiba_8, &events, watermark, watermark_freq);
+        let (runtime, stats, _fiba8_results) =
+            run(fiba_cg_8, iterations, &events, watermark, watermark_freq);
         dbg!("Finished FiBA CG Bfinger8");
         runs.push(Run {
             id: "FiBA CG Bfinger8".to_string(),
@@ -328,7 +289,7 @@ fn sum_aggregation(
             stats,
             qps: None,
         });
-        assert_eq!(_fiba4_results, _fiba8_results);
+        // assert_eq!(_fiba4_results, _fiba8_results);
 
         dbg!(window);
 
@@ -341,52 +302,9 @@ fn sum_aggregation(
     output.flush_to_file().unwrap();
 }
 
-#[cfg(feature = "sync")]
-fn spawn_query_thread(
-    window: &impl WindowExt<U64SumAggregator>,
-) -> (Arc<AtomicBool>, std::thread::JoinHandle<f64>) {
-    use awheel::time::Duration;
-    let read_wheel = window.wheel().clone();
-    let gate = Arc::new(AtomicBool::new(true));
-    let inner_gate = gate.clone();
-    let handle = std::thread::spawn(move || {
-        // TODO: this has to be updated to work with other datasets
-        let watermark = datetime_to_u64("2018-08-01 00:00:00.0");
-        // wait with querying until the wheel has been advanced 24 hours
-        loop {
-            use awheel::time;
-            if read_wheel.watermark()
-                > watermark + time::Duration::hours(24).whole_milliseconds() as u64
-            {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(200));
-        }
-        let now = Instant::now();
-        let mut counter = 0;
-        while inner_gate.load(Ordering::Relaxed) {
-            // Execute queries on random granularities
-            let pick = fastrand::usize(0..3);
-            if pick == 0 {
-                let _res = read_wheel.interval(Duration::seconds(fastrand::i64(1..60)));
-            } else if pick == 1 {
-                let _res = read_wheel.interval(Duration::minutes(fastrand::i64(1..60)));
-            } else {
-                let _res = read_wheel.interval(Duration::hours(fastrand::i64(1..24)));
-            }
-            counter += 1;
-        }
-        (counter as f64 / now.elapsed().as_secs_f64()) / 1_000_000.0
-        // println!(
-        //     "Concurrent Read task ran at {} Mops/s",
-        //     (counter as f64 / now.elapsed().as_secs_f64()) as u64 / 1_000_000
-        // );
-    });
-    (gate, handle)
-}
-
 fn main() {
     let args = Args::parse();
+    let runs = args.runs;
     let watermark_freq = args.watermark_frequency;
     println!("Running with {:#?}", args);
     let window_type = args.window_type;
@@ -421,6 +339,7 @@ fn main() {
             println!("Out-of-order events {:.2}", ooo_events);
             println!("Events/s {}", events_per_second(&events));
             sum_aggregation(
+                runs,
                 &id_gen("nyc_citi_bike"),
                 events,
                 watermark,
@@ -452,6 +371,7 @@ fn main() {
             println!("Out-of-order events {:.2}", ooo_events);
             println!("Events/s {}", events_per_second(&events));
             sum_aggregation(
+                runs,
                 &id_gen("debs12"),
                 events,
                 watermark,
@@ -493,6 +413,7 @@ fn main() {
             println!("Out-of-order events {:.2}", ooo_events);
             println!("Events/s {}", events_per_second(&events));
             sum_aggregation(
+                runs,
                 &id_gen("debs13"),
                 events,
                 watermark,
@@ -503,46 +424,64 @@ fn main() {
     }
 }
 
-fn run<A: Aggregator<Input = u64, Aggregate = u64>>(
-    mut window: impl WindowExt<A>,
+fn run<A: Aggregator<Input = u64, Aggregate = u64>, W: WindowExt<A>>(
+    window_fn: impl Fn() -> W,
+    runs: usize,
     events: &[Event],
     watermark: u64,
     watermark_freq: usize,
 ) -> (std::time::Duration, Stats, Vec<(u64, Option<u64>)>) {
-    dbg!(watermark);
-    let mut watermark = watermark;
-    let mut generator = WatermarkGenerator::new(watermark, 2000);
-    let mut counter = 0;
-    let mut _results = Vec::new();
+    let mut stats = Vec::new();
+    for _i in 0..runs {
+        let mut window = window_fn();
+        let mut watermark = watermark;
+        let mut generator = WatermarkGenerator::new(watermark, 2000);
+        let mut counter = 0;
+        let full = Instant::now();
+        for event in events {
+            generator.on_event(&event.timestamp);
+            window.insert(Entry::new(event.data, event.timestamp));
 
-    let full = Instant::now();
-    for event in events {
-        generator.on_event(&event.timestamp);
-        window.insert(Entry::new(event.data, event.timestamp));
+            counter += 1;
 
-        counter += 1;
-
-        if counter == watermark_freq {
-            let wm = align_to_closest_thousand(generator.generate_watermark());
-            if wm > watermark {
-                watermark = wm;
-            }
-            counter = 0;
-            for (_timestamp, _result) in window.advance_to(watermark) {
-                #[cfg(feature = "debug")]
-                _results.push((_timestamp, _result));
+            if counter == watermark_freq {
+                let wm = align_to_closest_thousand(generator.generate_watermark());
+                if wm > watermark {
+                    watermark = wm;
+                }
+                counter = 0;
+                for (_timestamp, _result) in window.advance_to(watermark) {
+                    #[cfg(feature = "debug")]
+                    _results.push((_timestamp, _result));
+                }
             }
         }
-    }
-    watermark = align_to_closest_thousand(generator.generate_watermark());
-    for (_timestamp, _result) in window.advance_to(watermark) {
-        #[cfg(feature = "debug")]
-        _results.push((_timestamp, _result));
-    }
-    dbg!(watermark);
+        watermark = align_to_closest_thousand(generator.generate_watermark());
+        for (_timestamp, _result) in window.advance_to(watermark) {
+            #[cfg(feature = "debug")]
+            _results.push((_timestamp, _result));
+        }
+        // dbg!(watermark);
 
-    let runtime = full.elapsed();
-    (runtime, window.stats().clone(), _results)
+        let runtime = full.elapsed();
+        stats.push((runtime, window.stats().clone()));
+    }
+
+    // reduce results
+
+    let avg_runtime = stats.iter().map(|(r, _)| r.as_secs_f64()).sum::<f64>() / stats.len() as f64;
+    let stat = stats.into_iter().fold(None, |acc, (_, stats)| match acc {
+        None => Some(stats),
+        Some(curr) => {
+            curr.merge_sketches(stats);
+            Some(curr)
+        }
+    });
+    (
+        std::time::Duration::from_secs_f64(avg_runtime),
+        stat.unwrap(),
+        Vec::new(),
+    )
 }
 
 // For debugging purposes

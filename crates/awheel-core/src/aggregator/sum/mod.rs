@@ -50,7 +50,7 @@ macro_rules! sum_impl {
             #[cfg(feature = "simd")]
             #[multiversion(targets = "simd")]
             #[inline]
-            fn merge_slices(dst: &mut [$pa], src: &[$pa]) {
+            fn merge(dst: &mut [$pa], src: &[$pa]) {
                 let (src_head, src_chunks, src_tail) = src.as_simd::<{ <$simd>::LEN }>();
                 let (dst_head, dst_chunks, dst_tail) = dst.as_simd_mut::<{ <$simd>::LEN }>();
 
@@ -68,19 +68,6 @@ macro_rules! sum_impl {
                 for (d, s) in dst_tail.iter_mut().zip(src_tail.iter()) {
                     *d += s;
                 }
-            }
-
-            #[inline]
-            fn prefix_query(
-                slice: &[Self::PartialAggregate],
-                start: usize,
-                end: usize,
-            ) -> Option<Self::PartialAggregate> {
-                Some(if start == 0 {
-                    slice[end]
-                } else {
-                    slice[end] - slice[start - 1]
-                })
             }
 
             #[inline]

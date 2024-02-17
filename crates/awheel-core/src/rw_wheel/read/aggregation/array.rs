@@ -152,11 +152,11 @@ impl<A: Aggregator> MutablePartialArray<A> {
 
     /// Merges another mutable array into this array
     pub fn merge(&mut self, other: &Self) {
-        A::merge_slices(&mut self.inner, &other.inner);
+        A::merge(&mut self.inner, &other.inner);
     }
     /// Merges a partial array into this mutable array
     pub fn merge_with_ref(&mut self, other: impl AsRef<[A::PartialAggregate]>) {
-        A::merge_slices(&mut self.inner, other.as_ref());
+        A::merge(&mut self.inner, other.as_ref());
     }
 
     /// Returns a front-to-back iterator of roll-up slots

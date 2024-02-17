@@ -11,15 +11,10 @@ use awheel::{
     RwWheel,
 };
 use clap::{ArgEnum, Parser};
-use datafusion::arrow::{
-    array::UInt64Array,
-    datatypes::{DataType, Field, Schema},
-    record_batch::RecordBatch,
-};
 use duckdb::{arrow::datatypes::ArrowNativeTypeOp, Result};
 use hdrhistogram::Histogram;
 use minstant::Instant;
-use std::{fs::File, sync::Arc, time::Duration};
+use std::{fs::File, time::Duration};
 use window::{
     tree::{BTree, Bclassic2, Bclassic4, Bclassic8, SegmentTree, Tree},
     util::*,
@@ -724,35 +719,6 @@ fn run(args: &Args) -> Vec<Run> {
 
         println!("DuckDB Q2 Hours {:?}", duckdb_q2_hours.0);
 
-        // let datafusion_q1 = datafusion_run(&raw_timestamps, &raw_values, df_threads, &q1_queries);
-        // println!("Datafusion Q1 {:?}", datafusion_q1.0);
-
-        // let datafusion_q2_seconds = datafusion_run(
-        //     &raw_timestamps,
-        //     &raw_values,
-        //     df_threads,
-        //     &q2_queries_seconds,
-        // );
-
-        // q2_seconds_results.add(Stats::from("datafusion", &datafusion_q2_seconds));
-        // println!("Datafusion Q2 Seconds {:?}", datafusion_q2_seconds.0);
-
-        // let datafusion_q2_minutes = datafusion_run(
-        //     &raw_timestamps,
-        //     &raw_values,
-        //     df_threads,
-        //     &q2_queries_minutes,
-        // );
-
-        // q2_minutes_results.add(Stats::from("datafusion", &datafusion_q2_minutes));
-        // println!("Datafusion Q2 Minutes {:?}", datafusion_q2_minutes.0);
-
-        // let datafusion_q2_hours =
-        //     datafusion_run(&raw_timestamps, &raw_values, df_threads, &q2_queries_hours);
-
-        // q2_hours_results.add(Stats::from("datafusion", &datafusion_q2_hours));
-        // println!("Datafusion Q2 Hours {:?}", datafusion_q2_hours.0);
-
         let wheels_prefix_memory_bytes = wheel.read().as_ref().size_bytes();
 
         // Convert wheels back to array before next interval
@@ -806,100 +772,6 @@ fn run(args: &Args) -> Vec<Run> {
         runs.push(run);
     }
     runs
-}
-
-fn _datafusion_run(
-    timestamps: &[u64],
-    values: &[u64],
-    threads: usize,
-    queries: &[Query],
-) -> (Duration, Histogram<u64>, usize, usize) {
-    // Datafusion Schema
-    let schema = std::sync::Arc::new(Schema::new(vec![
-        Field::new("do_time", DataType::UInt64, false),
-        Field::new("fare_amount", DataType::UInt64, false),
-    ]));
-
-    use datafusion::prelude::*;
-    let batch = RecordBatch::try_new(
-        schema,
-        vec![
-            Arc::new(UInt64Array::from(timestamps.to_vec())),
-            Arc::new(UInt64Array::from(values.to_vec())),
-        ],
-    )
-    .unwrap();
-
-    // declare a new context. In spark API, this corresponds to a new spark SQLsession
-    let ctx = SessionContext::new();
-
-    // declare a table in memory. In spark API, this corresponds to createDataFrame(...).
-    ctx.register_batch("rides", batch).unwrap();
-
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(threads) // Adjust the number of worker threads as needed
-        .enable_all()
-        .build()
-        .unwrap();
-
-    // Run the async function within the Tokio runtime
-    let (duration, hist, avg_ops, worst_ops) = rt.block_on(async {
-        let df = ctx.table("rides").await.unwrap();
-
-        let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
-        let mut worst_case_ops = 0;
-        let mut sum_v: usize = 0;
-        let mut count = 0;
-
-        let full = Instant::now();
-        for query in queries {
-            let df = df.clone();
-            let now = Instant::now();
-            match query.query_type {
-                QueryType::All => {
-                    let _res = match query.interval {
-                        TimeInterval::Range(start, end) => {
-                            // converto to ms.
-                            let start_ms = start * 1000;
-                            let end_ms = end * 1000;
-                            let res = df
-                                .filter(
-                                    col("do_time")
-                                        .gt_eq(lit(start_ms))
-                                        .and(col("do_time").lt(lit(end_ms))),
-                                )
-                                .unwrap()
-                                .aggregate(vec![], vec![sum(col("fare_amount"))])
-                                .unwrap();
-
-                            let agg = res.collect().await.unwrap();
-                            let aggregates = (end_ms - start_ms) / 1000;
-                            sum_v += aggregates as usize;
-                            worst_case_ops = U64MaxAggregator::combine(worst_case_ops, aggregates);
-                            count += 1;
-                            agg
-                        }
-                        TimeInterval::Landmark => {
-                            let res = df.aggregate(vec![], vec![sum(col("fare_amount"))]).unwrap();
-                            let agg = res.collect().await.unwrap();
-                            agg
-                        }
-                    };
-                    #[cfg(feature = "debug")]
-                    dbg!(_res);
-
-                    // assert!(_res.is_some());
-                    hist.record(now.elapsed().as_nanos() as u64).unwrap();
-                }
-                _ => panic!("not supposed to happen"),
-            };
-        }
-        let runtime = full.elapsed();
-        let avg_ops = sum_v.checked_div(count);
-        (runtime, hist, avg_ops.unwrap_or(0), worst_case_ops as usize)
-    });
-
-    (duration, hist, avg_ops, worst_ops)
 }
 
 fn tree_run<A: Aggregator, T: Tree<A>>(

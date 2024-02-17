@@ -19,6 +19,13 @@ pub struct Stats {
 }
 
 impl Stats {
+    pub fn merge_sketches(&self, other: Self) {
+        self.window_computation_ns
+            .merge(other.window_computation_ns);
+        self.cleanup_ns.merge(other.cleanup_ns);
+        self.advance_ns.merge(other.advance_ns);
+        self.insert_ns.merge(other.insert_ns);
+    }
     /// Returns the average number of aggregate combine operations per window
     pub fn avg_window_combines(&self) -> usize {
         self.window_combines.get() / self.window_computation_ns.count()
