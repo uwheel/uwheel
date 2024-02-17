@@ -3,12 +3,14 @@
 mkdir -p results
 
 FILE=data/citibike-tripdata.csv
-if [ -f "$FILE" ]; then
-    echo "NYC Citi Bike Data found"
+DEBS12=data/debs12.csv
+if [ -f "$FILE" ] && [ -f "$DEBS12" ]; then
+    echo "NYC Citi Bike & DEBS12 Data found"
 else
-    echo "Downloading and preparing NYC Citi Bike data"
+    echo "Downloading and preparing data"
     ./fetch_data.sh
 fi
+
 
 # TODO: Download DEBS12 data
 
