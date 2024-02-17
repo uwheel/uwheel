@@ -37,7 +37,7 @@ const INTERVALS: [Durationz; 2] = [Durationz::days(1), Durationz::days(6)];
 struct Args {
     #[clap(short, long, value_parser, default_value_t = 1)]
     events_per_sec: usize,
-    #[clap(short, long, value_parser, default_value_t = 1)]
+    #[clap(short, long, value_parser, default_value_t = 5)]
     iterations: usize,
     #[clap(short, long, value_parser, default_value_t = 50000)]
     queries: usize,
@@ -170,7 +170,7 @@ fn run(args: &Args) -> Vec<Run> {
     let total_queries = args.queries;
     let events_per_sec = args.events_per_sec;
     let workload = args.workload;
-    let _iterations = args.iterations;
+    let iterations = args.iterations;
     let start_date = START_DATE_MS;
     let mut current_date = start_date;
     let max_parallelism = 8;
@@ -280,12 +280,17 @@ fn run(args: &Args) -> Vec<Run> {
 
         wheel.read().set_optimizer_hints(false);
 
-        let wheel_q1 = awheel_run("μWheel Q1", watermark, &wheel, &q1_queries);
+        let wheel_q1 = awheel_run("μWheel Q1", iterations, watermark, &wheel, &q1_queries);
         println!("μWheel Q1 {:?}", wheel_q1.0);
         q1_results.add(Stats::from("μWheel", &wheel_q1));
 
-        let wheel_q2_seconds =
-            awheel_run("μWheel Q2 Seconds", watermark, &wheel, &q2_queries_seconds);
+        let wheel_q2_seconds = awheel_run(
+            "μWheel Q2 Seconds",
+            iterations,
+            watermark,
+            &wheel,
+            &q2_queries_seconds,
+        );
         q2_seconds_results.add(Stats::from("μWheel", &wheel_q2_seconds));
         println!("μWheel Q2 Seconds {:?}", wheel_q2_seconds.0);
         println!(
@@ -293,8 +298,13 @@ fn run(args: &Args) -> Vec<Run> {
             wheel_q2_seconds.2, wheel_q2_seconds.3
         );
 
-        let wheel_q2_minutes =
-            awheel_run("μWheel Q2 Minutes", watermark, &wheel, &q2_queries_minutes);
+        let wheel_q2_minutes = awheel_run(
+            "μWheel Q2 Minutes",
+            iterations,
+            watermark,
+            &wheel,
+            &q2_queries_minutes,
+        );
         q2_minutes_results.add(Stats::from("μWheel", &wheel_q2_minutes));
         println!("μWheel Q2 Minutes {:?}", wheel_q2_minutes.0);
         println!(
@@ -302,7 +312,13 @@ fn run(args: &Args) -> Vec<Run> {
             wheel_q2_minutes.2, wheel_q2_minutes.3
         );
 
-        let wheel_q2_hours = awheel_run("μWheel Q2 Hours", watermark, &wheel, &q2_queries_hours);
+        let wheel_q2_hours = awheel_run(
+            "μWheel Q2 Hours",
+            iterations,
+            watermark,
+            &wheel,
+            &q2_queries_hours,
+        );
         q2_hours_results.add(Stats::from("μWheel", &wheel_q2_hours));
         println!("μWheel Q2 Hours {:?}", wheel_q2_hours.0);
         println!(
@@ -312,12 +328,23 @@ fn run(args: &Args) -> Vec<Run> {
 
         wheel.read().set_optimizer_hints(true);
 
-        let wheel_q1 = awheel_run("μWheel-hints Q1", watermark, &wheel, &q1_queries);
+        let wheel_q1 = awheel_run(
+            "μWheel-hints Q1",
+            iterations,
+            watermark,
+            &wheel,
+            &q1_queries,
+        );
         println!("μWheel-hints Q1 {:?}", wheel_q1.0);
         q1_results.add(Stats::from("μWheel-hints", &wheel_q1));
 
-        let wheel_q2_seconds =
-            awheel_run("μWheel Q2 Seconds", watermark, &wheel, &q2_queries_seconds);
+        let wheel_q2_seconds = awheel_run(
+            "μWheel Q2 Seconds",
+            iterations,
+            watermark,
+            &wheel,
+            &q2_queries_seconds,
+        );
         q2_seconds_results.add(Stats::from("μWheel-hints", &wheel_q2_seconds));
         println!("μWheel-hints Q2 Seconds {:?}", wheel_q2_seconds.0);
         println!(
@@ -327,6 +354,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         let wheel_q2_minutes = awheel_run(
             "μWheel-hints Q2 Minutes",
+            iterations,
             watermark,
             &wheel,
             &q2_queries_minutes,
@@ -340,6 +368,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         let wheel_q2_hours = awheel_run(
             "μWheel-hints Q2 Hours",
+            iterations,
             watermark,
             &wheel,
             &q2_queries_hours,
@@ -355,12 +384,19 @@ fn run(args: &Args) -> Vec<Run> {
         let wheel_non_prefix_size = wheel.read().as_ref().size_bytes();
         wheel.read().convert_all_to_prefix();
 
-        let wheel_q1 = awheel_run("μWheel-prefix Q1", watermark, &wheel, &q1_queries);
+        let wheel_q1 = awheel_run(
+            "μWheel-prefix Q1",
+            iterations,
+            watermark,
+            &wheel,
+            &q1_queries,
+        );
         println!("μWheel-prefix Q1 {:?}", wheel_q1.0);
         q1_results.add(Stats::from("μWheel-prefix", &wheel_q1));
 
         let wheel_q2_seconds = awheel_run(
             "μWheel-prefix Q2 Seconds",
+            iterations,
             watermark,
             &wheel,
             &q2_queries_seconds,
@@ -374,6 +410,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         let wheel_q2_minutes = awheel_run(
             "μWheel-prefix Q2 Minutes",
+            iterations,
             watermark,
             &wheel,
             &q2_queries_minutes,
@@ -387,6 +424,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         let wheel_q2_hours = awheel_run(
             "μWheel-prefix Q2 Hours",
+            iterations,
             watermark,
             &wheel,
             &q2_queries_hours,
@@ -468,11 +506,18 @@ fn run(args: &Args) -> Vec<Run> {
         //     fiba_q2_hours.2, fiba_q2_hours.3
         // );
 
-        let segment_tree_q1 = tree_run("SegmentTree Q1", watermark, &segment_tree, &q1_queries);
+        let segment_tree_q1 = tree_run(
+            "SegmentTree Q1",
+            iterations,
+            watermark,
+            &segment_tree,
+            &q1_queries,
+        );
         println!("SegmentTree Q1 {:?}", segment_tree_q1.0);
         q1_results.add(Stats::from("SegmentTree", &segment_tree_q1));
         let segment_tree_q2_seconds = tree_run(
             "Segment Tree Q2 Seconds",
+            iterations,
             watermark,
             &segment_tree,
             &q2_queries_seconds,
@@ -485,7 +530,8 @@ fn run(args: &Args) -> Vec<Run> {
 
         q2_seconds_results.add(Stats::from("SegmentTree", &segment_tree_q2_seconds));
         let segment_tree_q2_minutes = tree_run(
-            "SegmentTree Q2 Minutes ",
+            "SegmentTree Q2 Minutes",
+            iterations,
             watermark,
             &segment_tree,
             &q2_queries_minutes,
@@ -494,6 +540,7 @@ fn run(args: &Args) -> Vec<Run> {
         q2_minutes_results.add(Stats::from("SegmentTree", &segment_tree_q2_minutes));
         let segment_tree_q2_hours = tree_run(
             "SegmentTree Q2 Hours",
+            iterations,
             watermark,
             &segment_tree,
             &q2_queries_hours,
@@ -501,11 +548,23 @@ fn run(args: &Args) -> Vec<Run> {
         println!("SegmentTree Q2 Hours {:?}", segment_tree_q2_hours.0);
         q2_hours_results.add(Stats::from("SegmentTree", &segment_tree_q2_hours));
 
-        let bclassic2_q1 = tree_run("Bclassic2 Q1", watermark, &bclassic_2, &q1_queries);
+        let bclassic2_q1 = tree_run(
+            "Bclassic2 Q1",
+            iterations,
+            watermark,
+            &bclassic_2,
+            &q1_queries,
+        );
         q1_results.add(Stats::from("Bclassic2", &bclassic2_q1));
         println!("Bclassic2 Q1 {:?}", bclassic2_q1.0);
 
-        let bclassic_2_q2 = tree_run("Bclassic2 Q2", watermark, &bclassic_2, &q2_queries_seconds);
+        let bclassic_2_q2 = tree_run(
+            "Bclassic2 Q2",
+            iterations,
+            watermark,
+            &bclassic_2,
+            &q2_queries_seconds,
+        );
         q2_seconds_results.add(Stats::from("Bclassic2", &bclassic_2_q2));
         println!("Bclassic2 Q2 Seconds {:?}", bclassic_2_q2.0);
         println!(
@@ -515,6 +574,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         let bclassic_2_q2 = tree_run(
             "Bclassic2 Q2 Minutes",
+            iterations,
             watermark,
             &bclassic_2,
             &q2_queries_minutes,
@@ -528,6 +588,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         let bclassic_2_q2 = tree_run(
             "Bclassic2 Q2 Hours",
+            iterations,
             watermark,
             &bclassic_2,
             &q2_queries_hours,
@@ -539,11 +600,23 @@ fn run(args: &Args) -> Vec<Run> {
             bclassic_2_q2.2, bclassic_2_q2.3
         );
 
-        let bclassic4_q1 = tree_run("Bclassic4 Q1", watermark, &bclassic_4, &q1_queries);
+        let bclassic4_q1 = tree_run(
+            "Bclassic4 Q1",
+            iterations,
+            watermark,
+            &bclassic_4,
+            &q1_queries,
+        );
         q1_results.add(Stats::from("Bclassic4", &bclassic4_q1));
         println!("Bclassic4 Q1 {:?}", bclassic4_q1.0);
 
-        let bclassic_4_q2 = tree_run("Bclassic4 Q2", watermark, &bclassic_4, &q2_queries_seconds);
+        let bclassic_4_q2 = tree_run(
+            "Bclassic4 Q2",
+            iterations,
+            watermark,
+            &bclassic_4,
+            &q2_queries_seconds,
+        );
         q2_seconds_results.add(Stats::from("Bclassic4", &bclassic_4_q2));
         println!("Bclassic4 Q2 Seconds {:?}", bclassic_4_q2.0);
         println!(
@@ -553,6 +626,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         let bclassic_4_q2 = tree_run(
             "Bclassic4 Q2 Minutes",
+            iterations,
             watermark,
             &bclassic_4,
             &q2_queries_minutes,
@@ -566,6 +640,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         let bclassic_4_q2 = tree_run(
             "Bclassic4 Q2 Hours",
+            iterations,
             watermark,
             &bclassic_4,
             &q2_queries_hours,
@@ -577,11 +652,23 @@ fn run(args: &Args) -> Vec<Run> {
             bclassic_4_q2.2, bclassic_4_q2.3
         );
 
-        let bclassic8_q1 = tree_run("Bclassic8 Q1", watermark, &bclassic_8, &q1_queries);
+        let bclassic8_q1 = tree_run(
+            "Bclassic8 Q1",
+            iterations,
+            watermark,
+            &bclassic_8,
+            &q1_queries,
+        );
         q1_results.add(Stats::from("Bclassic8", &bclassic8_q1));
         println!("Bclassic8 Q1 {:?}", bclassic8_q1.0);
 
-        let bclassic_8_q2 = tree_run("Bclassic8 Q2", watermark, &bclassic_8, &q2_queries_seconds);
+        let bclassic_8_q2 = tree_run(
+            "Bclassic8 Q2",
+            iterations,
+            watermark,
+            &bclassic_8,
+            &q2_queries_seconds,
+        );
         q2_seconds_results.add(Stats::from("Bclassic8", &bclassic_8_q2));
         println!("Bclassic8 Q2 Seconds {:?}", bclassic_8_q2.0);
         println!(
@@ -591,6 +678,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         let bclassic_8_q2 = tree_run(
             "Bclassic8 Q2 Minutes",
+            iterations,
             watermark,
             &bclassic_8,
             &q2_queries_minutes,
@@ -604,6 +692,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         let bclassic_8_q2 = tree_run(
             "Bclassic8 Q2 Hours",
+            iterations,
             watermark,
             &bclassic_8,
             &q2_queries_hours,
@@ -615,19 +704,37 @@ fn run(args: &Args) -> Vec<Run> {
             bclassic_8_q2.2, bclassic_8_q2.3
         );
 
-        let btree_q1 = tree_run("BTree Q1", watermark, &btree, &q1_queries);
+        let btree_q1 = tree_run("BTree Q1", iterations, watermark, &btree, &q1_queries);
         q1_results.add(Stats::from("BTree", &btree_q1));
         println!("BTree Q1 {:?}", btree_q1.0);
 
-        let btree_q2 = tree_run("BTree Q2", watermark, &btree, &q2_queries_seconds);
+        let btree_q2 = tree_run(
+            "BTree Q2",
+            iterations,
+            watermark,
+            &btree,
+            &q2_queries_seconds,
+        );
         println!("BTree Q2 Seconds {:?}", btree_q2.0);
         q2_seconds_results.add(Stats::from("BTree", &btree_q2));
 
-        let btree_q2_minutes = tree_run("BTree Q2 Minutes", watermark, &btree, &q2_queries_minutes);
+        let btree_q2_minutes = tree_run(
+            "BTree Q2 Minutes",
+            iterations,
+            watermark,
+            &btree,
+            &q2_queries_minutes,
+        );
         println!("BTree Q2 Minutes {:?}", btree_q2_minutes.0);
         q2_minutes_results.add(Stats::from("BTree", &btree_q2_minutes));
 
-        let btree_q2_hours = tree_run("BTree Q2 Hours", watermark, &btree, &q2_queries_hours);
+        let btree_q2_hours = tree_run(
+            "BTree Q2 Hours",
+            iterations,
+            watermark,
+            &btree,
+            &q2_queries_hours,
+        );
         println!("BTree Q2 Hours  {:?}", btree_q2_hours.0);
         q2_hours_results.add(Stats::from("BTree", &btree_q2_hours));
 
@@ -665,7 +772,14 @@ fn run(args: &Args) -> Vec<Run> {
         let max_parallelism = 1;
         duckdb_set_threads(max_parallelism, &duckdb);
 
-        let mut duckdb_q1 = duckdb_run("DuckDB Q1", watermark, workload, &duckdb, &q1_queries);
+        let mut duckdb_q1 = duckdb_run(
+            "DuckDB Q1",
+            iterations,
+            watermark,
+            workload,
+            &duckdb,
+            &q1_queries,
+        );
 
         // should have same ops
         duckdb_q1.2 = btree_q1.2;
@@ -677,6 +791,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         let duckdb_q2_seconds = duckdb_run(
             "DuckDB Q2 Seconds",
+            iterations,
             watermark,
             workload,
             &duckdb,
@@ -692,6 +807,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         let duckdb_q2_minutes = duckdb_run(
             "DuckDB Q2 Minutes",
+            iterations,
             watermark,
             workload,
             &duckdb,
@@ -706,6 +822,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         let duckdb_q2_hours = duckdb_run(
             "DuckDB Q2 Hours",
+            iterations,
             watermark,
             workload,
             &duckdb,
@@ -776,6 +893,7 @@ fn run(args: &Args) -> Vec<Run> {
 
 fn tree_run<A: Aggregator, T: Tree<A>>(
     _id: &str,
+    iterations: usize,
     _watermark: u64,
     tree: &T,
     queries: &[Query],
@@ -783,52 +901,94 @@ fn tree_run<A: Aggregator, T: Tree<A>>(
 where
     A::PartialAggregate: Sync + Ord + PartialEq,
 {
-    let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
-    let mut worst_case_ops = 0;
-    let mut sum = 0;
-    let mut count = 0;
+    let mut stats = Vec::new();
+    for _i in 0..iterations {
+        let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
+        let mut worst_case_ops = 0;
+        let mut sum = 0;
+        let mut count = 0;
 
-    let full = Instant::now();
-    for query in queries {
-        let now = Instant::now();
-        match query.query_type {
-            QueryType::All => {
-                let _res = match query.interval {
-                    TimeInterval::Range(start, end) => {
-                        // converto to ms.
-                        let start_ms = start * 1000;
-                        let end_ms = end * 1000;
+        let full = Instant::now();
+        for query in queries {
+            let now = Instant::now();
+            match query.query_type {
+                QueryType::All => {
+                    let _res = match query.interval {
+                        TimeInterval::Range(start, end) => {
+                            // converto to ms.
+                            let start_ms = start * 1000;
+                            let end_ms = end * 1000;
 
-                        let (agg, cost) = tree.analyze_range_query(start_ms, end_ms);
-                        worst_case_ops = U64MaxAggregator::combine(worst_case_ops, cost as u64);
-                        sum += cost;
-                        count += 1;
-                        agg
-                    }
-                    TimeInterval::Landmark => {
-                        let (agg, cost) = tree.analyze_query();
-                        worst_case_ops = U64MaxAggregator::combine(worst_case_ops, cost as u64);
-                        sum += cost;
-                        count += 1;
-                        agg
-                    }
-                };
-                #[cfg(feature = "debug")]
-                dbg!(_res);
+                            let (agg, cost) = tree.analyze_range_query(start_ms, end_ms);
+                            worst_case_ops = U64MaxAggregator::combine(worst_case_ops, cost as u64);
+                            sum += cost;
+                            count += 1;
+                            agg
+                        }
+                        TimeInterval::Landmark => {
+                            let (agg, cost) = tree.analyze_query();
+                            worst_case_ops = U64MaxAggregator::combine(worst_case_ops, cost as u64);
+                            sum += cost;
+                            count += 1;
+                            agg
+                        }
+                    };
+                    #[cfg(feature = "debug")]
+                    dbg!(_res);
 
-                // assert!(_res.is_some());
-                hist.record(now.elapsed().as_nanos() as u64).unwrap();
-            }
-            _ => panic!("not supposed to happen"),
-        };
+                    // assert!(_res.is_some());
+                    hist.record(now.elapsed().as_nanos() as u64).unwrap();
+                }
+                _ => panic!("not supposed to happen"),
+            };
+        }
+        let runtime = full.elapsed();
+        let avg_ops = sum.checked_div(count).unwrap_or(0);
+        stats.push((runtime, hist, avg_ops, worst_case_ops as usize));
     }
-    let runtime = full.elapsed();
-    let avg_ops = sum.checked_div(count);
-    (runtime, hist, avg_ops.unwrap_or(0), worst_case_ops as usize)
+    let avg_runtime = stats
+        .iter()
+        .map(|(r, _, _, _)| r.as_secs_f64())
+        .sum::<f64>()
+        / stats.len() as f64;
+
+    let avg_ops = stats.iter().next().unwrap().2;
+    let worst_case_ops = stats.iter().next().unwrap().3;
+
+    let hist = stats
+        .into_iter()
+        .map(|(_, hist, _, _)| hist)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .fold(None, |acc, hist| match acc {
+            None => Some(hist),
+            Some(mut curr) => {
+                curr.add(hist).unwrap();
+                Some(curr)
+            }
+        });
+
+    (
+        std::time::Duration::from_secs_f64(avg_runtime),
+        hist.unwrap(),
+        avg_ops,
+        worst_case_ops,
+    )
+
+    // let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
+    // let mut worst_case_ops = 0;
+    // let mut sum = 0;
+    // let mut count = 0;
+
+    // let full = Instant::now();
+    // for query in queries {
+
+    // (runtime, hist, avg_ops.unwrap_or(0), worst_case_ops as usize)
 }
 
 fn awheel_run<A: Aggregator + Clone>(
     _id: &str,
+    iterations: usize,
     _watermark: u64,
     wheel: &RwWheel<A>,
     queries: &[Query],
@@ -836,144 +996,209 @@ fn awheel_run<A: Aggregator + Clone>(
 where
     A::PartialAggregate: Sync + Ord + PartialEq,
 {
-    let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
-    let mut worst_case_ops = 0;
-    let mut sum = 0;
-    let mut count = 0;
+    let mut stats = Vec::new();
+    for _i in 0..iterations {
+        let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
+        let mut worst_case_ops = 0;
+        let mut sum = 0;
+        let mut count = 0;
 
-    let full = Instant::now();
-    for query in queries {
-        let now = Instant::now();
-        match query.query_type {
-            QueryType::All => {
-                let _res = match query.interval {
-                    TimeInterval::Range(start, end) => {
-                        let (start_date, end_date) = into_offset_date_time_start_end(start, end);
+        let full = Instant::now();
+        for query in queries {
+            let now = Instant::now();
+            match query.query_type {
+                QueryType::All => {
+                    let _res = match query.interval {
+                        TimeInterval::Range(start, end) => {
+                            let (start_date, end_date) =
+                                into_offset_date_time_start_end(start, end);
 
-                        let (agg, cost) = wheel
-                            .read()
-                            .as_ref()
-                            .analyze_combine_range(WheelRange::new(start_date, end_date));
-                        worst_case_ops = U64MaxAggregator::combine(worst_case_ops, cost as u64);
-                        sum += cost;
-                        count += 1;
-                        agg
-                    }
-                    TimeInterval::Landmark => {
-                        let (agg, cost) = wheel.read().as_ref().analyze_landmark();
-                        sum += cost;
-                        count += 1;
-                        agg
-                    }
-                };
-                #[cfg(feature = "debug")]
-                dbg!(_res);
+                            let (agg, cost) = wheel
+                                .read()
+                                .as_ref()
+                                .analyze_combine_range(WheelRange::new(start_date, end_date));
+                            worst_case_ops = U64MaxAggregator::combine(worst_case_ops, cost as u64);
+                            sum += cost;
+                            count += 1;
+                            agg
+                        }
+                        TimeInterval::Landmark => {
+                            let (agg, cost) = wheel.read().as_ref().analyze_landmark();
+                            sum += cost;
+                            count += 1;
+                            agg
+                        }
+                    };
+                    #[cfg(feature = "debug")]
+                    dbg!(_res);
 
-                // assert!(_res.is_some());
-                hist.record(now.elapsed().as_nanos() as u64).unwrap();
-            }
-            _ => panic!("not supposed to happen"),
-        };
+                    // assert!(_res.is_some());
+                    hist.record(now.elapsed().as_nanos() as u64).unwrap();
+                }
+                _ => panic!("not supposed to happen"),
+            };
+        }
+        let runtime = full.elapsed();
+        let avg_ops = sum.checked_div(count).unwrap_or(0);
+        stats.push((runtime, hist, avg_ops, worst_case_ops as usize));
     }
-    let runtime = full.elapsed();
-    let avg_ops = sum.checked_div(count).unwrap_or(0);
-    (runtime, hist, avg_ops, worst_case_ops as usize)
+
+    let avg_runtime = stats
+        .iter()
+        .map(|(r, _, _, _)| r.as_secs_f64())
+        .sum::<f64>()
+        / stats.len() as f64;
+
+    let avg_ops = stats.iter().next().unwrap().2;
+    let worst_case_ops = stats.iter().next().unwrap().3;
+
+    let hist = stats
+        .into_iter()
+        .map(|(_, hist, _, _)| hist)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .fold(None, |acc, hist| match acc {
+            None => Some(hist),
+            Some(mut curr) => {
+                curr.add(hist).unwrap();
+                Some(curr)
+            }
+        });
+
+    (
+        std::time::Duration::from_secs_f64(avg_runtime),
+        hist.unwrap(),
+        avg_ops,
+        worst_case_ops,
+    )
 }
 
 fn duckdb_run(
     _id: &str,
+    iterations: usize,
     _watermark: u64,
     workload: Workload,
     db: &duckdb::Connection,
     queries: &[Query],
 ) -> (Duration, Histogram<u64>, usize, usize) {
-    let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
+    let mut stats = Vec::new();
+    for _i in 0..iterations {
+        let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
+        let mut worst_case_ops = 0;
+        let mut sum = 0;
+        let mut count = 0;
 
-    let mut worst_case_ops = 0;
-    let mut sum = 0;
-    let mut count = 0;
-
-    let mut base_str = match workload {
+        let mut base_str = match workload {
         Workload::All => "SELECT AVG(fare_amount), SUM(fare_amount), MIN(fare_amount), MAX(fare_amount), COUNT(fare_amount) FROM rides",
         Workload::Sum => "SELECT SUM(fare_amount) FROM rides",
     };
-    // Prepare SQL queries
-    let sql_queries: Vec<String> = queries
-        .iter()
-        .map(|query| {
-            // Generate Key clause. If no key then leave as empty ""
-            let key_clause = match query.query_type {
-                QueryType::TopK => {
-                    // modiy the base str
-                    base_str = "SELECT pu_location_id, SUM(fare_amount) FROM rides";
+        // Prepare SQL queries
+        let sql_queries: Vec<String> = queries
+            .iter()
+            .map(|query| {
+                // Generate Key clause. If no key then leave as empty ""
+                let key_clause = match query.query_type {
+                    QueryType::TopK => {
+                        // modiy the base str
+                        base_str = "SELECT pu_location_id, SUM(fare_amount) FROM rides";
 
-                    if let TimeInterval::Landmark = query.interval {
-                        "".to_string()
-                    } else {
-                        "WHERE".to_string()
+                        if let TimeInterval::Landmark = query.interval {
+                            "".to_string()
+                        } else {
+                            "WHERE".to_string()
+                        }
                     }
-                }
 
-                QueryType::Keyed(pu_location_id) => {
-                    if let TimeInterval::Landmark = query.interval {
-                        format!("WHERE pu_location_id={}", pu_location_id)
-                    } else {
-                        format!("WHERE pu_location_id={} AND", pu_location_id)
+                    QueryType::Keyed(pu_location_id) => {
+                        if let TimeInterval::Landmark = query.interval {
+                            format!("WHERE pu_location_id={}", pu_location_id)
+                        } else {
+                            format!("WHERE pu_location_id={} AND", pu_location_id)
+                        }
                     }
-                }
-                QueryType::Range(start, end) => {
-                    if let TimeInterval::Landmark = query.interval {
-                        format!("WHERE pu_location_id BETWEEN {} AND {}", start, end)
-                    } else {
-                        format!("WHERE pu_location_id BETWEEN {} AND {} AND", start, end)
+                    QueryType::Range(start, end) => {
+                        if let TimeInterval::Landmark = query.interval {
+                            format!("WHERE pu_location_id BETWEEN {} AND {}", start, end)
+                        } else {
+                            format!("WHERE pu_location_id BETWEEN {} AND {} AND", start, end)
+                        }
                     }
-                }
-                QueryType::All => {
-                    if let TimeInterval::Landmark = query.interval {
-                        "".to_string()
-                    } else {
-                        "WHERE".to_string()
+                    QueryType::All => {
+                        if let TimeInterval::Landmark = query.interval {
+                            "".to_string()
+                        } else {
+                            "WHERE".to_string()
+                        }
                     }
-                }
-            };
-            let interval = match query.interval {
-                TimeInterval::Range(start, end) => {
-                    let start_ms = start * 1000;
-                    let end_ms = end * 1000;
-                    let aggregates = (end_ms - start_ms) / 1000;
-                    sum += aggregates;
-                    worst_case_ops = U64MaxAggregator::combine(worst_case_ops, aggregates);
-                    count += 1;
-                    format!("do_time >= {} AND do_time < {}", start_ms, end_ms)
-                }
-                TimeInterval::Landmark => "".to_string(),
-            };
+                };
+                let interval = match query.interval {
+                    TimeInterval::Range(start, end) => {
+                        let start_ms = start * 1000;
+                        let end_ms = end * 1000;
+                        let aggregates = (end_ms - start_ms) / 1000;
+                        sum += aggregates;
+                        worst_case_ops = U64MaxAggregator::combine(worst_case_ops, aggregates);
+                        count += 1;
+                        format!("do_time >= {} AND do_time < {}", start_ms, end_ms)
+                    }
+                    TimeInterval::Landmark => "".to_string(),
+                };
 
-            let full_query = match query.query_type {
-                QueryType::TopK => {
-                    let order_by =
+                let full_query = match query.query_type {
+                    QueryType::TopK => {
+                        let order_by =
                         "GROUP BY pu_location_id, fare_amount ORDER BY fare_amount DESC LIMIT 10";
-                    format!("{} {} {} {}", base_str, key_clause, interval, order_by)
-                }
-                _ => format!("{} {} {}", base_str, key_clause, interval),
-            };
-            // println!("QUERY {}", full_query);
-            full_query
-        })
-        .collect();
+                        format!("{} {} {} {}", base_str, key_clause, interval, order_by)
+                    }
+                    _ => format!("{} {} {}", base_str, key_clause, interval),
+                };
+                // println!("QUERY {}", full_query);
+                full_query
+            })
+            .collect();
 
-    let full = Instant::now();
-    for sql_query in sql_queries {
-        let now = Instant::now();
-        match workload {
-            Workload::All => duckdb_query_all(&sql_query, db).unwrap(),
-            Workload::Sum => duckdb_query_sum(&sql_query, db).unwrap(),
+        let full = Instant::now();
+        for sql_query in sql_queries {
+            let now = Instant::now();
+            match workload {
+                Workload::All => duckdb_query_all(&sql_query, db).unwrap(),
+                Workload::Sum => duckdb_query_sum(&sql_query, db).unwrap(),
+            }
+            hist.record(now.elapsed().as_nanos() as u64).unwrap();
         }
-        hist.record(now.elapsed().as_nanos() as u64).unwrap();
+        let runtime = full.elapsed();
+        let avg_ops = sum.div_checked(count).unwrap_or(0);
+        stats.push((runtime, hist, avg_ops, worst_case_ops as usize));
     }
-    let runtime = full.elapsed();
-    let avg_ops = sum.div_checked(count).unwrap_or(0);
-    (runtime, hist, avg_ops as usize, worst_case_ops as usize)
+
+    let avg_runtime = stats
+        .iter()
+        .map(|(r, _, _, _)| r.as_secs_f64())
+        .sum::<f64>()
+        / stats.len() as f64;
+
+    let avg_ops = stats.iter().next().unwrap().2;
+    let worst_case_ops = stats.iter().next().unwrap().3;
+
+    let hist = stats
+        .into_iter()
+        .map(|(_, hist, _, _)| hist)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .fold(None, |acc, hist| match acc {
+            None => Some(hist),
+            Some(mut curr) => {
+                curr.add(hist).unwrap();
+                Some(curr)
+            }
+        });
+
+    (
+        std::time::Duration::from_secs_f64(avg_runtime),
+        hist.unwrap(),
+        avg_ops as usize,
+        worst_case_ops,
+    )
 }
 
 #[derive(Debug, serde::Serialize)]
