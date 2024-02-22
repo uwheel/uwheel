@@ -530,7 +530,8 @@ impl Tree<U64SumAggregator> for SegmentTree {
     fn evict_range(&mut self, _to: u64) {}
     fn evict(&mut self) {}
     fn size_bytes(&self) -> usize {
-        self.inner.len() * std::mem::size_of::<u64>()
+        // 2n * sizeof(N)
+        (2 * self.inner.len()) * std::mem::size_of::<u64>()
     }
     #[inline]
     fn combine_ops(&self) -> usize {

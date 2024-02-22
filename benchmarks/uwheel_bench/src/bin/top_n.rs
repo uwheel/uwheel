@@ -18,7 +18,7 @@ use clap::Parser;
 use duckdb::Result;
 use hdrhistogram::Histogram;
 use std::time::Duration;
-use window::util::{duckdb_append_batch, duckdb_query_topn, Query, QueryType, *};
+use uwheel_bench::util::{duckdb_append_batch, duckdb_query_topn, Query, QueryType, *};
 
 // struct BenchResult {
 //     total_queries: usize,

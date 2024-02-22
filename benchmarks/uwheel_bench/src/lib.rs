@@ -15,7 +15,7 @@ pub use cxx::UniquePtr;
 #[cxx::bridge]
 pub mod bfinger_two {
     unsafe extern "C++" {
-        include!("window/include/FiBA.h");
+        include!("uwheel_bench/include/FiBA.h");
 
         type FiBA_SUM;
 
@@ -39,7 +39,7 @@ pub mod bfinger_two {
 #[cxx::bridge]
 pub mod bfinger_four {
     unsafe extern "C++" {
-        include!("window/include/FiBA.h");
+        include!("uwheel_bench/include/FiBA.h");
 
         type FiBA_SUM_4;
 
@@ -63,7 +63,7 @@ pub mod bfinger_four {
 #[cxx::bridge]
 pub mod bfinger_eight {
     unsafe extern "C++" {
-        include!("window/include/FiBA.h");
+        include!("uwheel_bench/include/FiBA.h");
 
         type FiBA_SUM_8;
 
@@ -87,7 +87,7 @@ pub mod bfinger_eight {
 #[cxx::bridge]
 pub mod bclassic_two {
     unsafe extern "C++" {
-        include!("window/include/FiBA.h");
+        include!("uwheel_bench/include/FiBA.h");
 
         type Bclassic_2;
 
@@ -111,7 +111,7 @@ pub mod bclassic_two {
 #[cxx::bridge]
 pub mod bclassic_four {
     unsafe extern "C++" {
-        include!("window/include/FiBA.h");
+        include!("uwheel_bench/include/FiBA.h");
 
         type Bclassic_4;
 
@@ -135,7 +135,7 @@ pub mod bclassic_four {
 #[cxx::bridge]
 pub mod bclassic_eight {
     unsafe extern "C++" {
-        include!("window/include/FiBA.h");
+        include!("uwheel_bench/include/FiBA.h");
 
         type Bclassic_8;
 

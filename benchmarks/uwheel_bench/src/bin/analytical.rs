@@ -15,7 +15,7 @@ use duckdb::{arrow::datatypes::ArrowNativeTypeOp, Result};
 use hdrhistogram::Histogram;
 use minstant::Instant;
 use std::{fs::File, time::Duration};
-use window::{
+use uwheel_bench::{
     tree::{BTree, Bclassic2, Bclassic4, Bclassic8, SegmentTree, Tree},
     util::*,
 };
@@ -952,8 +952,8 @@ where
         .sum::<f64>()
         / stats.len() as f64;
 
-    let avg_ops = stats.iter().next().unwrap().2;
-    let worst_case_ops = stats.iter().next().unwrap().3;
+    let avg_ops = stats.first().unwrap().2;
+    let worst_case_ops = stats.first().unwrap().3;
 
     let hist = stats
         .into_iter()
@@ -974,16 +974,6 @@ where
         avg_ops,
         worst_case_ops,
     )
-
-    // let mut hist = hdrhistogram::Histogram::<u64>::new(4).unwrap();
-    // let mut worst_case_ops = 0;
-    // let mut sum = 0;
-    // let mut count = 0;
-
-    // let full = Instant::now();
-    // for query in queries {
-
-    // (runtime, hist, avg_ops.unwrap_or(0), worst_case_ops as usize)
 }
 
 fn awheel_run<A: Aggregator + Clone>(
@@ -1049,8 +1039,8 @@ where
         .sum::<f64>()
         / stats.len() as f64;
 
-    let avg_ops = stats.iter().next().unwrap().2;
-    let worst_case_ops = stats.iter().next().unwrap().3;
+    let avg_ops = stats.first().unwrap().2;
+    let worst_case_ops = stats.first().unwrap().3;
 
     let hist = stats
         .into_iter()
@@ -1177,8 +1167,8 @@ fn duckdb_run(
         .sum::<f64>()
         / stats.len() as f64;
 
-    let avg_ops = stats.iter().next().unwrap().2;
-    let worst_case_ops = stats.iter().next().unwrap().3;
+    let avg_ops = stats.first().unwrap().2;
+    let worst_case_ops = stats.first().unwrap().3;
 
     let hist = stats
         .into_iter()

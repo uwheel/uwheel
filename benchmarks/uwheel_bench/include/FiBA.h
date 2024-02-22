@@ -1503,7 +1503,7 @@ template<typename T>
   doBulkLocalInsertNoOverflow(CommonRoot &cr) {
     if (false)
       cout << "> doBulkLocalInsertNoOverflow:";
-    size_t n = cr.realCount;
+    // size_t n = cr.realCount; // not used
     Node* thisTarget = cr.node;
     for (auto& tw: cr.members) {
       if (false) cout << "R";
@@ -1990,7 +1990,7 @@ public:
 
   void walk(std::function<void(const timeT, const aggT)> callback) {
     _root->doWalkRec(
-        [&](auto _, const timeT t, const aggT v) { callback(t, v); });
+        [&]([[maybe_unused]] auto _, const timeT t, const aggT v) { callback(t, v); });
   }
 
   static Aggregate* makeRandomTree(binOpFunc binOp, int height) {
@@ -2005,7 +2005,7 @@ public:
 
 template <typename timeT, int minArity, Kind kind, class BinaryFunction, class T>
 Aggregate<timeT, minArity, kind, BinaryFunction>
-make_aggregate(BinaryFunction f, T elem) {
+make_aggregate(BinaryFunction f, [[maybe_unused]] T elem) {
     return Aggregate<timeT, minArity, kind, BinaryFunction>(f);
 }
 
@@ -2023,7 +2023,7 @@ Aggregate<timeT, minArity, kind, BinaryFunction> operator()(T elem) {
 };
 
 template <typename timeT, int minArity, Kind kind, class BinaryFunction, class T>
-auto make_bulk_aggregate(BinaryFunction f, T elem) {
+auto make_bulk_aggregate(BinaryFunction f, [[maybe_unused]] T elem) {
   return BulkAdapter<
     Aggregate<timeT, minArity, kind, BinaryFunction>,
     timeT, typename BinaryFunction::In
@@ -2046,7 +2046,7 @@ struct MakeBulkAggregate {
 
 namespace fiba_nofl {
   template <typename timeT, int minArity, btree::Kind kind, class BinaryFunction, class T>
-  auto make_aggregate(BinaryFunction f, T elem) {
+  auto make_aggregate(BinaryFunction f, [[maybe_unused]] T elem) {
       // last two flags: bool early_stopping, bool use_freelist>
       return btree::Aggregate<timeT, minArity, kind, BinaryFunction, false, false>(f);
   }

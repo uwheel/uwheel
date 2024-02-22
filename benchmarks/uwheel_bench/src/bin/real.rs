@@ -2,7 +2,7 @@ use clap::{ArgEnum, Parser};
 use csv::ReaderBuilder;
 use minstant::Instant;
 use std::{cmp, fs::File};
-use window::{external_impls::Slicing, PlottingOutput, Window};
+use uwheel_bench::{external_impls::Slicing, PlottingOutput, Window};
 
 use awheel::{
     aggregator::sum::U64SumAggregator,
@@ -12,9 +12,15 @@ use awheel::{
 };
 use chrono::{DateTime, NaiveDateTime};
 use serde::Deserialize;
-use window::{align_to_closest_thousand, external_impls::WindowTree, tree, BenchResult, Run};
-
-use window::{BIG_RANGE_WINDOWS, SMALL_RANGE_WINDOWS};
+use uwheel_bench::{
+    align_to_closest_thousand,
+    external_impls::WindowTree,
+    tree,
+    BenchResult,
+    Run,
+    BIG_RANGE_WINDOWS,
+    SMALL_RANGE_WINDOWS,
+};
 
 #[cfg(feature = "mimalloc")]
 use mimalloc::MiMalloc;
@@ -179,6 +185,7 @@ fn sum_aggregation(
         let range = window.range;
         let slide = window.slide;
         let total_insertions = events.len() as u64;
+        dbg!(window);
 
         let mut runs = Vec::new();
 
@@ -186,7 +193,7 @@ fn sum_aggregation(
             wheels::Builder::default()
                 .with_range(range)
                 .with_slide(slide)
-                .with_optimizer_hints(false)
+                .with_optimizer_hints(true)
                 .with_write_ahead(64)
                 .with_watermark(watermark)
                 .build::<U64SumAggregator>()
@@ -208,7 +215,7 @@ fn sum_aggregation(
             wheels::Builder::default()
                 .with_range(range)
                 .with_slide(slide)
-                .with_optimizer_hints(false)
+                .with_optimizer_hints(true)
                 .with_write_ahead(512)
                 .with_watermark(watermark)
                 .build::<U64SumAggregator>()
@@ -290,8 +297,6 @@ fn sum_aggregation(
             qps: None,
         });
         // assert_eq!(_fiba4_results, _fiba8_results);
-
-        dbg!(window);
 
         let result = BenchResult::new(window, runs);
         result.print();

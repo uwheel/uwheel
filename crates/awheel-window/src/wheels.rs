@@ -166,6 +166,7 @@ impl<A: Aggregator> WindowWheel<A> {
         // NOTE: For now assume always non-invertible (benching reasons)
         let window = Box::new(TwoStacks::with_capacity(pairs));
 
+        // use crate::soe::SubtractOnEvict;
         // let window: Box<dyn Window<A>> = if A::combine_inverse().is_some() {
         //     Box::new(SubtractOnEvict::with_capacity(pairs))
         // } else {
