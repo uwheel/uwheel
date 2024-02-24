@@ -169,6 +169,65 @@ impl<A: Aggregator> Tree<A> for BTreeMap<u64, A::PartialAggregate> {
     }
 }
 
+pub struct FiBA2 {
+    fiba: UniquePtr<crate::bfinger_two::FiBA_SUM>,
+}
+impl Default for FiBA2 {
+    fn default() -> Self {
+        Self {
+            fiba: crate::bfinger_two::create_fiba_with_sum(),
+        }
+    }
+}
+
+impl Tree<U64SumAggregator> for FiBA2 {
+    #[inline]
+    fn insert(&mut self, ts: u64, agg: u64) {
+        self.fiba.pin_mut().insert(&ts, &agg);
+    }
+
+    #[inline]
+    fn analyze_query(&self) -> (Option<u64>, usize) {
+        let ops_before = self.combine_ops();
+        let result = Some(self.fiba.query());
+        let ops_after = self.combine_ops();
+        let ops = ops_after - ops_before;
+        (result, ops)
+    }
+    #[inline]
+    fn query(&self) -> Option<u64> {
+        Some(self.fiba.query())
+    }
+    #[inline]
+    fn range_query(&self, from: u64, to: u64) -> Option<u64> {
+        Some(self.fiba.range(from, to - 1))
+    }
+
+    #[inline]
+    fn analyze_range_query(&self, from: u64, to: u64) -> (Option<u64>, usize) {
+        let ops_before = self.combine_ops();
+        let result = Some(self.fiba.range(from, to - 1));
+        let ops_after = self.combine_ops();
+        let ops = ops_after - ops_before;
+        (result, ops)
+    }
+
+    #[inline]
+    fn evict_range(&mut self, to: u64) {
+        self.fiba.pin_mut().bulk_evict(&(to - 1));
+    }
+    fn evict(&mut self) {
+        self.fiba.pin_mut().evict();
+    }
+    fn size_bytes(&self) -> usize {
+        self.fiba.memory_usage()
+    }
+    #[inline]
+    fn combine_ops(&self) -> usize {
+        self.fiba.combine_operations()
+    }
+}
+
 pub struct FiBA4 {
     fiba: UniquePtr<crate::bfinger_four::FiBA_SUM_4>,
 }

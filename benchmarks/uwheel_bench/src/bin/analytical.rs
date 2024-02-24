@@ -16,7 +16,7 @@ use hdrhistogram::Histogram;
 use minstant::Instant;
 use std::{fs::File, time::Duration};
 use uwheel_bench::{
-    tree::{BTree, Bclassic2, Bclassic4, Bclassic8, SegmentTree, Tree},
+    tree::{BTree, FiBA2, FiBA4, FiBA8, SegmentTree, Tree},
     util::*,
 };
 
@@ -102,8 +102,6 @@ pub struct Run {
     wheels_prefix_memory_bytes: usize,
     btree_memory_bytes: usize,
     segment_tree_memory_bytes: usize,
-    // fiba_bfinger4_memory_bytes: usize,
-    // fiba_bfinger8_memory_bytes: usize,
     bclassic2_memory_bytes: usize,
     bclassic4_memory_bytes: usize,
     bclassic8_memory_bytes: usize,
@@ -135,8 +133,6 @@ impl Run {
             wheels_memory_bytes,
             wheels_prefix_memory_bytes,
             segment_tree_memory_bytes,
-            // fiba_bfinger4_memory_bytes,
-            // fiba_bfinger8_memory_bytes,
             bclassic2_memory_bytes,
             bclassic4_memory_bytes,
             bclassic8_memory_bytes,
@@ -185,11 +181,10 @@ fn run(args: &Args) -> Vec<Run> {
 
     // Prepare BTree
     let mut btree: BTree<U64SumAggregator> = BTree::default();
-    // let mut fiba_4 = FiBA4::default();
-    // let mut fiba_8 = FiBA8::default();
-    let mut bclassic_2 = Bclassic2::default();
-    let mut bclassic_4 = Bclassic4::default();
-    let mut bclassic_8 = Bclassic8::default();
+    // actually FiBA just need to replace variable names..
+    let mut bclassic_2 = FiBA2::default();
+    let mut bclassic_4 = FiBA4::default();
+    let mut bclassic_8 = FiBA8::default();
 
     // Prepare μWheel
     let mut haw_conf = HawConf::default();
@@ -240,6 +235,7 @@ fn run(args: &Args) -> Vec<Run> {
                 raw_values.push(record.fare_amount);
 
                 btree.insert(record.do_time, record.fare_amount);
+                // fiba_2.insert(record.do_time, record.fare_amount);
                 // fiba_4.insert(record.do_time, record.fare_amount);
                 // fiba_8.insert(record.do_time, record.fare_amount);
                 bclassic_2.insert(record.do_time, record.fare_amount);
@@ -548,157 +544,139 @@ fn run(args: &Args) -> Vec<Run> {
         println!("SegmentTree Q2 Hours {:?}", segment_tree_q2_hours.0);
         q2_hours_results.add(Stats::from("SegmentTree", &segment_tree_q2_hours));
 
-        let bclassic2_q1 = tree_run(
-            "Bclassic2 Q1",
-            iterations,
-            watermark,
-            &bclassic_2,
-            &q1_queries,
-        );
-        q1_results.add(Stats::from("Bclassic2", &bclassic2_q1));
-        println!("Bclassic2 Q1 {:?}", bclassic2_q1.0);
+        let bclassic2_q1 = tree_run("FiBA2 Q1", iterations, watermark, &bclassic_2, &q1_queries);
+        q1_results.add(Stats::from("FiBA2", &bclassic2_q1));
+        println!("FiBA2 Q1 {:?}", bclassic2_q1.0);
 
         let bclassic_2_q2 = tree_run(
-            "Bclassic2 Q2",
+            "FiBA2 Q2",
             iterations,
             watermark,
             &bclassic_2,
             &q2_queries_seconds,
         );
-        q2_seconds_results.add(Stats::from("Bclassic2", &bclassic_2_q2));
-        println!("Bclassic2 Q2 Seconds {:?}", bclassic_2_q2.0);
+        q2_seconds_results.add(Stats::from("FiBA2", &bclassic_2_q2));
+        println!("FiBA2 Q2 Seconds {:?}", bclassic_2_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
             bclassic_2_q2.2, bclassic_2_q2.3
         );
 
         let bclassic_2_q2 = tree_run(
-            "Bclassic2 Q2 Minutes",
+            "FiBA2 Q2 Minutes",
             iterations,
             watermark,
             &bclassic_2,
             &q2_queries_minutes,
         );
-        q2_minutes_results.add(Stats::from("Bclassic2", &bclassic_2_q2));
-        println!("Bclassic2 Q2 Minutes {:?}", bclassic_2_q2.0);
+        q2_minutes_results.add(Stats::from("FiBA2", &bclassic_2_q2));
+        println!("FiBA2 Q2 Minutes {:?}", bclassic_2_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
             bclassic_2_q2.2, bclassic_2_q2.3
         );
 
         let bclassic_2_q2 = tree_run(
-            "Bclassic2 Q2 Hours",
+            "FiBA2 Q2 Hours",
             iterations,
             watermark,
             &bclassic_2,
             &q2_queries_hours,
         );
-        q2_hours_results.add(Stats::from("Bclassic2", &bclassic_2_q2));
-        println!("Bclassic2 Q2 Hours {:?}", bclassic_2_q2.0);
+        q2_hours_results.add(Stats::from("FiBA2", &bclassic_2_q2));
+        println!("FiBA2 Q2 Hours {:?}", bclassic_2_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
             bclassic_2_q2.2, bclassic_2_q2.3
         );
 
-        let bclassic4_q1 = tree_run(
-            "Bclassic4 Q1",
-            iterations,
-            watermark,
-            &bclassic_4,
-            &q1_queries,
-        );
-        q1_results.add(Stats::from("Bclassic4", &bclassic4_q1));
-        println!("Bclassic4 Q1 {:?}", bclassic4_q1.0);
+        let bclassic4_q1 = tree_run("FiBA4 Q1", iterations, watermark, &bclassic_4, &q1_queries);
+        q1_results.add(Stats::from("FiBA4", &bclassic4_q1));
+        println!("FiBA4 Q1 {:?}", bclassic4_q1.0);
 
         let bclassic_4_q2 = tree_run(
-            "Bclassic4 Q2",
+            "FiBA4 Q2",
             iterations,
             watermark,
             &bclassic_4,
             &q2_queries_seconds,
         );
-        q2_seconds_results.add(Stats::from("Bclassic4", &bclassic_4_q2));
-        println!("Bclassic4 Q2 Seconds {:?}", bclassic_4_q2.0);
+        q2_seconds_results.add(Stats::from("FiBA4", &bclassic_4_q2));
+        println!("FiBA4 Q2 Seconds {:?}", bclassic_4_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
             bclassic_4_q2.2, bclassic_4_q2.3
         );
 
         let bclassic_4_q2 = tree_run(
-            "Bclassic4 Q2 Minutes",
+            "FiBA4 Q2 Minutes",
             iterations,
             watermark,
             &bclassic_4,
             &q2_queries_minutes,
         );
-        q2_minutes_results.add(Stats::from("Bclassic4", &bclassic_4_q2));
-        println!("Bclassic4 Q2 Minutes {:?}", bclassic_4_q2.0);
+        q2_minutes_results.add(Stats::from("FiBA4", &bclassic_4_q2));
+        println!("FiBA4 Q2 Minutes {:?}", bclassic_4_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
             bclassic_4_q2.2, bclassic_4_q2.3
         );
 
         let bclassic_4_q2 = tree_run(
-            "Bclassic4 Q2 Hours",
+            "FiBA4 Q2 Hours",
             iterations,
             watermark,
             &bclassic_4,
             &q2_queries_hours,
         );
-        q2_hours_results.add(Stats::from("Bclassic4", &bclassic_4_q2));
-        println!("Bclassic4 Q2 Hours {:?}", bclassic_4_q2.0);
+        q2_hours_results.add(Stats::from("FiBA4", &bclassic_4_q2));
+        println!("FiBA4 Q2 Hours {:?}", bclassic_4_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
             bclassic_4_q2.2, bclassic_4_q2.3
         );
 
-        let bclassic8_q1 = tree_run(
-            "Bclassic8 Q1",
-            iterations,
-            watermark,
-            &bclassic_8,
-            &q1_queries,
-        );
-        q1_results.add(Stats::from("Bclassic8", &bclassic8_q1));
-        println!("Bclassic8 Q1 {:?}", bclassic8_q1.0);
+        let bclassic8_q1 = tree_run("FiBA8 Q1", iterations, watermark, &bclassic_8, &q1_queries);
+        q1_results.add(Stats::from("FiBA8", &bclassic8_q1));
+        println!("FiBA8 Q1 {:?}", bclassic8_q1.0);
 
         let bclassic_8_q2 = tree_run(
-            "Bclassic8 Q2",
+            "FiBA8 Q2",
             iterations,
             watermark,
             &bclassic_8,
             &q2_queries_seconds,
         );
-        q2_seconds_results.add(Stats::from("Bclassic8", &bclassic_8_q2));
-        println!("Bclassic8 Q2 Seconds {:?}", bclassic_8_q2.0);
+        q2_seconds_results.add(Stats::from("FiBA8", &bclassic_8_q2));
+        println!("FiBA8 Q2 Seconds {:?}", bclassic_8_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
             bclassic_8_q2.2, bclassic_8_q2.3
         );
 
         let bclassic_8_q2 = tree_run(
-            "Bclassic8 Q2 Minutes",
+            "FiBA8 Q2 Minutes",
             iterations,
             watermark,
             &bclassic_8,
             &q2_queries_minutes,
         );
-        q2_minutes_results.add(Stats::from("Bclassic8", &bclassic_8_q2));
-        println!("Bclassic8 Q2 Minutes {:?}", bclassic_8_q2.0);
+        q2_minutes_results.add(Stats::from("FiBA8 ", &bclassic_8_q2));
+        println!("FiBA8 Q2 Minutes {:?}", bclassic_8_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
             bclassic_8_q2.2, bclassic_8_q2.3
         );
 
         let bclassic_8_q2 = tree_run(
-            "Bclassic8 Q2 Hours",
+            "FiBA8 Q2 Hours",
             iterations,
             watermark,
             &bclassic_8,
             &q2_queries_hours,
         );
-        q2_hours_results.add(Stats::from("Bclassic8", &bclassic_8_q2));
-        println!("Bclassic8 Q2 Hours {:?}", bclassic_8_q2.0);
+        q2_hours_results.add(Stats::from("FiBA8", &bclassic_8_q2));
+        println!("FiBA8 Q2 Hours {:?}", bclassic_8_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
             bclassic_8_q2.2, bclassic_8_q2.3
