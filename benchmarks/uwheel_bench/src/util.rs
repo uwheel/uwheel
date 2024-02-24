@@ -1,4 +1,5 @@
 use awheel::{time_internal as time, OffsetDateTime};
+use chrono::NaiveDateTime;
 use duckdb::{params, Connection, DropBehavior, Result};
 use std::{cmp, time::SystemTime};
 
@@ -447,7 +448,10 @@ pub fn duckdb_append_batch(batch: Vec<RideData>, db: &mut Connection, keyed: boo
                 ride.fare_amount,
             ])?;
         } else {
-            app.append_row(params![i as i32, ride.do_time, ride.fare_amount,])?;
+            let naive = NaiveDateTime::from_timestamp_millis(ride.do_time as i64).unwrap();
+            let fmt = naive.format("%Y-%m-%d %H:%M:%S").to_string();
+            // dbg!(&fmt);
+            app.append_row(params![i as i32, &fmt, ride.fare_amount,])?;
         }
     }
     app.flush();
@@ -511,7 +515,7 @@ pub fn duckdb_setup(disk: bool, threads: usize, keyed: bool) -> (duckdb::Connect
         (
             id INTEGER not null, -- primary key,
             pu_location_id UBIGINT not null,
-            do_time UBIGINT not null,
+            do_time TIMESTAMP_MS not null,
             fare_amount UBIGINT not null,
         );"
     } else {
@@ -519,7 +523,7 @@ pub fn duckdb_setup(disk: bool, threads: usize, keyed: bool) -> (duckdb::Connect
         create table IF NOT EXISTS rides
         (
             id INTEGER not null, -- primary key,
-            do_time UBIGINT not null,
+            do_time TIMESTAMP_MS not null,
             fare_amount UBIGINT not null,
         );"
     };

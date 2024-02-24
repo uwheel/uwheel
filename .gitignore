@@ -4,5 +4,6 @@ crates/awheel-demo/dist
 benchmarks/results
 benchmarks/data
 benchmarks/plots
+duckdb_ingestion*
 .ipynb_checkpoints/
 .DS_STORE

@@ -100,11 +100,11 @@ pub struct Run {
     events_per_second: u64,
     wheels_memory_bytes: usize,
     wheels_prefix_memory_bytes: usize,
-    btree_memory_bytes: usize,
     segment_tree_memory_bytes: usize,
     bclassic2_memory_bytes: usize,
     bclassic4_memory_bytes: usize,
     bclassic8_memory_bytes: usize,
+    btree_memory_bytes: usize,
     duckdb_memory: String,
     queries: Vec<QueryDescription>,
 }
@@ -118,8 +118,6 @@ impl Run {
         wheels_memory_bytes: usize,
         wheels_prefix_memory_bytes: usize,
         segment_tree_memory_bytes: usize,
-        // fiba_bfinger4_memory_bytes: usize,
-        // fiba_bfinger8_memory_bytes: usize,
         bclassic2_memory_bytes: usize,
         bclassic4_memory_bytes: usize,
         bclassic8_memory_bytes: usize,
@@ -177,7 +175,7 @@ fn run(args: &Args) -> Vec<Run> {
     let mut raw_values = Vec::new();
 
     // Prepare DuckDB
-    let (mut duckdb, _id) = duckdb_setup(args.disk, max_parallelism, false);
+    let (mut duckdb, _id) = duckdb_setup(true, max_parallelism, false);
 
     // Prepare BTree
     let mut btree: BTree<U64SumAggregator> = BTree::default();
@@ -814,6 +812,74 @@ fn run(args: &Args) -> Vec<Run> {
 
         println!("DuckDB Q2 Hours {:?}", duckdb_q2_hours.0);
 
+        // ADJUST threads to 1
+        let max_parallelism = 4;
+        duckdb_set_threads(max_parallelism, &duckdb);
+
+        let mut duckdb_q1 = duckdb_run(
+            "DuckDB Q1",
+            iterations,
+            watermark,
+            workload,
+            &duckdb,
+            &q1_queries,
+        );
+
+        // should have same ops
+        duckdb_q1.2 = btree_q1.2;
+        duckdb_q1.3 = btree_q1.3;
+
+        q1_results.add(Stats::from(duckdb_id_fmt(max_parallelism), &duckdb_q1));
+
+        println!("DuckDB Q1 {:?}", duckdb_q1.0);
+
+        let duckdb_q2_seconds = duckdb_run(
+            "DuckDB Q2 Seconds",
+            iterations,
+            watermark,
+            workload,
+            &duckdb,
+            &q2_queries_seconds,
+        );
+
+        q2_seconds_results.add(Stats::from(
+            duckdb_id_fmt(max_parallelism),
+            &duckdb_q2_seconds,
+        ));
+
+        println!("DuckDB Q2 Seconds {:?}", duckdb_q2_seconds.0);
+
+        let duckdb_q2_minutes = duckdb_run(
+            "DuckDB Q2 Minutes",
+            iterations,
+            watermark,
+            workload,
+            &duckdb,
+            &q2_queries_minutes,
+        );
+
+        q2_minutes_results.add(Stats::from(
+            duckdb_id_fmt(max_parallelism),
+            &duckdb_q2_minutes,
+        ));
+        println!("DuckDB Q2 Minutes {:?}", duckdb_q2_minutes.0);
+
+        let duckdb_q2_hours = duckdb_run(
+            "DuckDB Q2 Hours",
+            iterations,
+            watermark,
+            workload,
+            &duckdb,
+            &q2_queries_hours,
+        );
+
+        q2_hours_results.add(Stats::from(
+            duckdb_id_fmt(max_parallelism),
+            &duckdb_q2_hours,
+        ));
+
+        println!("DuckDB Q2 Hours {:?}", duckdb_q2_hours.0);
+
         let wheels_prefix_memory_bytes = wheel.read().as_ref().size_bytes();
 
         // Convert wheels back to array before next interval
@@ -837,7 +903,9 @@ fn run(args: &Args) -> Vec<Run> {
             segment_tree_memory_bytes,
             bclassic2_memory_bytes,
             bclassic4_memory_bytes,
-            bclassic8_memory_bytes
+            bclassic8_memory_bytes,
+            btree_memory_bytes,
+            &duckdb_memory_bytes,
         );
 
         // update watermark
@@ -1101,13 +1169,18 @@ fn duckdb_run(
                 };
                 let interval = match query.interval {
                     TimeInterval::Range(start, end) => {
-                        let start_ms = start * 1000;
-                        let end_ms = end * 1000;
+                        // let start_ms = start * 1000;
+                        // let end_ms = end * 1000;
+                        let start_ms = start;
+                        let end_ms = end;
                         let aggregates = (end_ms - start_ms) / 1000;
                         sum += aggregates;
                         worst_case_ops = U64MaxAggregator::combine(worst_case_ops, aggregates);
                         count += 1;
-                        format!("do_time >= {} AND do_time < {}", start_ms, end_ms)
+                        format!(
+                            "do_time >= to_timestamp({}) AND do_time < to_timestamp({})",
+                            start_ms, end_ms
+                        )
                     }
                     TimeInterval::Landmark => "".to_string(),
                 };

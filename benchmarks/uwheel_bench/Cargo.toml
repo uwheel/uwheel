@@ -4,7 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 
 [features]
-default = ["duckdb_index"]
+default = []
 debug = []
 sync = ["awheel/sync"]
 simd = ["awheel/simd"]
