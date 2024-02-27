@@ -515,7 +515,7 @@ pub fn duckdb_setup(disk: bool, threads: usize, keyed: bool) -> (duckdb::Connect
         (
             id INTEGER not null, -- primary key,
             pu_location_id UBIGINT not null,
-            do_time TIMESTAMP_MS not null,
+            do_time TIMESTAMP_S not null,
             fare_amount UBIGINT not null,
         );"
     } else {
@@ -523,7 +523,7 @@ pub fn duckdb_setup(disk: bool, threads: usize, keyed: bool) -> (duckdb::Connect
         create table IF NOT EXISTS rides
         (
             id INTEGER not null, -- primary key,
-            do_time TIMESTAMP_MS not null,
+            do_time TIMESTAMP_S not null,
             fare_amount UBIGINT not null,
         );"
     };
@@ -561,10 +561,12 @@ pub fn duckdb_memory_usage(conn: &duckdb::Connection) -> DuckDBInfo {
             let database_size: String = row.get(1).unwrap();
             let block_size: u64 = row.get(2).unwrap();
             let memory_usage: String = row.get(7).unwrap();
-            // println!(
-            //     "Name: {} database_size: {} block_size: {} memory_usage: {}",
-            //     name, database_size, block_size, memory_usage
-            // );
+            dbg!(
+                "database_size: {} block_size: {} memory_usage: {}",
+                &database_size,
+                block_size,
+                &memory_usage
+            );
 
             Ok(DuckDBInfo {
                 database_size,

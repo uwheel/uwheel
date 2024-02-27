@@ -13,21 +13,18 @@ duckdb_index = []
 
 [dependencies]
 cxx = "1.0"
-# segment-tree = "2"
-segment-tree = { git = "https://github.com/Max-Meldrum/segment-tree.git", branch = "ops_count" }
+segment-tree = { path = "segment-tree", version = "2" }
 duckdb.workspace = true
 awheel = { workspace = true, features = ["window", "top_n", "stats", "simd"] }
 mimalloc = { version = "*", default-features = false, optional = true }
 csv = "1.2.2"
 chrono = "0.4"
-pretty_assertions = "1.4.0"
 clap.workspace = true
 serde_json = "1.0.107"
 serde.workspace = true
 fastrand.workspace = true
 hdrhistogram.workspace = true
 minstant.workspace = true
-sketches-ddsketch.workspace = true
 
 [dev-dependencies]
 rand.workspace = true
@@ -36,7 +33,6 @@ fastrand.workspace = true
 
 [build-dependencies]
 cxx-build = "1.0"
-
 
 [[bench]]
 name = "insert"

@@ -50,7 +50,7 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
     println!("Running with {:#?}", args);
-    println!("Using {} keys", MAX_KEYS);
+    // println!("Using {} keys", MAX_KEYS);
     let runs = run(&args);
     let output = PlottingOutput::from(args.events_per_sec, args.queries, MAX_KEYS, runs);
     output.flush_to_file().unwrap();
@@ -106,6 +106,7 @@ pub struct Run {
     bclassic8_memory_bytes: usize,
     btree_memory_bytes: usize,
     duckdb_memory: String,
+    duckdb_file_size: String,
     queries: Vec<QueryDescription>,
 }
 
@@ -123,6 +124,7 @@ impl Run {
         bclassic8_memory_bytes: usize,
         btree_memory_bytes: usize,
         duckdb_memory: String,
+        duckdb_file_size: String,
         queries: Vec<QueryDescription>,
     ) -> Self {
         Self {
@@ -136,6 +138,7 @@ impl Run {
             bclassic8_memory_bytes,
             btree_memory_bytes,
             duckdb_memory,
+            duckdb_file_size,
             queries,
         }
     }
@@ -659,7 +662,7 @@ fn run(args: &Args) -> Vec<Run> {
             &bclassic_8,
             &q2_queries_minutes,
         );
-        q2_minutes_results.add(Stats::from("FiBA8 ", &bclassic_8_q2));
+        q2_minutes_results.add(Stats::from("FiBA8", &bclassic_8_q2));
         println!("FiBA8 Q2 Minutes {:?}", bclassic_8_q2.0);
         println!(
             "avg ops: {}, worst ops: {}",
@@ -895,6 +898,7 @@ fn run(args: &Args) -> Vec<Run> {
         let bclassic8_memory_bytes = bclassic_8.size_bytes();
         let btree_memory_bytes = btree.size_bytes();
         let duckdb_memory_bytes = duck_info.memory_usage;
+        let duckdb_file_size = duck_info.database_size;
         dbg!(
             wheels_memory_bytes,
             wheels_prefix_memory_bytes,
@@ -906,6 +910,7 @@ fn run(args: &Args) -> Vec<Run> {
             bclassic8_memory_bytes,
             btree_memory_bytes,
             &duckdb_memory_bytes,
+            &duckdb_file_size,
         );
 
         // update watermark
@@ -930,6 +935,7 @@ fn run(args: &Args) -> Vec<Run> {
             bclassic8_memory_bytes,
             btree_memory_bytes,
             duckdb_memory_bytes,
+            duckdb_file_size,
             queries,
         );
         runs.push(run);
@@ -1169,16 +1175,16 @@ fn duckdb_run(
                 };
                 let interval = match query.interval {
                     TimeInterval::Range(start, end) => {
-                        // let start_ms = start * 1000;
-                        // let end_ms = end * 1000;
-                        let start_ms = start;
-                        let end_ms = end;
+                        let start_ms = start * 1000;
+                        let end_ms = end * 1000;
+                        // let start_ms = start;
+                        // let end_ms = end;
                         let aggregates = (end_ms - start_ms) / 1000;
                         sum += aggregates;
                         worst_case_ops = U64MaxAggregator::combine(worst_case_ops, aggregates);
                         count += 1;
                         format!(
-                            "do_time >= to_timestamp({}) AND do_time < to_timestamp({})",
+                            "do_time >= epoch_ms({}) AND do_time < epoch_ms({})",
                             start_ms, end_ms
                         )
                     }

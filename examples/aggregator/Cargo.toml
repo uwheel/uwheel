@@ -9,4 +9,3 @@ readme.workspace = true
 
 [dependencies]
 awheel.workspace = true
-zerocopy.workspace = true

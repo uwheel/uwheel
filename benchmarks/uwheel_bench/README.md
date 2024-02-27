@@ -1,4 +1,4 @@
-# Window Benchmarks
+# Info
 
 [FiBA](http://www.vldb.org/pvldb/vol12/p1167-tangwongsan.pdf) Rust bindings using [cxx](https://cxx.rs/index.html).
 
