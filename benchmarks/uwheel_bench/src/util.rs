@@ -549,6 +549,7 @@ pub fn duckdb_setup(disk: bool, threads: usize, keyed: bool) -> (duckdb::Connect
 pub struct DuckDBInfo {
     pub database_size: String,
     pub block_size: u64,
+    pub total_blocks: u64,
     pub memory_usage: String,
 }
 
@@ -560,17 +561,20 @@ pub fn duckdb_memory_usage(conn: &duckdb::Connection) -> DuckDBInfo {
         .query_map([], |row| {
             let database_size: String = row.get(1).unwrap();
             let block_size: u64 = row.get(2).unwrap();
+            let total_blocks: u64 = row.get(3).unwrap();
             let memory_usage: String = row.get(7).unwrap();
             dbg!(
-                "database_size: {} block_size: {} memory_usage: {}",
+                "database_size: {} block_size: {} total_blocks: {}  memory_usage: {}",
                 &database_size,
                 block_size,
+                total_blocks,
                 &memory_usage
             );
 
             Ok(DuckDBInfo {
                 database_size,
                 block_size,
+                total_blocks,
                 memory_usage,
             })
         })

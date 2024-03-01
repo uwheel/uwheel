@@ -149,6 +149,8 @@ impl Builder {
     }
 }
 
+// NOTE: Currently the window aggregation logic is wrapped on the outside of the wheel. To be integrated within main wheel itself.
+//       However, the same logic and code holds.
 pub struct WindowWheel<A: Aggregator> {
     slide: usize,
     wheel: RwWheel<A>,
