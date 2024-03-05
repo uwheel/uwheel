@@ -1,6 +1,6 @@
 use awheel::{
     aggregator::{Aggregator, PartialAggregateType},
-    time::NumericalDuration,
+    time_internal::NumericalDuration,
     Entry,
     RwWheel,
 };
@@ -18,6 +18,7 @@ pub struct RawData {
 
 /// Partial Aggregate used (sum + count) in order to calculate AVG
 #[derive(Clone, PartialEq, Debug, Default, Copy)]
+#[repr(C)]
 pub struct PartialAvg {
     count: f64,
     sum: f64,
@@ -35,6 +36,7 @@ impl PartialAvg {
 
 /// Partial Aggregate State for 2 attributes (Wind speed + Temperature)
 #[derive(Clone, PartialEq, Default, Debug, Copy)]
+#[repr(C)]
 pub struct PartialAggregate {
     wind_speed: PartialAvg,
     temperature: PartialAvg,
@@ -81,6 +83,18 @@ impl PartialAggregate {
             sum: self.wind_speed.sum + other_wind_speed_sum,
         };
     }
+    pub const fn identity() -> Self {
+        Self {
+            wind_speed: PartialAvg {
+                count: 0.0,
+                sum: 0.0,
+            },
+            temperature: PartialAvg {
+                count: 0.0,
+                sum: 0.0,
+            },
+        }
+    }
 }
 
 // Need to implement PartialAggregateType for our custom struct
@@ -104,6 +118,12 @@ impl Aggregate {
 // Implement the Aggregator trait for our aggregator
 // NOTE: in this case both the mutable and immutable aggregate types are the same
 impl Aggregator for CustomAggregator {
+    const IDENTITY: Self::PartialAggregate = PartialAggregate::identity();
+    type CombineSimd = fn(&[Self::PartialAggregate]) -> Self::PartialAggregate;
+
+    type CombineInverse =
+        fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate;
+
     type Input = RawData;
     type PartialAggregate = PartialAggregate;
     type MutablePartialAggregate = PartialAggregate;

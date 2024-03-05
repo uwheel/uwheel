@@ -1,4 +1,4 @@
-use crate::aggregator::Aggregator;
+use crate::{aggregator::Aggregator, rw_wheel::read::hierarchical::CombineHint};
 use core::{fmt::Debug, marker::PhantomData};
 
 mod entry;
@@ -38,10 +38,16 @@ where
     A: Aggregator + Clone + Copy,
     A::PartialAggregate: Ord + Copy,
 {
+    const IDENTITY: Self::PartialAggregate = TopNState::identity();
+
     type Input = (Key, A::Input);
     type MutablePartialAggregate = TopNMap<Key, A>;
     type PartialAggregate = TopNState<Key, N, A>;
     type Aggregate = TopNState<Key, N, A>;
+
+    type CombineSimd = fn(&[Self::PartialAggregate]) -> Self::PartialAggregate;
+    type CombineInverse =
+        fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate;
 
     #[inline]
     fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
@@ -67,12 +73,16 @@ where
     fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
         a
     }
+    // hint that this top-n combine operation is expensive
+    fn combine_hint() -> Option<CombineHint> {
+        Some(CombineHint::Expensive)
+    }
 }
 #[cfg(test)]
 mod tests {
     use crate::{
         aggregator::{all::AllAggregator, sum::U64SumAggregator, top_n::TopNAggregator},
-        time::NumericalDuration,
+        time_internal::NumericalDuration,
         Entry,
         RwWheel,
     };

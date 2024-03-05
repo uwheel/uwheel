@@ -1,4 +1,4 @@
-use awheel_core::{aggregator::all::AllAggregator, RwWheel, *};
+use awheel_core::{aggregator::all::AllAggregator, Duration, RwWheel, *};
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
@@ -10,23 +10,23 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.bench_function("random-days-interval", random_days_interval_bench);
 
     // drill-down
-    group.bench_function(
-        "random-drill-down-interval",
-        random_drill_down_interval_bench,
-    );
+    // group.bench_function(
+    //     "random-drill-down-interval",
+    //     random_drill_down_interval_bench,
+    // );
 
-    group.bench_function(
-        "random-minutes-drill-down-interval",
-        random_minutes_drill_down_interval_bench,
-    );
-    group.bench_function(
-        "random-hours-drill-down-interval",
-        random_hours_drill_down_interval_bench,
-    );
-    group.bench_function(
-        "random-days-drill-down-interval",
-        random_days_drill_down_interval_bench,
-    );
+    // group.bench_function(
+    //     "random-minutes-drill-down-interval",
+    //     random_minutes_drill_down_interval_bench,
+    // );
+    // group.bench_function(
+    //     "random-hours-drill-down-interval",
+    //     random_hours_drill_down_interval_bench,
+    // );
+    // group.bench_function(
+    //     "random-days-drill-down-interval",
+    //     random_days_drill_down_interval_bench,
+    // );
 
     // landmark
     group.bench_function("landmark-window", landmark_window_bench);
@@ -40,51 +40,51 @@ fn random_interval(wheel: &RwWheel<AllAggregator>) {
     if pick == 0usize {
         assert!(wheel
             .read()
-            .interval(time::Duration::seconds(random_seconds() as i64))
+            .interval(Duration::seconds(random_seconds() as i64))
             .is_some());
     } else if pick == 1usize {
         assert!(wheel
             .read()
-            .interval(time::Duration::minutes(random_minute() as i64))
+            .interval(Duration::minutes(random_minute() as i64))
             .is_some());
     } else if pick == 2usize {
         assert!(wheel
             .read()
-            .interval(time::Duration::hours(random_hours() as i64))
+            .interval(Duration::hours(random_hours() as i64))
             .is_some());
     } else {
         assert!(wheel
             .read()
-            .interval(time::Duration::days(random_days() as i64))
+            .interval(Duration::days(random_days() as i64))
             .is_some());
     }
 }
-#[inline]
-fn random_drill_down_interval(wheel: &RwWheel<AllAggregator>) {
-    let pick = fastrand::usize(0..3);
-    if pick == 0usize {
-        assert!(wheel
-            .read()
-            .as_ref()
-            .minutes_unchecked()
-            .drill_down_interval(random_minute())
-            .is_some());
-    } else if pick == 1usize {
-        assert!(wheel
-            .read()
-            .as_ref()
-            .hours_unchecked()
-            .drill_down_interval(random_hours())
-            .is_some());
-    } else {
-        assert!(wheel
-            .read()
-            .as_ref()
-            .days_unchecked()
-            .drill_down_interval(random_days())
-            .is_some());
-    }
-}
+// #[inline]
+// fn random_drill_down_interval(wheel: &RwWheel<AllAggregator>) {
+//     let pick = fastrand::usize(0..3);
+//     if pick == 0usize {
+//         assert!(wheel
+//             .read()
+//             .as_ref()
+//             .minutes_unchecked()
+//             .drill_down_interval(random_minute())
+//             .is_some());
+//     } else if pick == 1usize {
+//         assert!(wheel
+//             .read()
+//             .as_ref()
+//             .hours_unchecked()
+//             .drill_down_interval(random_hours())
+//             .is_some());
+//     } else {
+//         assert!(wheel
+//             .read()
+//             .as_ref()
+//             .days_unchecked()
+//             .drill_down_interval(random_days())
+//             .is_some());
+//     }
+// }
 fn random_hours() -> usize {
     fastrand::usize(1..24)
 }
@@ -109,10 +109,10 @@ fn large_wheel() -> RwWheel<AllAggregator> {
     }
     wheel
 }
-fn random_drill_down_interval_bench(bencher: &mut Bencher) {
-    let wheel = large_wheel();
-    bencher.iter(|| random_drill_down_interval(&wheel));
-}
+// fn random_drill_down_interval_bench(bencher: &mut Bencher) {
+//     let wheel = large_wheel();
+//     bencher.iter(|| random_drill_down_interval(&wheel));
+// }
 
 fn random_interval_bench(bencher: &mut Bencher) {
     let wheel = large_wheel();
@@ -130,7 +130,7 @@ fn random_seconds_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .interval(time::Duration::seconds(random_seconds() as i64))
+            .interval(Duration::seconds(random_seconds() as i64))
             .is_some());
     });
 }
@@ -139,7 +139,7 @@ fn random_minutes_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .interval(time::Duration::minutes(random_minute() as i64))
+            .interval(Duration::minutes(random_minute() as i64))
             .is_some());
     });
 }
@@ -149,7 +149,7 @@ fn random_hour_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .interval(time::Duration::hours(random_hours() as i64))
+            .interval(Duration::hours(random_hours() as i64))
             .is_some());
     });
 }
@@ -158,45 +158,45 @@ fn random_days_interval_bench(bencher: &mut Bencher) {
     bencher.iter(|| {
         assert!(wheel
             .read()
-            .interval(time::Duration::days(random_days() as i64))
+            .interval(Duration::days(random_days() as i64))
             .is_some());
     });
 }
 
-fn random_minutes_drill_down_interval_bench(bencher: &mut Bencher) {
-    let wheel = large_wheel();
-    bencher.iter(|| {
-        assert!(wheel
-            .read()
-            .as_ref()
-            .minutes_unchecked()
-            .drill_down_interval(random_minute())
-            .is_some());
-    });
-}
+// fn random_minutes_drill_down_interval_bench(bencher: &mut Bencher) {
+//     let wheel = large_wheel();
+//     bencher.iter(|| {
+//         assert!(wheel
+//             .read()
+//             .as_ref()
+//             .minutes_unchecked()
+//             .drill_down_interval(random_minute())
+//             .is_some());
+//     });
+// }
 
-fn random_hours_drill_down_interval_bench(bencher: &mut Bencher) {
-    let wheel = large_wheel();
-    bencher.iter(|| {
-        assert!(wheel
-            .read()
-            .as_ref()
-            .hours_unchecked()
-            .drill_down_interval(random_hours())
-            .is_some());
-    });
-}
-fn random_days_drill_down_interval_bench(bencher: &mut Bencher) {
-    let wheel = large_wheel();
-    bencher.iter(|| {
-        assert!(wheel
-            .read()
-            .as_ref()
-            .days_unchecked()
-            .drill_down_interval(random_days())
-            .is_some());
-    });
-}
+// fn random_hours_drill_down_interval_bench(bencher: &mut Bencher) {
+//     let wheel = large_wheel();
+//     bencher.iter(|| {
+//         assert!(wheel
+//             .read()
+//             .as_ref()
+//             .hours_unchecked()
+//             .drill_down_interval(random_hours())
+//             .is_some());
+//     });
+// }
+// fn random_days_drill_down_interval_bench(bencher: &mut Bencher) {
+//     let wheel = large_wheel();
+//     bencher.iter(|| {
+//         assert!(wheel
+//             .read()
+//             .as_ref()
+//             .days_unchecked()
+//             .drill_down_interval(random_days())
+//             .is_some());
+//     });
+// }
 
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);

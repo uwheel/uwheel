@@ -8,7 +8,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-use awheel_core::{aggregator::Aggregator, time::Duration, Entry, ReadWheel};
+use awheel_core::{aggregator::Aggregator, time_internal::Duration, Entry, ReadWheel};
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -21,6 +21,9 @@ pub mod lazy;
 pub mod state;
 /// Contains functions to help create window wheels
 pub mod util;
+pub mod wheels;
+
+pub mod soe;
 
 /// Distributed Window Aggregation
 pub mod distributed;
@@ -52,11 +55,8 @@ pub trait WindowExt<A: Aggregator> {
 
 #[cfg(test)]
 mod tests {
-    use crate::lazy::LazyWindowWheel;
-    use awheel_core::{
-        aggregator::sum::U64SumAggregator,
-        time::{Duration, NumericalDuration},
-    };
+    use crate::{lazy::LazyWindowWheel, wheels::WindowWheel};
+    use awheel_core::{aggregator::sum::U64SumAggregator, Duration, NumericalDuration};
     use eager::{Builder, EagerWindowWheel};
 
     use super::*;
@@ -73,6 +73,16 @@ mod tests {
     #[test]
     fn window_30_sec_range_10_sec_slide_eager_test() {
         let wheel: EagerWindowWheel<U64SumAggregator> = eager::Builder::default()
+            .with_range(Duration::seconds(30))
+            .with_slide(Duration::seconds(10))
+            .with_watermark(1533081600000)
+            .build();
+        window_30_sec_range_10_sec_slide(wheel);
+    }
+
+    #[test]
+    fn window_30_sec_range_10_sec_slide_wheels_test() {
+        let wheel: WindowWheel<U64SumAggregator> = wheels::Builder::default()
             .with_range(Duration::seconds(30))
             .with_slide(Duration::seconds(10))
             .with_watermark(1533081600000)
@@ -140,6 +150,15 @@ mod tests {
         window_60_sec_range_10_sec_slide(wheel);
     }
 
+    #[test]
+    fn window_60_sec_range_10_sec_slide_wheels_test() {
+        let wheel: WindowWheel<U64SumAggregator> = wheels::Builder::default()
+            .with_range(Duration::minutes(1))
+            .with_slide(Duration::seconds(10))
+            .build();
+        window_60_sec_range_10_sec_slide(wheel);
+    }
+
     fn window_120_sec_range_10_sec_slide(mut wheel: impl WindowExt<U64SumAggregator>) {
         wheel.insert(Entry::new(1, 9000));
         wheel.insert(Entry::new(1, 15000));
@@ -201,6 +220,17 @@ mod tests {
             .build();
         window_10_sec_range_3_sec_slide(wheel);
     }
+
+    #[should_panic]
+    #[test]
+    fn window_10_sec_range_3_sec_slide_wheels_test() {
+        let wheel: WindowWheel<U64SumAggregator> = wheels::Builder::default()
+            .with_range(Duration::seconds(10))
+            .with_slide(Duration::seconds(3))
+            .build();
+        window_10_sec_range_3_sec_slide(wheel);
+    }
+    #[should_panic]
     #[test]
     fn window_10_sec_range_3_sec_slide_eager_test() {
         let wheel: EagerWindowWheel<U64SumAggregator> = Builder::default()

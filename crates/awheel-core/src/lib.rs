@@ -1,8 +1,10 @@
 //! awheel-core is a sub-crate of ahweel that contains core functionality
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(feature = "simd", feature(portable_simd))]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(nonstandard_style, missing_copy_implementations, missing_docs)]
 #![forbid(unsafe_code)]
+#![allow(clippy::large_enum_variant, clippy::enum_variant_names)]
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
@@ -27,7 +29,9 @@ pub mod rw_wheel;
 /// Time utilities
 ///
 /// Heavily borrowed from the [time](https://docs.rs/time/latest/time/) crate
-pub mod time;
+pub mod time_internal;
+
+pub use time_internal::{Duration, NumericalDuration};
 
 #[macro_use]
 #[doc(hidden)]
@@ -40,6 +44,7 @@ pub use rw_wheel::{
     Options,
     RwWheel,
 };
+pub use time::{Duration as TimeDuration, OffsetDateTime};
 
 /// A type containing error variants that may arise when using a wheel
 #[derive(Debug)]

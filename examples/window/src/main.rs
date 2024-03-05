@@ -1,11 +1,11 @@
 use awheel::{
     aggregator::sum::U64SumAggregator,
-    time::NumericalDuration,
     window::{
         eager::{Builder, EagerWindowWheel},
         *,
     },
     Entry,
+    NumericalDuration,
 };
 fn main() {
     let mut window: EagerWindowWheel<U64SumAggregator> = Builder::default()

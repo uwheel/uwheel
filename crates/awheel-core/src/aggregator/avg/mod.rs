@@ -1,5 +1,4 @@
 use super::super::Aggregator;
-use crate::aggregator::InverseExt;
 
 macro_rules! avg_impl {
     ($struct:tt, $type:ty, $pa:tt) => {
@@ -8,10 +7,15 @@ macro_rules! avg_impl {
         pub struct $struct;
 
         impl Aggregator for $struct {
+            const IDENTITY: Self::PartialAggregate = (0 as $type, 0 as $type);
             type Input = $type;
             type MutablePartialAggregate = $pa;
             type Aggregate = $type;
             type PartialAggregate = $pa;
+
+            type CombineSimd = fn(&[$pa]) -> $pa;
+            type CombineInverse = fn($pa, $pa) -> $pa;
+
             fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
                 (input, 1 as $type)
             }
@@ -35,22 +39,20 @@ macro_rules! avg_impl {
                 let count = a.1 + b.1;
                 (sum, count)
             }
+
             #[inline]
             fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a.0 / a.1
             }
-        }
-        impl InverseExt for $struct {
             #[inline]
-            fn inverse_combine(
-                a: Self::PartialAggregate,
-                b: Self::PartialAggregate,
-            ) -> Self::PartialAggregate {
-                let (a_sum, a_count) = a;
-                let (b_sum, b_count) = b;
-                let inv_sum = a_sum - b_sum;
-                let inv_count = a_count - b_count;
-                (inv_sum, inv_count)
+            fn combine_inverse() -> Option<Self::CombineInverse> {
+                Some(|a, b| {
+                    let (a_sum, a_count) = a;
+                    let (b_sum, b_count) = b;
+                    let inv_sum = a_sum - b_sum;
+                    let inv_count = a_count - b_count;
+                    (inv_sum, inv_count)
+                })
             }
         }
     };
@@ -59,7 +61,6 @@ macro_rules! avg_impl {
 avg_impl!(U16AvgAggregator, u16, (u16, u16));
 avg_impl!(U32AvgAggregator, u32, (u32, u32));
 avg_impl!(U64AvgAggregator, u64, (u64, u64));
-avg_impl!(U128AvgAggregator, u128, (u128, u128));
 avg_impl!(I16AvgAggregator, i16, (i16, i16));
 avg_impl!(I32AvgAggregator, i32, (i32, i32));
 avg_impl!(I64AvgAggregator, i64, (i64, i64));
@@ -69,7 +70,7 @@ avg_impl!(F64AvgAggregator, f64, (f64, f64));
 
 #[cfg(test)]
 mod tests {
-    use crate::{time::NumericalDuration, RwWheel, SECONDS};
+    use crate::{time_internal::NumericalDuration, RwWheel, SECONDS};
 
     use super::*;
 

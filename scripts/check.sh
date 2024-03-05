@@ -12,14 +12,12 @@ rustup target add wasm32-unknown-unknown
 
 cargo check -p awheel --lib --target thumbv7m-none-eabi --no-default-features
 cargo hack check --all
-cargo check -p awheel-demo --lib --target wasm32-unknown-unknown
+# cargo check -p awheel-demo --lib --target wasm32-unknown-unknown
 cargo fmt --all -- --check
 cargo hack clippy --workspace --all-targets --  -D warnings -W clippy::all
 cargo hack test --workspace
 #cargo test --workspace --doc
 
-(cd crates/awheel && cargo test --features "tree, sync")
-(cd crates/awheel && cargo check --features "tree")
 (cd crates/awheel && cargo check --features "top_n")
 (cd crates/awheel && cargo check --features "sync")
 (cd crates/awheel && cargo check --features "serde")

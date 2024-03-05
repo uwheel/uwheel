@@ -1,7 +1,7 @@
 use awheel::{
     aggregator::sum::U32SumAggregator,
     rw_wheel::RwWheel,
-    time::{Duration, NumericalDuration},
+    time_internal::{Duration, NumericalDuration},
     Entry,
     ReadWheel,
     SECONDS,

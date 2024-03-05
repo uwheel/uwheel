@@ -4,6 +4,11 @@ use core::{
     marker::{Copy, Send},
 };
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
+use crate::rw_wheel::read::hierarchical::CombineHint;
+
 /// An All Aggregator enabling the following functions (MAX, MIN, SUM, COUNT, AVG).
 #[cfg(feature = "all")]
 pub mod all;
@@ -26,6 +31,18 @@ pub mod top_n;
 
 /// Aggregation interface that library users must implement to use awheel
 pub trait Aggregator: Default + Debug + Clone + 'static {
+    /// Combine Simd Function
+    type CombineSimd: Fn(&[Self::PartialAggregate]) -> Self::PartialAggregate;
+
+    /// A combine inverse function
+    type CombineInverse: Fn(
+        Self::PartialAggregate,
+        Self::PartialAggregate,
+    ) -> Self::PartialAggregate;
+
+    /// Identity value for the Aggregator's Partial Aggregate
+    const IDENTITY: Self::PartialAggregate;
+
     /// Input type that can be inserted into [Self::MutablePartialAggregate]
     type Input: InputBounds;
 
@@ -52,16 +69,103 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
 
     /// Convert a partial aggregate to a final result
     fn lower(a: Self::PartialAggregate) -> Self::Aggregate;
+
+    /// Combines a slice of partial aggregates into a new partial
+    ///
+    /// A default implementation is provided that iterates over the aggregates and combines them
+    /// individually. If your aggregation supports SIMD, then implement the function accordingly.
+    #[inline]
+    #[doc(hidden)]
+    fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
+        match Self::combine_simd() {
+            Some(combine_simd) => Some(combine_simd(slice)),
+            None => slice.iter().fold(None, |accumulator, &item| {
+                Some(match accumulator {
+                    Some(acc) => Self::combine(acc, item),
+                    None => item,
+                })
+            }),
+        }
+    }
+
+    /// Merges two slices of partial aggregates together
+    ///
+    /// A default implementation is provided that iterates over the aggregates and merges them
+    /// individually. If your aggregation supports SIMD, then implement the function accordingly.
+    #[inline]
+    #[doc(hidden)]
+    fn merge(s1: &mut [Self::PartialAggregate], s2: &[Self::PartialAggregate]) {
+        // NOTE: merges at most s2.len() aggregates
+        for (self_slot, other_slot) in s1.iter_mut().zip(s2.iter()).take(s2.len()) {
+            *self_slot = Self::combine(*self_slot, *other_slot);
+        }
+    }
+
+    /// Builds a prefix-sum vec given slice of partial aggregates
+    ///
+    /// Only used for aggregation functions that support range queries using prefix-sum
+    #[doc(hidden)]
+    #[inline]
+    fn build_prefix(slice: &[Self::PartialAggregate]) -> Vec<Self::PartialAggregate> {
+        slice
+            .iter()
+            .scan(Self::IDENTITY, |pa, &i| {
+                *pa = Self::combine(*pa, i);
+                Some(*pa)
+            })
+            .collect::<Vec<_>>()
+    }
+
+    /// Answers a range query in O(1) using a prefix-sum slice
+    ///
+    /// If the aggregator does not support prefix range query then it returns `None`
+    #[doc(hidden)]
+    #[inline]
+    fn prefix_query(
+        slice: &[Self::PartialAggregate],
+        start: usize,
+        end: usize,
+    ) -> Option<Self::PartialAggregate> {
+        Self::combine_inverse().map(|inverse| {
+            if start == 0 {
+                slice[end]
+            } else {
+                inverse(slice[end], slice[start - 1])
+            }
+        })
+    }
+
+    /// Returns a function that inverse combines two partial aggregates
+    ///
+    /// If the aggregator does not support invertability then set it returns ``None``
+    fn combine_inverse() -> Option<Self::CombineInverse> {
+        None
+    }
+
+    /// Returns ``true`` if the Aggregator supports invertibility
+    #[doc(hidden)]
+    fn invertible() -> bool {
+        Self::combine_inverse().is_some()
+    }
+
+    /// Returns a function that combines aggregates using explicit SIMD instructions
+    fn combine_simd() -> Option<Self::CombineSimd> {
+        None
+    }
+    /// Returns ``true`` if the aggregator supports SIMD
+    #[doc(hidden)]
+    fn simd_support() -> bool {
+        Self::combine_simd().is_some()
+    }
+
+    /// Sets a hint whether the combine operation is cheap or expensive
+    ///
+    /// If specified the query optimizer will take this into context when creating plans
+    fn combine_hint() -> Option<CombineHint> {
+        None
+    }
 }
 
-/// Extension trait for inverse combine operations
-pub trait InverseExt: Aggregator {
-    /// Inverse combine two partial aggregates to a new partial aggregate
-    fn inverse_combine(
-        a: Self::PartialAggregate,
-        b: Self::PartialAggregate,
-    ) -> Self::PartialAggregate;
-}
 #[cfg(not(feature = "serde"))]
 /// Bounds for Aggregator Input
 pub trait InputBounds: Debug + Clone + Copy + Send {}
@@ -100,15 +204,28 @@ impl<T> MutablePartialAggregateType for T where
 {
 }
 
-/// An immutable aggregate type
+/// Trait bounds for a partial aggregate type
 #[cfg(not(feature = "serde"))]
-pub trait PartialAggregateType: Default + Debug + Clone + Copy + Send {}
-/// An immutable aggregate type
+pub trait PartialAggregateBounds: Default + Debug + Clone + Copy + Send {}
+
+/// Trait bounds for a partial aggregate type
 #[cfg(feature = "serde")]
-pub trait PartialAggregateType:
+pub trait PartialAggregateBounds:
     Default + Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
 {
 }
+
+#[cfg(not(feature = "serde"))]
+impl<T> PartialAggregateBounds for T where T: Default + Debug + Clone + Copy + Send {}
+
+#[cfg(feature = "serde")]
+impl<T> PartialAggregateBounds for T where
+    T: Default + Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
+{
+}
+
+/// An immutable aggregate type
+pub trait PartialAggregateType: PartialAggregateBounds {}
 
 macro_rules! primitive_partial {
     ($type:ty) => {

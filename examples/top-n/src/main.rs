@@ -3,8 +3,8 @@ use awheel::{
         sum::U64SumAggregator,
         top_n::{Descending, TopNAggregator, TopNState},
     },
-    time::NumericalDuration,
     Entry,
+    NumericalDuration,
     RwWheel,
 };
 use tinystr::TinyAsciiStr;

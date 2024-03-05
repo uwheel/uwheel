@@ -13,26 +13,28 @@ targets = []
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["std", "all", "avg", "sum", "min", "max"]
-std = ["awheel-core/std", "awheel-window?/std", "awheel-tree?/std"]
+default = ["std", "all", "avg", "sum", "min", "max", "smallvec"]
+std = ["awheel-core/std", "awheel-window?/std"]
 all = ["awheel-core/all"]
 avg = ["awheel-core/avg"]
 sum = ["awheel-core/sum"]
 min = ["awheel-core/min"]
 max = ["awheel-core/max"]
+smallvec = ["awheel-core/smallvec"]
 top_n = ["awheel-core/top_n"]
-sync = ["awheel-core/sync", "awheel-tree?/concurrent"]
+sync = ["awheel-core/sync"]
 window = ["dep:awheel-window"]
-tree = ["dep:awheel-tree"]
+# tree = ["dep:awheel-tree"]
 stats = ["std", "dep:awheel-stats", "awheel-window?/stats"]
 serde = ["awheel-core/serde"]
 profiler = ["std", "awheel-core/profiler"]
 timer = ["awheel-core/timer"]
+simd = ["awheel-core/simd", "std"]
 
 [dependencies]
 awheel-core = { workspace = true, default-features = false }
 awheel-window = { workspace = true, optional = true }
-awheel-tree = { workspace = true, optional = true }
+# awheel-tree = { workspace = true, optional = true }
 awheel-stats = { workspace = true, optional = true }
 
 [dev-dependencies]

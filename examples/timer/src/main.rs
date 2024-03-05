@@ -3,8 +3,8 @@ use std::{cell::RefCell, rc::Rc};
 use awheel::{
     aggregator::sum::U32SumAggregator,
     rw_wheel::read::Haw,
-    time::NumericalDuration,
     Entry,
+    NumericalDuration,
     RwWheel,
 };
 

@@ -10,8 +10,8 @@ use core::{
 };
 
 /// Aggregate State for the [AllAggregator]
-#[repr(C)]
 #[derive(Default, Debug, Clone, Copy)]
+#[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct AggState {
     /// Minimum value seen
@@ -61,6 +61,16 @@ impl AggState {
     pub fn avg(&self) -> f64 {
         self.sum / self.count as f64
     }
+
+    /// Returns the identity aggregate of AggState
+    pub const fn identity() -> Self {
+        Self {
+            min: f64::MAX,
+            max: f64::MIN,
+            count: 0,
+            sum: 0.0,
+        }
+    }
 }
 impl PartialAggregateType for AggState {}
 
@@ -88,6 +98,12 @@ impl PartialEq for AggState {
 pub struct AllAggregator;
 
 impl Aggregator for AllAggregator {
+    const IDENTITY: Self::PartialAggregate = AggState::identity();
+
+    type CombineSimd = fn(&[Self::PartialAggregate]) -> Self::PartialAggregate;
+    type CombineInverse =
+        fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate;
+
     type Input = f64;
     type Aggregate = AggState;
     type PartialAggregate = AggState;
@@ -115,11 +131,16 @@ impl Aggregator for AllAggregator {
     fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
         a
     }
+
+    #[inline]
+    fn combine_inverse() -> Option<Self::CombineInverse> {
+        None
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{time::Duration, RwWheel, SECONDS};
+    use crate::{time_internal::Duration, RwWheel, SECONDS};
 
     use super::*;
 

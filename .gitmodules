@@ -1,0 +1,3 @@
+[submodule "benchmarks/uwheel_bench/mimalloc"]
+	path = benchmarks/uwheel_bench/mimalloc
+	url = https://github.com/microsoft/mimalloc

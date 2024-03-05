@@ -5,12 +5,17 @@ pub mod aggregation;
 /// Hierarchical Aggregation Wheel (HAW)
 pub mod hierarchical;
 
+mod plan;
+
+#[cfg(feature = "cache")]
+mod cache;
+
 #[cfg(feature = "profiler")]
 pub(crate) mod stats;
 #[cfg(feature = "timer")]
 use crate::rw_wheel::timer::{TimerAction, TimerError};
 
-use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, time::Duration, WriteAheadWheel};
+use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, time_internal::Duration, WriteAheadWheel};
 pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 
 use crate::aggregator::Aggregator;
@@ -78,6 +83,20 @@ where
     pub fn remaining_ticks(&self) -> u64 {
         self.inner.read().remaining_ticks()
     }
+    #[doc(hidden)]
+    pub fn set_optimizer_hints(&self, hints: bool) {
+        self.inner.write().set_optimizer_hints(hints);
+    }
+
+    #[doc(hidden)]
+    pub fn convert_all_to_prefix(&self) {
+        self.inner.write().convert_all_to_prefix();
+    }
+
+    #[doc(hidden)]
+    pub fn convert_all_to_array(&self) {
+        self.inner.write().convert_all_to_array();
+    }
 
     /// Returns Duration that represents where the wheel currently is in its cycle
     #[inline]
@@ -104,7 +123,7 @@ where
         self.inner.write().schedule_repeat(at, interval, f)
     }
 
-    /// Advance the watermark of the wheel by the given [time::Duration]
+    /// Advance the watermark of the wheel by the given [Duration]
     #[inline]
     #[doc(hidden)]
     pub fn advance(&self, duration: Duration, waw: &mut WriteAheadWheel<A>) {
@@ -153,6 +172,12 @@ where
     #[inline]
     pub fn interval(&self, dur: Duration) -> Option<A::PartialAggregate> {
         self.inner.read().interval(dur)
+    }
+
+    /// Returns the partial aggregate in the given time interval and the number of combine operations
+    #[inline]
+    pub fn interval_with_ops(&self, dur: Duration) -> (Option<A::PartialAggregate>, usize) {
+        self.inner.read().interval_with_stats(dur)
     }
 
     /// Executes a Landmark Window that combines total partial aggregates across all wheels

@@ -3,39 +3,42 @@
 mkdir -p results
 
 FILE=data/citibike-tripdata.csv
-if [ -f "$FILE" ]; then
-    echo "NYC Citi Bike Data found"
+DEBS12=data/debs12.csv
+if [ -f "$FILE" ] && [ -f "$DEBS12" ]; then
+    echo "NYC Citi Bike & DEBS12 Data found"
 else
-    echo "Downloading and preparing NYC Citi Bike data"
+    echo "Downloading and preparing data"
     ./fetch_data.sh
 fi
 
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    export LIBRARY_PATH=$LIBRARY_PATH:$(brew --prefix)/opt/openblas/lib:$(brew --prefix)/opt/lapack/lib
-fi
+# Sets up mimalloc (git module init + compile)
+(cd uwheel_bench && ./setup.sh)
 
-echo "Starting NYC Citi Bike Window Sync experiment (1/5)"
-touch results/nyc_citi_bike_window_sync.log
-(cd window && cargo run --release --bin real --features "sync" >> ../results/nyc_citi_bike_window_sync.log )
-echo "Finished NYC Citi Bike Window Sync experiment (1/5)"
+echo "Starting NYC Citi Bike Window Small Range experiment (1/5)"
+touch results/nyc_citi_bike_window_small_range.log
+(cd uwheel_bench && cargo run --release --bin stream -- citi-bike small-range >> ../results/nyc_citi_bike_window_small_range.log )
+echo "Finished NYC Citi Bike Window Small Range experiment (1/5)"
 
-echo "Starting NYC Citi Bike Window experiment (2/5)"
-touch results/nyc_citi_bike_window.log
-(cd window && cargo run --release --bin real >> ../results/nyc_citi_bike_window.log )
-echo "Finished NYC Citi Bike Window experiment (2/5)"
+echo "Starting NYC Citi Bike Window Big Range experiment (2/5)"
+touch results/nyc_citi_bike_window_big_range.log
+(cd uwheel_bench && cargo run --release --bin stream -- citi-bike big-range >> ../results/nyc_citi_bike_window_big_range.log )
+echo "Finished NYC Citi Bike Window Big Range experiment (2/5)"
 
+echo "Starting DEBS12 Window Small Range experiment (3/5)"
+touch results/debs12_window_small_range.log
+(cd uwheel_bench && cargo run --release --bin stream -- debs12 small-range >> ../results/debs12_window_small_range.log )
+echo "Finished DEBS12 Window Small Range experiment (3/5)"
 
-echo "Starting Synthetic Window Insert experiment (3/5)"
-touch results/synthetic_window_insert.log
-(cd window && cargo run --release --bin synthetic -- insert >> ../results/synthetic_window_insert.log )
-echo "Finished Synthetic Window Insert experiment (3/5)"
+echo "Starting DEBS12 Window Big Range experiment (4/5)"
+touch results/debs12_window_big_range.log
+(cd uwheel_bench && cargo run --release --bin stream -- debs12 big-range >> ../results/debs12_window_big_range.log )
+echo "Finished DEBS12 Window Big Range experiment (4/5)"
 
-echo "Starting Synthetic Window OOO experiment (4/5)"
-touch results/synthetic_window_insert_ooo.log
-(cd window && cargo run --release --bin synthetic -- ooo >> ../results/synthetic_window_insert_oo.log )
-echo "Finished Synthetic Window OOO experiment (4/5)
+# Remove old DuckDB files in case they exist
+rm -f uwheel_bench/duckdb_ingestion.db uwheel_bench/duckdb_ingestion.db.wal
 
-echo "Starting TopN experiment (5/5)"
-touch results/top_n.log
-(cd olap && cargo run --release --bin top_n >> ../results/top_n.log)
-echo "Finished TopN experiment (5/5)"
+echo "Starting Analytical Benchmark (5/5)"
+touch results/analytical_bench.log
+# (cd uwheel_bench && RUSTFLAGS='-C target-cpu=native' cargo run --release  --bin analytical --  --queries 50000 --events-per-sec 1 >> ../results/analytical_bench.log )
+(cd uwheel_bench && cargo run --release  --bin analytical --  --queries 50000 --events-per-sec 1 >> ../results/analytical_bench.log )
+echo "Finished Analytical Benchmark (5/5)"

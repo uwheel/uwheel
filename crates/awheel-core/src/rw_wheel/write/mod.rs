@@ -1,8 +1,8 @@
 use core::{mem, time::Duration as CoreDuration};
 
-use crate::{aggregator::Aggregator, time::Duration, Entry, Error};
+use crate::{aggregator::Aggregator, time_internal::Duration, Entry, Error};
 
-use super::wheel_ext::WheelExt;
+use super::{timer::RawTimerWheel, wheel_ext::WheelExt};
 
 /// Number of write ahead slots
 pub const DEFAULT_WRITE_AHEAD_SLOTS: usize = 64;
@@ -13,11 +13,13 @@ use alloc::{boxed::Box, vec::Vec};
 /// A fixed-sized Write-ahead Wheel where slots are represented as seconds
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WriteAheadWheel<A: Aggregator> {
     watermark: u64,
     num_slots: usize,
     capacity: usize,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    overflow: RawTimerWheel<Entry<A::Input>>,
     slots: Box<[Option<A::MutablePartialAggregate>]>,
     tail: usize,
     head: usize,
@@ -40,6 +42,7 @@ impl<A: Aggregator> WriteAheadWheel<A> {
             num_slots,
             capacity,
             watermark,
+            overflow: RawTimerWheel::new(watermark),
             slots: (0..capacity)
                 .map(|_| None)
                 .collect::<Vec<_>>()
@@ -57,6 +60,10 @@ impl<A: Aggregator> WriteAheadWheel<A> {
     pub(super) fn tick(&mut self) -> Option<A::MutablePartialAggregate> {
         self.watermark += Duration::seconds(1i64).whole_milliseconds() as u64;
 
+        for entry in self.overflow.advance_to(self.watermark) {
+            self.insert(entry).unwrap(); // this is assumed to be safe if it was scheduled correctly
+        }
+
         // bump head
         self.head = self.wrap_add(self.head, 1);
 
@@ -64,9 +71,6 @@ impl<A: Aggregator> WriteAheadWheel<A> {
         let tail = self.tail;
         self.tail = self.wrap_add(self.tail, 1);
         self.slot(tail).take()
-    }
-    pub(super) fn watermark_mut(&mut self) -> &mut u64 {
-        &mut self.watermark
     }
 
     /// Check whether this wheel can write ahead by ´addend` slots
@@ -101,7 +105,7 @@ impl<A: Aggregator> WriteAheadWheel<A> {
     fn combine_or_lift(&mut self, idx: usize, entry: A::Input) {
         let slot = self.slot(idx);
         match slot {
-            Some(window) => A::combine_mutable(window, entry),
+            Some(dst) => A::combine_mutable(dst, entry),
             None => *slot = Some(A::lift(entry)),
         }
     }
@@ -128,14 +132,11 @@ impl<A: Aggregator> WriteAheadWheel<A> {
                 self.write_ahead(seconds, entry.data);
                 Ok(())
             } else {
-                // cannot fit within the write-ahead wheel, return it to the user to handle it..
-                let write_ahead_ms =
-                    CoreDuration::from_secs(self.write_ahead_len() as u64).as_millis();
-                let max_write_ahead_ts = self.watermark + write_ahead_ms as u64;
-                Err(Error::Overflow {
-                    entry,
-                    max_write_ahead_ts,
-                })
+                // Overflows: schedule it to be aggregated later on
+                // TODO: batch as many entries at possible into the same overflow slot
+                let schedule_ts = watermark + seconds * 1000; // convert back to milliseconds
+                self.overflow.schedule_at(schedule_ts, entry).unwrap();
+                Ok(())
             }
         }
     }
@@ -175,10 +176,6 @@ mod tests {
         assert!(wheel.insert(Entry::new(10, 1000)).is_ok());
         assert!(wheel.insert(Entry::new(20, 2000)).is_ok());
         assert!(wheel.insert(Entry::new(10, 15000)).is_ok());
-        assert!(wheel
-            .insert(Entry::new(10, 16000))
-            .unwrap_err()
-            .is_overflow());
 
         assert_eq!(wheel.tick(), Some(1));
         assert_eq!(wheel.head, 1);

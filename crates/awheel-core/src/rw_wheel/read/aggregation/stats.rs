@@ -1,3 +1,4 @@
+use awheel_stats::Sketch;
 use core::{cell::Cell, fmt};
 
 /// Stats for [AggregationWheel]
@@ -5,6 +6,8 @@ use core::{cell::Cell, fmt};
 #[derive(Clone, Default)]
 pub struct Stats {
     pub combine_ops: u64,
+    pub combine_range: Sketch,
+    pub insert: Sketch,
     pub total_access: Cell<u64>,
     pub scans: Cell<u64>,
 }
@@ -25,6 +28,7 @@ impl core::fmt::Debug for Stats {
         f.debug_struct("HAW Stats")
             .field("combine ops", &self.combine_ops)
             .field("scans", &self.scans.get())
+            .field("combine_range", &self.combine_range.percentiles())
             .field("total access", &self.total_access.get())
             .finish()
     }

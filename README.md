@@ -2,15 +2,15 @@
   <img width="300" height="300" src="assets/logo.png">
 </p>
 
-# awheel
+# µWheel
 
-awheel (aggregation wheel) is a lightweight index for unified stream and temporal warehousing.
+µWheel is an Event-driven Aggregate Management System.
 
 Features:
 
 - Versatile
-    - OLAP (Roll-ups, Drill-downs)
-    - Stream Analytics
+    - Event-driven Stream Analytics
+    - Temporal Warehousing
     - Time-Series Analysis
 - Lightweight
     - Pre-aggregation
@@ -20,31 +20,28 @@ Features:
     - Decoupled write and read paths
     - High-throughput ingestion
     - Low-latency queries
+- Embeddable
+    - ``#[no_std]`` compatible (requires ``alloc``)
+    - WASM friendly
 
-## Use cases
+## How it works
 
-- Materialized view for Streaming Data Warehousing
-    - Streaming Window Aggregation
-    - Ad-hoc querying
-- Analytics at the edge
-    - WASM + ``#[no_std]`` compatible
-    - Low memory footprint
-    - Serializable and highly compressible
-- Index for speeding up temporal OLAP queries
+µWheel is designed around event-time (Low Watermarking) indexed aggregate wheels.
+Writes are handled by a writer wheel, which supports in-place aggregation and is
+optimized for single-threaded ingestion. Reads, on the other hand, are managed through a hierarchically event-time-indexed
+reader wheel which uses a wheel-centric query optimizer.
 
 
 ## Aggregation Framework
-
-The Aggregation Interface is inspired by the work of [Tangwongsan et al.](http://www.vldb.org/pvldb/vol8/p702-tangwongsan.pdf). Some additional functions have been added as aggregation wheels are designed around the notion of Low Watermarking. Aggregates above the watermark are considered mutable whereas the ones below are immutable.
 
 
 * ``lift(input) -> MutablePartialAggregate``
     * Lifts input data into a mutable aggregate
 * ``combine_mutable(mutable, input)``
-    * Combines the input data into the mutable aggregate
+    * Combines the input data into a mutable aggregate
 * ``freeze(mutable) -> PartialAggregate``
-    * Freezes the mutable aggregate into a immutable one
-* ``combine(a, b) -> c``
+    * Freezes the mutable aggregate into an immutable one
+* ``combine(a, a) -> a``
     * Combines ⊕ two partial aggregates into a new one
 * ``lower(a) -> Aggregate``
     * Lowers a partial aggregate to a final aggregate (e.g., sum/count -> avg)
@@ -52,14 +49,14 @@ The Aggregation Interface is inspired by the work of [Tangwongsan et al.](http:/
 
 **Pre-defined Aggregators:**
 
-| Function | Description | Types |
-| ---- | ------| ----- |
-| SUM |  Sum of all inputs | u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
-| AVG |  Arithmetic mean of all inputs | u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
-| MIN |  Minimum value of all inputs |  u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
-| MAX |  Maximum value of all inputs | u16, u32, u64, u128, i16, i32, i64, i128, f32, f64 | 
-| ALL |  Pre-computed SUM, AVG, MIN, MAX, COUNT | f64 |
-| TOP N  |  Top N of all inputs | ``Aggregator`` with aggregate data that implements ``Ord`` |
+| Function | Description | Types | SIMD |
+| ---- | ------| ----- |----- |
+| SUM |  Sum of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &check; |
+| MIN |  Minimum value of all inputs |  u16, u32, u64, i32, i16, i64, f32, f64 | &check;|
+| MAX |  Maximum value of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &check;|
+| AVG |  Arithmetic mean of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &cross; |
+| ALL |  Pre-computed SUM, AVG, MIN, MAX, COUNT | f64 | &cross;|
+| TOP N  |  Top N of all inputs | ``Aggregator`` with aggregate data that implements ``Ord`` | &cross;|
 
 
 See a user-defined aggregator example [here](examples/aggregator/).
@@ -78,17 +75,17 @@ See a user-defined aggregator example [here](examples/aggregator/).
 - `all` (_enabled by default_)
     - Enables all aggregation
 - `top_n`
-    - Enables top_n aggregation
+    - Enables Top-N aggregation
 - `window`
-    - Enables wheels for streaming window aggregation
+    - Enables optimizations for streaming window aggregation queries
+- `simd` (_requires `nightly`_)
+    - Enables support to speed up aggregation functions with SIMD operations
 - `sync` (_implicitly enables `std`_)
     - Enables a sync version of ``ReadWheel`` that can be shared and queried across threads
 - `stats` (_implicitly enables `std`_)
     - Enables recording of latencies for various operations
 - `serde`
     - Enables serde support
-- `tree`
-    - Enables the multi-key ``RwTreeWheel``
 - `timer`
     - Enables scheduling user-defined functions
 

@@ -1,11 +1,11 @@
 [workspace]
-resolver = "1"                         # resolver 1 needed for awheel-demo to work on web
-members = ["crates/*", "benchmarks/*", "examples/*"]
-exclude = ["benchmarks/results", "benchmarks/data"]
+resolver = "1"                                                         # resolver 1 needed for awheel-demo to work on web
+members = ["crates/*", "benchmarks/uwheel_bench", "examples/*"]
+exclude = ["benchmarks/*", "crates/awheel-demo", "crates/awheel-tree"]
 
 
 [workspace.package]
-authors = ["Max Meldrum <max@meldrum.se>"]
+authors = ["Anon <anon@anon.com>"]
 edition = "2021"
 categories = ["index", "temporal warehousing", "streaming", "no-std"]
 license = "MIT OR Apache-2.0"
@@ -30,8 +30,9 @@ rand = "0.8.5"
 hdrhistogram = "7"
 clap = { version = "3.2", features = ["derive"] }
 criterion = "0.4"
-duckdb = { version = "0.8.1", features = ["bundled"] }
+duckdb = { version = "0.10.0", features = ["bundled"] }
 serde = { version = "1.0", default-features = false }
+zerocopy = { version = "0.7.18", features = ["derive"] }
 serde-big-array = { version = "0.5.1", default-features = false }
 postcard = { version = "1.0.0", features = ["alloc"] }
 lz4_flex = { version = "0.11", default-features = false }

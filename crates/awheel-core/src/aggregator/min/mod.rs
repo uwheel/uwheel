@@ -1,12 +1,27 @@
 use super::super::Aggregator;
 
+#[cfg(feature = "simd")]
+use core::simd::prelude::{SimdFloat, SimdInt, SimdOrd, SimdUint};
+#[cfg(feature = "simd")]
+use core::simd::{f32x32, f64x32, i16x64, i32x32, i64x32, u16x64, u32x32, u64x32};
+
+#[cfg(feature = "simd")]
+use multiversion::multiversion;
+
 macro_rules! min_impl {
     ($struct:tt, $type:ty, $pa:tt) => {
+        min_impl!($struct, $type, $pa, ());
+    };
+    ($struct:tt, $type:ty, $pa:tt, $simd: ty) => {
         #[derive(Default, Debug, Clone, Copy)]
         #[allow(missing_docs)]
         pub struct $struct;
 
         impl Aggregator for $struct {
+            const IDENTITY: Self::PartialAggregate = <$type>::MAX;
+            type CombineSimd = fn(&[$pa]) -> $pa;
+            type CombineInverse = fn($pa, $pa) -> $pa;
+
             type Input = $type;
             type MutablePartialAggregate = $pa;
             type Aggregate = $type;
@@ -36,24 +51,74 @@ macro_rules! min_impl {
             fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
                 a
             }
+
+            #[cfg(feature = "simd")]
+            #[inline]
+            fn combine_simd() -> Option<Self::CombineSimd> {
+                Some(|slice: &[$pa]| Self::simd_min(slice))
+            }
+        }
+
+        impl $struct {
+            #[cfg(feature = "simd")]
+            #[multiversion(targets = "simd")]
+            #[inline]
+            fn simd_min(slice: &[$pa]) -> $pa {
+                let (head, chunks, tail) = slice.as_simd();
+                let chunk = chunks.iter().fold(
+                    <$simd>::from_array([$pa::MAX; <$simd>::LEN]),
+                    |acc, chunk| acc.simd_min(*chunk),
+                );
+                let head_min = head.iter().copied().fold(chunk.reduce_min(), <$type>::min);
+                tail.iter().copied().fold(head_min, <$type>::min)
+            }
         }
     };
 }
 
+#[cfg(not(feature = "simd"))]
 min_impl!(U16MinAggregator, u16, u16);
+#[cfg(feature = "simd")]
+min_impl!(U16MinAggregator, u16, u16, u16x64);
+
+#[cfg(not(feature = "simd"))]
 min_impl!(U32MinAggregator, u32, u32);
+#[cfg(feature = "simd")]
+min_impl!(U32MinAggregator, u32, u32, u32x32);
+
+#[cfg(not(feature = "simd"))]
 min_impl!(U64MinAggregator, u64, u64);
-min_impl!(U128MinAggregator, u128, u128);
+#[cfg(feature = "simd")]
+min_impl!(U64MinAggregator, u64, u64, u64x32);
+
+#[cfg(not(feature = "simd"))]
 min_impl!(I16MinAggregator, i16, i16);
+#[cfg(feature = "simd")]
+min_impl!(I16MinAggregator, i16, i16, i16x64);
+
+#[cfg(not(feature = "simd"))]
 min_impl!(I32MinAggregator, i32, i32);
+#[cfg(feature = "simd")]
+min_impl!(I32MinAggregator, i32, i32, i32x32);
+
+#[cfg(not(feature = "simd"))]
 min_impl!(I64MinAggregator, i64, i64);
-min_impl!(I128MinAggregator, i128, i128);
+#[cfg(feature = "simd")]
+min_impl!(I64MinAggregator, i64, i64, i64x32);
+
+#[cfg(not(feature = "simd"))]
 min_impl!(F32MinAggregator, f32, f32);
+#[cfg(feature = "simd")]
+min_impl!(F32MinAggregator, f32, f32, f32x32);
+
+#[cfg(not(feature = "simd"))]
 min_impl!(F64MinAggregator, f64, f64);
+#[cfg(feature = "simd")]
+min_impl!(F64MinAggregator, f64, f64, f64x32);
 
 #[cfg(test)]
 mod tests {
-    use crate::{time::NumericalDuration, Entry, RwWheel};
+    use crate::{time_internal::NumericalDuration, Entry, RwWheel};
 
     use super::*;
 
@@ -67,5 +132,12 @@ mod tests {
         assert_eq!(wheel.read().interval_and_lower(3.seconds()), Some(1));
         wheel.advance(1.seconds());
         assert_eq!(wheel.read().interval_and_lower(3.seconds()), Some(1));
+    }
+
+    #[cfg(feature = "simd")]
+    #[test]
+    fn combine_simd() {
+        let values = (0..1000u64).collect::<Vec<u64>>();
+        assert_eq!(U64MinAggregator::combine_slice(&values), Some(0));
     }
 }
