@@ -4,6 +4,7 @@ mod byte_wheel;
 mod quad_wheel;
 pub(crate) mod raw_wheel;
 
+use crate::rw_wheel::read::Haw;
 use core::{fmt::Debug, hash::Hash, time::Duration};
 pub(super) use raw_wheel::RawTimerWheel;
 
@@ -106,11 +107,9 @@ impl<T: Debug> Display for TimerExpiredError<T> {
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 
-use super::read::{Haw, Kind};
+pub type WheelFn<A> = Box<dyn Fn(&Haw<A>)>;
 
-pub type WheelFn<A, K> = Box<dyn Fn(&Haw<A, K>)>;
-
-pub enum TimerAction<A: Aggregator, K: Kind> {
-    Oneshot(WheelFn<A, K>),
-    Repeat((u64, time_internal::Duration, WheelFn<A, K>)),
+pub enum TimerAction<A: Aggregator> {
+    Oneshot(WheelFn<A>),
+    Repeat((u64, time_internal::Duration, WheelFn<A>)),
 }

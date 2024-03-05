@@ -24,7 +24,7 @@ use write::{WriteAheadWheel, DEFAULT_WRITE_AHEAD_SLOTS};
 pub use read::{aggregation::DrillCut, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 pub use wheel_ext::WheelExt;
 
-use self::read::{hierarchical::HawConf, Kind, Lazy};
+use self::read::hierarchical::HawConf;
 
 #[cfg(feature = "profiler")]
 use uwheel_stats::profile_scope;
@@ -48,20 +48,18 @@ use uwheel_stats::profile_scope;
 /// Aggregates once moved to below the watermark become immutable and are inserted into
 /// a hierarchical aggregation wheel [ReadWheel]. A data structure which materializes aggregates
 /// across time.
-pub struct RwWheel<A, K = Lazy>
+pub struct RwWheel<A>
 where
     A: Aggregator,
-    K: Kind,
 {
     write: WriteAheadWheel<A>,
-    read: ReadWheel<A, K>,
+    read: ReadWheel<A>,
     #[cfg(feature = "profiler")]
     stats: stats::Stats,
 }
-impl<A, K> RwWheel<A, K>
+impl<A> RwWheel<A>
 where
     A: Aggregator,
-    K: Kind,
 {
     /// Creates a new Wheel starting from the given time and enables drill-down on all granularities
     ///
@@ -122,11 +120,11 @@ where
         &self.write
     }
     /// Returns a reference to the underlying ReadWheel
-    pub fn read(&self) -> &ReadWheel<A, K> {
+    pub fn read(&self) -> &ReadWheel<A> {
         &self.read
     }
     /// Merges another read wheel with same size into this one
-    pub fn merge_read_wheel(&self, other: &ReadWheel<A, K>) {
+    pub fn merge_read_wheel(&self, other: &ReadWheel<A>) {
         self.read().merge(other);
     }
     /// Returns the current watermark of this wheel
@@ -249,10 +247,9 @@ where
     }
 }
 
-impl<A, K> Drop for RwWheel<A, K>
+impl<A> Drop for RwWheel<A>
 where
     A: Aggregator,
-    K: Kind,
 {
     fn drop(&mut self) {
         #[cfg(feature = "profiler")]

@@ -56,27 +56,13 @@ impl<A: Aggregator> MaybeWheel<A> {
             wheel.aggregate(start_slot..end_slot)
         })
     }
+    #[doc(hidden)]
+    #[allow(dead_code)]
     #[inline]
     pub fn head(&self) -> Option<A::PartialAggregate> {
         self.inner.as_ref().and_then(|w| w.at(0)).copied()
     }
 
-    #[inline]
-    pub fn interval(&self, interval: usize) -> (Option<A::PartialAggregate>, usize) {
-        if let Some(wheel) = self.inner.as_ref() {
-            wheel.interval(interval)
-        } else {
-            (None, 0)
-        }
-    }
-    #[inline]
-    pub fn interval_or_total(&self, interval: usize) -> (Option<A::PartialAggregate>, usize) {
-        if let Some(wheel) = self.inner.as_ref() {
-            wheel.interval_or_total(interval)
-        } else {
-            (None, 0)
-        }
-    }
     #[inline]
     pub fn total(&self) -> Option<A::PartialAggregate> {
         if let Some(wheel) = self.inner.as_ref() {

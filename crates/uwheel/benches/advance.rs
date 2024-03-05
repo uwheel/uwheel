@@ -1,9 +1,5 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Bencher, BenchmarkId, Criterion};
-use uwheel_core::{
-    aggregator::sum::U64SumAggregator,
-    rw_wheel::read::{Eager, Lazy},
-    *,
-};
+use uwheel_core::{aggregator::sum::U64SumAggregator, *};
 
 pub fn advance_time_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("advance");
@@ -25,17 +21,10 @@ pub fn advance_time_benchmark(c: &mut Criterion) {
     }
     for deltas in [1, 100, 1000, 10000, 100000, 1000000, 10000000].iter() {
         group.bench_with_input(
-            BenchmarkId::from_parameter(format!("delta-advance-lazy-{}", deltas)),
+            BenchmarkId::from_parameter(format!("delta-advance-{}", deltas)),
             deltas,
             |b, &deltas| {
-                delta_advance_lazy(deltas as u64, b);
-            },
-        );
-        group.bench_with_input(
-            BenchmarkId::from_parameter(format!("delta-advance-eager-{}", deltas)),
-            deltas,
-            |b, &deltas| {
-                delta_advance_eager(deltas as u64, b);
+                delta_advance(deltas as u64, b);
             },
         );
     }
@@ -61,28 +50,11 @@ fn advance_time_and_emit_deltas(ticks: usize, bencher: &mut Bencher) {
     });
 }
 
-fn delta_advance_lazy(deltas: u64, bencher: &mut Bencher) {
+fn delta_advance(deltas: u64, bencher: &mut Bencher) {
     bencher.iter_batched(
         || {
             let time = 0;
-            let wheel: ReadWheel<U64SumAggregator, Lazy> = ReadWheel::new(time);
-            let deltas: Vec<_> = (0..deltas)
-                .map(|_| Some(fastrand::u64(1..100000u64)))
-                .collect();
-            (wheel, deltas)
-        },
-        |(wheel, deltas)| {
-            wheel.delta_advance(deltas);
-            wheel
-        },
-        BatchSize::PerIteration,
-    );
-}
-fn delta_advance_eager(deltas: u64, bencher: &mut Bencher) {
-    bencher.iter_batched(
-        || {
-            let time = 0;
-            let wheel: ReadWheel<U64SumAggregator, Eager> = ReadWheel::new(time);
+            let wheel: ReadWheel<U64SumAggregator> = ReadWheel::new(time);
             let deltas: Vec<_> = (0..deltas)
                 .map(|_| Some(fastrand::u64(1..100000u64)))
                 .collect();
