@@ -1,4 +1,4 @@
-use awheel::{aggregator::sum::U32SumAggregator, Entry, NumericalDuration, RwWheel};
+use uwheel::{aggregator::sum::U32SumAggregator, Entry, NumericalDuration, RwWheel};
 
 fn main() {
     let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);

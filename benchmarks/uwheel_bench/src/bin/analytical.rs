@@ -1,5 +1,10 @@
 #![allow(clippy::let_and_return)]
-use awheel::{
+use clap::{ArgEnum, Parser};
+use duckdb::{arrow::datatypes::ArrowNativeTypeOp, Result};
+use hdrhistogram::Histogram;
+use minstant::Instant;
+use std::{fs::File, time::Duration};
+use uwheel::{
     aggregator::{max::U64MaxAggregator, sum::U64SumAggregator, Aggregator},
     rw_wheel::read::{
         aggregation::conf::RetentionPolicy,
@@ -10,11 +15,6 @@ use awheel::{
     Options,
     RwWheel,
 };
-use clap::{ArgEnum, Parser};
-use duckdb::{arrow::datatypes::ArrowNativeTypeOp, Result};
-use hdrhistogram::Histogram;
-use minstant::Instant;
-use std::{fs::File, time::Duration};
 use uwheel_bench::{
     tree::{BTree, FiBA2, FiBA4, FiBA8, SegmentTree, Tree},
     util::*,
@@ -277,11 +277,11 @@ fn run(args: &Args) -> Vec<Run> {
 
         wheel.read().set_optimizer_hints(false);
 
-        let wheel_q1 = awheel_run("μWheel Q1", iterations, watermark, &wheel, &q1_queries);
+        let wheel_q1 = uwheel_run("μWheel Q1", iterations, watermark, &wheel, &q1_queries);
         println!("μWheel Q1 {:?}", wheel_q1.0);
         q1_results.add(Stats::from("μWheel", &wheel_q1));
 
-        let wheel_q2_seconds = awheel_run(
+        let wheel_q2_seconds = uwheel_run(
             "μWheel Q2 Seconds",
             iterations,
             watermark,
@@ -295,7 +295,7 @@ fn run(args: &Args) -> Vec<Run> {
             wheel_q2_seconds.2, wheel_q2_seconds.3
         );
 
-        let wheel_q2_minutes = awheel_run(
+        let wheel_q2_minutes = uwheel_run(
             "μWheel Q2 Minutes",
             iterations,
             watermark,
@@ -309,7 +309,7 @@ fn run(args: &Args) -> Vec<Run> {
             wheel_q2_minutes.2, wheel_q2_minutes.3
         );
 
-        let wheel_q2_hours = awheel_run(
+        let wheel_q2_hours = uwheel_run(
             "μWheel Q2 Hours",
             iterations,
             watermark,
@@ -325,7 +325,7 @@ fn run(args: &Args) -> Vec<Run> {
 
         wheel.read().set_optimizer_hints(true);
 
-        let wheel_q1 = awheel_run(
+        let wheel_q1 = uwheel_run(
             "μWheel-hints Q1",
             iterations,
             watermark,
@@ -335,7 +335,7 @@ fn run(args: &Args) -> Vec<Run> {
         println!("μWheel-hints Q1 {:?}", wheel_q1.0);
         q1_results.add(Stats::from("μWheel-hints", &wheel_q1));
 
-        let wheel_q2_seconds = awheel_run(
+        let wheel_q2_seconds = uwheel_run(
             "μWheel Q2 Seconds",
             iterations,
             watermark,
@@ -349,7 +349,7 @@ fn run(args: &Args) -> Vec<Run> {
             wheel_q2_seconds.2, wheel_q2_seconds.3
         );
 
-        let wheel_q2_minutes = awheel_run(
+        let wheel_q2_minutes = uwheel_run(
             "μWheel-hints Q2 Minutes",
             iterations,
             watermark,
@@ -363,7 +363,7 @@ fn run(args: &Args) -> Vec<Run> {
             wheel_q2_minutes.2, wheel_q2_minutes.3
         );
 
-        let wheel_q2_hours = awheel_run(
+        let wheel_q2_hours = uwheel_run(
             "μWheel-hints Q2 Hours",
             iterations,
             watermark,
@@ -381,7 +381,7 @@ fn run(args: &Args) -> Vec<Run> {
         let wheel_non_prefix_size = wheel.read().as_ref().size_bytes();
         wheel.read().convert_all_to_prefix();
 
-        let wheel_q1 = awheel_run(
+        let wheel_q1 = uwheel_run(
             "μWheel-prefix Q1",
             iterations,
             watermark,
@@ -391,7 +391,7 @@ fn run(args: &Args) -> Vec<Run> {
         println!("μWheel-prefix Q1 {:?}", wheel_q1.0);
         q1_results.add(Stats::from("μWheel-prefix", &wheel_q1));
 
-        let wheel_q2_seconds = awheel_run(
+        let wheel_q2_seconds = uwheel_run(
             "μWheel-prefix Q2 Seconds",
             iterations,
             watermark,
@@ -405,7 +405,7 @@ fn run(args: &Args) -> Vec<Run> {
             wheel_q2_seconds.2, wheel_q2_seconds.3
         );
 
-        let wheel_q2_minutes = awheel_run(
+        let wheel_q2_minutes = uwheel_run(
             "μWheel-prefix Q2 Minutes",
             iterations,
             watermark,
@@ -419,7 +419,7 @@ fn run(args: &Args) -> Vec<Run> {
             wheel_q2_minutes.2, wheel_q2_minutes.3
         );
 
-        let wheel_q2_hours = awheel_run(
+        let wheel_q2_hours = uwheel_run(
             "μWheel-prefix Q2 Hours",
             iterations,
             watermark,
@@ -1028,7 +1028,7 @@ where
     )
 }
 
-fn awheel_run<A: Aggregator + Clone>(
+fn uwheel_run<A: Aggregator + Clone>(
     _id: &str,
     iterations: usize,
     _watermark: u64,

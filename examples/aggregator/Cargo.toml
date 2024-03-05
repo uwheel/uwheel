@@ -8,4 +8,4 @@ license.workspace = true
 readme.workspace = true
 
 [dependencies]
-awheel.workspace = true
+uwheel.workspace = true

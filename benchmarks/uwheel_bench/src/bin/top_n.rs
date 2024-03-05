@@ -1,7 +1,11 @@
 #![allow(dead_code)]
 use minstant::Instant;
 
-use awheel::{
+use clap::Parser;
+use duckdb::Result;
+use hdrhistogram::Histogram;
+use std::time::Duration;
+use uwheel::{
     aggregator::{max::U64MaxAggregator, sum::U64SumAggregator, top_n::TopNAggregator},
     rw_wheel::read::{
         aggregation::conf::RetentionPolicy,
@@ -14,10 +18,6 @@ use awheel::{
     ReadWheel,
     RwWheel,
 };
-use clap::Parser;
-use duckdb::Result;
-use hdrhistogram::Histogram;
-use std::time::Duration;
 use uwheel_bench::util::{duckdb_append_batch, duckdb_query_topn, Query, QueryType, *};
 
 // struct BenchResult {
@@ -209,7 +209,7 @@ fn run(args: &Args) {
 
         rw_wheel.read().set_optimizer_hints(false);
 
-        let wheel_cheap = awheel_run(
+        let wheel_cheap = uwheel_run(
             "Wheel TopN Cheap Hint",
             watermark,
             rw_wheel.read(),
@@ -228,7 +228,7 @@ fn run(args: &Args) {
 
         rw_wheel.read().set_optimizer_hints(true);
 
-        let wheel_expensive = awheel_run(
+        let wheel_expensive = uwheel_run(
             "Wheel TopN Expensive Hint",
             watermark,
             rw_wheel.read(),
@@ -263,7 +263,7 @@ fn run(args: &Args) {
 
         // Set Hint Expensive
 
-        // let wheel_high = awheel_run(
+        // let wheel_high = uwheel_run(
         //     "RwWheel TopN High Intervals",
         //     watermark,
         //     rw_wheel.read(),
@@ -282,7 +282,7 @@ fn run(args: &Args) {
     // )
 }
 
-fn awheel_run(
+fn uwheel_run(
     _id: &str,
     _watermark: u64,
     wheel: &ReadWheel<TopNAggregator<u64, 10, U64SumAggregator>>,

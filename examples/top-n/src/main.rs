@@ -1,4 +1,5 @@
-use awheel::{
+use tinystr::TinyAsciiStr;
+use uwheel::{
     aggregator::{
         sum::U64SumAggregator,
         top_n::{Descending, TopNAggregator, TopNState},
@@ -7,7 +8,6 @@ use awheel::{
     NumericalDuration,
     RwWheel,
 };
-use tinystr::TinyAsciiStr;
 
 const N: usize = 5;
 pub type TinyStr = TinyAsciiStr<8>;

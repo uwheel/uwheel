@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
-use awheel::{
+use cxx::UniquePtr;
+use segment_tree::{ops::Add, SegmentPoint};
+use uwheel::{
     aggregator::sum::U64SumAggregator,
     rw_wheel::read::aggregation::combine_or_insert,
     Aggregator,
 };
-use cxx::UniquePtr;
-use segment_tree::{ops::Add, SegmentPoint};
 
 pub trait Tree<A: Aggregator>: Default {
     fn insert(&mut self, ts: u64, agg: A::PartialAggregate);

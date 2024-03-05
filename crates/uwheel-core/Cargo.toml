@@ -1,0 +1,75 @@
+[package]
+name = "uwheel-core"
+version = "0.1.0"
+categories.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+targets = []
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["std", "all", "avg", "sum", "min", "max", "smallvec"]
+std = ["serde?/std"]
+all = []
+avg = []
+sum = []
+min = []
+max = []
+top_n = ["dep:hashbrown"]
+serde = [
+  "dep:serde",
+  "dep:serde-big-array",
+  "parking_lot?/serde",
+  "hashbrown?/serde",
+  "uwheel-stats?/serde",
+]
+sync = ["dep:parking_lot", "std"]
+timer = []
+profiler = ["dep:uwheel-stats", "prettytable-rs", "std"]
+simd = ["dep:multiversion"]
+cache = ["schnellru"]
+
+
+[dependencies]
+time = { version = "0.3.30", default-features = false }
+
+schnellru = { version = "0.2.1", optional = true }
+multiversion = { version = "0.7.3", default-features = false, optional = true }
+rayon = { version = "1.8.0", optional = true }
+uwheel-stats = { workspace = true, optional = true }
+parking_lot = { workspace = true, optional = true }
+hashbrown = { workspace = true, optional = true }
+serde = { workspace = true, optional = true, features = ["derive", "rc"] }
+serde-big-array = { workspace = true, optional = true }
+prettytable-rs = { version = "0.10.0", optional = true }
+smallvec = { version = "1.11.2", optional = true }
+
+[dev-dependencies]
+time = { version = "0.3.30", default-features = false, features = [
+  "macros",
+  "parsing",
+] }
+fastrand.workspace = true
+rand.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "combine"
+harness = false
+
+[[bench]]
+name = "combine_range"
+harness = false
+
+[[bench]]
+name = "merge"
+harness = false
+
+[[bench]]
+name = "prefix"
+harness = false

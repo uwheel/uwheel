@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-profiler = ["awheel/profiler"]
+profiler = ["uwheel/profiler"]
 
 [dependencies]
-awheel = { workspace = true, features = ["serde"] }
+uwheel = { workspace = true, features = ["serde"] }
 postcard.workspace = true
 lz4_flex.workspace = true
 zstd = "0.12.4"

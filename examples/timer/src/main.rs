@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use awheel::{
+use uwheel::{
     aggregator::sum::U32SumAggregator,
     rw_wheel::read::Haw,
     Entry,

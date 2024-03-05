@@ -1,0 +1,59 @@
+[package]
+name = "uwheel"
+version = "0.1.0"
+categories = ["index", "temporal warehousing", "streaming", "no-std"]
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+targets = []
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["std", "all", "avg", "sum", "min", "max", "smallvec"]
+std = ["uwheel-core/std", "uwheel-window?/std"]
+all = ["uwheel-core/all"]
+avg = ["uwheel-core/avg"]
+sum = ["uwheel-core/sum"]
+min = ["uwheel-core/min"]
+max = ["uwheel-core/max"]
+smallvec = ["uwheel-core/smallvec"]
+top_n = ["uwheel-core/top_n"]
+sync = ["uwheel-core/sync"]
+window = ["dep:uwheel-window"]
+# tree = ["dep:uwheel-tree"]
+stats = ["std", "dep:uwheel-stats", "uwheel-window?/stats"]
+serde = ["uwheel-core/serde"]
+profiler = ["std", "uwheel-core/profiler"]
+timer = ["uwheel-core/timer"]
+simd = ["uwheel-core/simd", "std"]
+
+[dependencies]
+uwheel-core = { workspace = true, default-features = false }
+uwheel-window = { workspace = true, optional = true }
+# uwheel-tree = { workspace = true, optional = true }
+uwheel-stats = { workspace = true, optional = true }
+
+[dev-dependencies]
+fastrand.workspace = true
+rand.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "insert"
+harness = false
+
+[[bench]]
+name = "advance"
+harness = false
+
+[[bench]]
+name = "queries"
+harness = false
+
+[[bench]]
+name = "merge"
+harness = false

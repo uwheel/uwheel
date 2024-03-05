@@ -1,4 +1,6 @@
-use awheel::{
+use postcard::to_allocvec;
+use std::time::Instant;
+use uwheel::{
     aggregator::sum::U32SumAggregator,
     rw_wheel::RwWheel,
     time_internal::{Duration, NumericalDuration},
@@ -6,8 +8,6 @@ use awheel::{
     ReadWheel,
     SECONDS,
 };
-use postcard::to_allocvec;
-use std::time::Instant;
 
 fn main() {
     let mut time = 0;

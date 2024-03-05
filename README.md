@@ -94,18 +94,18 @@ See a user-defined aggregator example [here](examples/aggregator/).
 For ``std`` support and compilation of built-in aggregators:
 
 ```toml
-awheel  = "0.1.0"
+uwheel  = "0.1.0"
 ```
 For ``no_std`` support and minimal compile time:
 
 ```toml
-awheel = { version = "0.1.0", default-features = false }
+uwheel = { version = "0.1.0", default-features = false }
 ```
 
 ## Examples
 
 ```rust
-use awheel::{aggregator::U32SumAggregator, time::NumericalDuration, Entry, RwWheel};
+use uwheel::{aggregator::U32SumAggregator, time::NumericalDuration, Entry, RwWheel};
 
 // Initial start time (represented as milliseconds)
 let mut time = 0;
@@ -134,9 +134,9 @@ See more examples [here](examples).
 
 ## Demo
 
-<img src="crates/awheel-demo/assets/awheel_demo.gif">
+<img src="crates/uwheel-demo/assets/uwheel_demo.gif">
 
-An interactive demo [application](crates/awheel-demo/) that works both natively and on the web.
+An interactive demo [application](crates/uwheel-demo/) that works both natively and on the web.
 
 
 ## License

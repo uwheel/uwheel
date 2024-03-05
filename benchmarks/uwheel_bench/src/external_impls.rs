@@ -1,6 +1,6 @@
 use crate::tree::Tree;
 
-use awheel::{
+use uwheel::{
     aggregator::sum::U64SumAggregator,
     stats::profile_scope,
     time_internal::Duration,
@@ -44,7 +44,7 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for WindowTree<T> {
         _duration: Duration,
     ) -> Vec<(
         u64,
-        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
+        Option<<U64SumAggregator as uwheel::aggregator::Aggregator>::Aggregate>,
     )> {
         Vec::new()
     }
@@ -53,7 +53,7 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for WindowTree<T> {
         watermark: u64,
     ) -> Vec<(
         u64,
-        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
+        Option<<U64SumAggregator as uwheel::aggregator::Aggregator>::Aggregate>,
     )> {
         profile_scope!(&self.stats.advance_ns);
 
@@ -96,7 +96,7 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for WindowTree<T> {
     #[inline]
     fn insert(
         &mut self,
-        entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
+        entry: uwheel::Entry<<U64SumAggregator as uwheel::aggregator::Aggregator>::Input>,
     ) {
         profile_scope!(&self.stats.insert_ns);
         if entry.timestamp >= self.watermark {
@@ -117,7 +117,7 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for WindowTree<T> {
             self.tree.insert(ts, entry.data);
         }
     }
-    fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
+    fn wheel(&self) -> &uwheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
     fn stats(&self) -> &Stats {
@@ -181,7 +181,7 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
         duration: Duration,
     ) -> Vec<(
         u64,
-        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
+        Option<<U64SumAggregator as uwheel::aggregator::Aggregator>::Aggregate>,
     )> {
         let ticks = duration.whole_seconds();
         let mut window_results = Vec::new();
@@ -245,7 +245,7 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
         watermark: u64,
     ) -> Vec<(
         u64,
-        Option<<U64SumAggregator as awheel::aggregator::Aggregator>::Aggregate>,
+        Option<<U64SumAggregator as uwheel::aggregator::Aggregator>::Aggregate>,
     )> {
         let diff = watermark.saturating_sub(self.watermark);
         profile_scope!(&self.stats.advance_ns);
@@ -254,7 +254,7 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
     #[inline]
     fn insert(
         &mut self,
-        entry: awheel::Entry<<U64SumAggregator as awheel::aggregator::Aggregator>::Input>,
+        entry: uwheel::Entry<<U64SumAggregator as uwheel::aggregator::Aggregator>::Input>,
     ) {
         profile_scope!(&self.stats.insert_ns);
         if entry.timestamp >= self.watermark {
@@ -265,7 +265,7 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
             self.tree.insert(ts, entry.data);
         }
     }
-    fn wheel(&self) -> &awheel::ReadWheel<U64SumAggregator> {
+    fn wheel(&self) -> &uwheel::ReadWheel<U64SumAggregator> {
         unimplemented!();
     }
     fn stats(&self) -> &Stats {
@@ -279,7 +279,7 @@ impl<T: Tree<U64SumAggregator>> WindowExt<U64SumAggregator> for PairsTree<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use awheel::{
+    use uwheel::{
         aggregator::sum::U64SumAggregator,
         time_internal::{Duration, NumericalDuration},
         window::{

@@ -4,14 +4,14 @@ use minstant::Instant;
 use std::{cmp, fs::File};
 use uwheel_bench::{external_impls::Slicing, PlottingOutput, Window};
 
-use awheel::{
+use chrono::{DateTime, NaiveDateTime};
+use serde::Deserialize;
+use uwheel::{
     aggregator::sum::U64SumAggregator,
     window::{stats::Stats, wheels, WindowExt},
     Aggregator,
     Entry,
 };
-use chrono::{DateTime, NaiveDateTime};
-use serde::Deserialize;
 use uwheel_bench::{
     align_to_closest_thousand,
     external_impls::WindowTree,

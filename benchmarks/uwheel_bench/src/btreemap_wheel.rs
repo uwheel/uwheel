@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use awheel::{
+use uwheel::{
     rw_wheel::read::aggregation::combine_or_insert,
     stats::profile_scope,
     time_internal::Duration,
@@ -66,7 +66,7 @@ impl<A: Aggregator> WindowExt<A> for BTreeMapWheel<A> {
         res
     }
     #[inline]
-    fn insert(&mut self, entry: awheel::Entry<A::Input>) {
+    fn insert(&mut self, entry: uwheel::Entry<A::Input>) {
         profile_scope!(&self.stats.insert_ns);
         if entry.timestamp >= self.watermark {
             let diff = entry.timestamp - self.watermark;
@@ -80,7 +80,7 @@ impl<A: Aggregator> WindowExt<A> for BTreeMapWheel<A> {
                 .or_insert(A::freeze(A::lift(entry.data)));
         }
     }
-    fn wheel(&self) -> &awheel::ReadWheel<A> {
+    fn wheel(&self) -> &uwheel::ReadWheel<A> {
         unimplemented!();
     }
     fn stats(&self) -> &Stats {

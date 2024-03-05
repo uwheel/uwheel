@@ -5,8 +5,8 @@ pub mod timestamp_generator;
 pub mod tree;
 pub mod util;
 
-use awheel::{stats::Percentiles, time_internal::Duration, window::stats::Stats};
 use std::fs::File;
+use uwheel::{stats::Percentiles, time_internal::Duration, window::stats::Stats};
 
 pub use timestamp_generator::{align_to_closest_thousand, TimestampGenerator};
 

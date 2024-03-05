@@ -1,4 +1,4 @@
-use awheel::time_internal::Duration;
+use uwheel::time_internal::Duration;
 
 #[inline]
 pub fn align_to_closest_thousand(timestamp: u64) -> u64 {

@@ -1,4 +1,3 @@
-use awheel::{aggregator::sum::U64SumAggregator, Entry, RwWheel};
 use criterion::{
     criterion_group,
     criterion_main,
@@ -9,6 +8,7 @@ use criterion::{
     Throughput,
 };
 use rand::prelude::*;
+use uwheel::{aggregator::sum::U64SumAggregator, Entry, RwWheel};
 
 const NUM_ELEMENTS: usize = 10000;
 

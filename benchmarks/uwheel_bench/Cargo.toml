@@ -6,16 +6,16 @@ edition.workspace = true
 [features]
 default = []
 debug = []
-sync = ["awheel/sync"]
-simd = ["awheel/simd"]
-profiler = ["awheel/profiler"]
+sync = ["uwheel/sync"]
+simd = ["uwheel/simd"]
+profiler = ["uwheel/profiler"]
 duckdb_index = []
 
 [dependencies]
 cxx = "1.0"
 segment-tree = { path = "segment-tree", version = "2" }
 duckdb.workspace = true
-awheel = { workspace = true, features = ["window", "top_n", "stats", "simd"] }
+uwheel = { workspace = true, features = ["window", "top_n", "stats", "simd"] }
 mimalloc = { version = "*", default-features = false, optional = true }
 csv = "1.2.2"
 chrono = "0.4"

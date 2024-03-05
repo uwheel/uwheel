@@ -1,7 +1,7 @@
-use awheel::{time_internal as time, OffsetDateTime};
 use chrono::NaiveDateTime;
 use duckdb::{params, Connection, DropBehavior, Result};
 use std::{cmp, time::SystemTime};
+use uwheel::{time_internal as time, OffsetDateTime};
 
 const MAX_FARE: u64 = 1000;
 pub const MAX_KEYS: u64 = 263;

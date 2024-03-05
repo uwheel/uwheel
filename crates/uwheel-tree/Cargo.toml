@@ -1,0 +1,20 @@
+[package]
+name = "uwheel-tree"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+targets = []
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+time = { version = "0.3.30", default-features = false, features = ["macros"]}
+concurrent-map = "5.0.31"
+uwheel-core = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+uwheel-core = { workspace = true, features = ["sum"] }

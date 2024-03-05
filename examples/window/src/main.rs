@@ -1,4 +1,4 @@
-use awheel::{
+use uwheel::{
     aggregator::sum::U64SumAggregator,
     window::{
         eager::{Builder, EagerWindowWheel},
