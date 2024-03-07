@@ -5,7 +5,7 @@ use uwheel::{
     rw_wheel::RwWheel,
     time_internal::{Duration, NumericalDuration},
     Entry,
-    ReadWheel,
+    ReaderWheel,
     SECONDS,
 };
 
@@ -75,7 +75,7 @@ fn main() {
     serialize_wheel(wheel.read());
 }
 
-fn serialize_wheel(wheel: &ReadWheel<U32SumAggregator>) {
+fn serialize_wheel(wheel: &ReaderWheel<U32SumAggregator>) {
     println!("Memory wheel size {} bytes", wheel.as_ref().size_bytes());
     let now = Instant::now();
     let bytes = to_allocvec(wheel).unwrap();
@@ -85,7 +85,7 @@ fn serialize_wheel(wheel: &ReadWheel<U32SumAggregator>) {
         now.elapsed()
     );
     let now = Instant::now();
-    let _out: ReadWheel<U32SumAggregator> = postcard::from_bytes(&bytes).unwrap();
+    let _out: ReaderWheel<U32SumAggregator> = postcard::from_bytes(&bytes).unwrap();
     println!("Deserialized wheel in {:?}", now.elapsed());
 
     let now = Instant::now();

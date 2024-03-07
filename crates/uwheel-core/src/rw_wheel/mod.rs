@@ -18,13 +18,18 @@ mod timer;
 
 use crate::{aggregator::Aggregator, delta::DeltaState, time_internal, Entry, Error};
 use core::fmt::Debug;
-use read::ReadWheel;
-use write::{WriteAheadWheel, DEFAULT_WRITE_AHEAD_SLOTS};
+use write::{WriterWheel, DEFAULT_WRITE_AHEAD_SLOTS};
 
 pub use read::{aggregation::DrillCut, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 pub use wheel_ext::WheelExt;
 
-use self::read::hierarchical::HawConf;
+use self::read::{
+    hierarchical::{HawConf, Window},
+    ReaderWheel,
+};
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 
 #[cfg(feature = "profiler")]
 use uwheel_stats::profile_scope;
@@ -46,14 +51,14 @@ use uwheel_stats::profile_scope;
 /// ## Reads
 ///
 /// Aggregates once moved to below the watermark become immutable and are inserted into
-/// a hierarchical aggregation wheel [ReadWheel]. A data structure which materializes aggregates
+/// a hierarchical aggregation wheel [ReaderWheel]. A data structure which materializes aggregates
 /// across time.
 pub struct RwWheel<A>
 where
     A: Aggregator,
 {
-    write: WriteAheadWheel<A>,
-    read: ReadWheel<A>,
+    writer: WriterWheel<A>,
+    reader: ReaderWheel<A>,
     #[cfg(feature = "profiler")]
     stats: stats::Stats,
 }
@@ -76,8 +81,8 @@ where
         let options = Options::default().with_haw_conf(haw_conf);
 
         Self {
-            write: WriteAheadWheel::with_watermark(time),
-            read: ReadWheel::with_conf(time, options.haw_conf),
+            writer: WriterWheel::with_watermark(time),
+            reader: ReaderWheel::with_conf(time, options.haw_conf),
             #[cfg(feature = "profiler")]
             stats: stats::Stats::default(),
         }
@@ -87,55 +92,62 @@ where
     /// Time is represented as milliseconds
     pub fn new(time: u64) -> Self {
         Self {
-            write: WriteAheadWheel::with_watermark(time),
-            read: ReadWheel::new(time),
+            writer: WriterWheel::with_watermark(time),
+            reader: ReaderWheel::new(time),
             #[cfg(feature = "profiler")]
             stats: stats::Stats::default(),
         }
     }
     /// Creates a new wheel starting from the given time and the specified [Options]
     pub fn with_options(time: u64, opts: Options) -> Self {
-        let write: WriteAheadWheel<A> =
-            WriteAheadWheel::with_capacity_and_watermark(opts.write_ahead_capacity, time);
-        let read = ReadWheel::with_conf(time, opts.haw_conf);
         Self {
-            write,
-            read,
+            writer: WriterWheel::with_capacity_and_watermark(opts.write_ahead_capacity, time),
+            reader: ReaderWheel::with_conf(time, opts.haw_conf),
             #[cfg(feature = "profiler")]
             stats: stats::Stats::default(),
         }
     }
+    /// Configures a periodic window aggregation with range ``range`` and slide ``slide``
+    ///
+    /// Results of the window are returned when advancing the wheel [Self::advance_to]
+    pub fn window(&mut self, range: time_internal::Duration, slide: time_internal::Duration) {
+        self.reader.window(range, slide);
+    }
+
     /// Inserts an entry into the wheel
     #[inline]
     pub fn insert(&mut self, e: impl Into<Entry<A::Input>>) {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.insert);
-        if let Err(Error::Late { .. }) = self.write.insert(e) {
+        if let Err(Error::Late { .. }) = self.writer.insert(e) {
             // For now do nothing but should be returned to the user..
         }
     }
 
-    /// Returns a reference to the underlying Write-ahead Wheel
-    pub fn write(&self) -> &WriteAheadWheel<A> {
-        &self.write
+    /// Returns a reference to the writer wheel
+    pub fn write(&self) -> &WriterWheel<A> {
+        &self.writer
     }
-    /// Returns a reference to the underlying ReadWheel
-    pub fn read(&self) -> &ReadWheel<A> {
-        &self.read
+    /// Returns a reference to the underlying reader wheel
+    pub fn read(&self) -> &ReaderWheel<A> {
+        &self.reader
     }
     /// Merges another read wheel with same size into this one
-    pub fn merge_read_wheel(&self, other: &ReadWheel<A>) {
+    pub fn merge_read_wheel(&self, other: &ReaderWheel<A>) {
         self.read().merge(other);
     }
     /// Returns the current watermark of this wheel
     pub fn watermark(&self) -> u64 {
-        self.write.watermark()
+        self.writer.watermark()
     }
     /// Advance the watermark of the wheel by the given [time::Duration]
     #[inline]
-    pub fn advance(&mut self, duration: time_internal::Duration) {
+    pub fn advance(
+        &mut self,
+        duration: time_internal::Duration,
+    ) -> Vec<Window<A::PartialAggregate>> {
         let to = self.watermark() + duration.whole_milliseconds() as u64;
-        self.advance_to(to);
+        self.advance_to(to)
     }
     /// Advance the watermark of the wheel by the given [time::Duration] and returns deltas
     #[inline]
@@ -149,13 +161,13 @@ where
 
     /// Advances the time of the wheel aligned by the lowest unit (Second)
     #[inline]
-    pub fn advance_to(&mut self, watermark: u64) {
+    pub fn advance_to(&mut self, watermark: u64) -> Vec<Window<A::PartialAggregate>> {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.advance);
 
         // Advance the read wheel
-        self.read.advance_to(watermark, &mut self.write);
-        debug_assert_eq!(self.write.watermark(), self.read.watermark());
+        self.reader.advance_to(watermark, &mut self.writer)
+        // debug_assert_eq!(self.writer.watermark(), self.reader.watermark())
     }
     /// Advances the time of the wheel aligned by the lowest unit (Second) and emits deltas
     #[inline]
@@ -167,18 +179,18 @@ where
         profile_scope!(&self.stats.advance);
 
         // Advance the read wheel
-        let delta_state = self.read.advance_and_emit_deltas(
+        let delta_state = self.reader.advance_and_emit_deltas(
             time_internal::Duration::milliseconds((watermark - self.watermark()) as i64),
-            &mut self.write,
+            &mut self.writer,
         );
-        debug_assert_eq!(self.write.watermark(), self.read.watermark());
+        debug_assert_eq!(self.writer.watermark(), self.reader.watermark());
 
         delta_state
     }
     /// Returns an estimation of bytes used by the wheel
     pub fn size_bytes(&self) -> usize {
-        let read = self.read.as_ref().size_bytes();
-        let write = self.write.size_bytes().unwrap();
+        let read = self.reader.as_ref().size_bytes();
+        let write = self.writer.size_bytes().unwrap();
         read + write
     }
     #[cfg(feature = "profiler")]
@@ -212,7 +224,7 @@ where
         add_row("insert", &mut table, &self.stats.insert);
         add_row("advance", &mut table, &self.stats.advance);
 
-        let read = self.read.as_ref();
+        let read = self.reader.as_ref();
         add_row("tick", &mut table, &read.stats().tick);
         add_row("interval", &mut table, &read.stats().interval);
         add_row("landmark", &mut table, &read.stats().landmark);
@@ -316,7 +328,7 @@ mod tests {
         assert_eq!(rw_wheel.read().interval(4.seconds()), Some(1000));
 
         // create a new read wheel from deltas
-        let read: ReadWheel<U32SumAggregator> = ReadWheel::from_delta_state(delta_state);
+        let read: ReaderWheel<U32SumAggregator> = ReaderWheel::from_delta_state(delta_state);
         // verify the watermark
         assert_eq!(read.watermark(), 5000);
         // verify the the results

@@ -39,8 +39,8 @@ mod macros;
 
 pub use aggregator::Aggregator;
 pub use rw_wheel::{
-    read::{ReadWheel, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS},
-    write::WriteAheadWheel,
+    read::{ReaderWheel, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS},
+    write::WriterWheel,
     Options,
     RwWheel,
 };

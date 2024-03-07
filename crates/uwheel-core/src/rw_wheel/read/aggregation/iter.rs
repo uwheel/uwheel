@@ -3,7 +3,6 @@
 use crate::rw_wheel::wheel_ext::{count, wrap_index};
 
 use super::*;
-use core::iter::Iterator;
 
 /// An Iterator over a slice of partial aggregates
 pub struct Iter<'a, A: Aggregator> {

@@ -2,7 +2,7 @@
 
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
-use uwheel::{aggregator::all::AllAggregator, RwWheel, *};
+use uwheel::{aggregator::all::AllAggregator, *};
 
 #[derive(Debug, Arbitrary)]
 enum Op {

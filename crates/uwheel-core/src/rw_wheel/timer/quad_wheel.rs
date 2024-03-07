@@ -14,10 +14,9 @@
 //! there should be no large issues even if this assumption is not correct.
 
 use super::{byte_wheel::*, *};
-use core::time::Duration;
 
 #[cfg(not(feature = "std"))]
-use alloc::{boxed::Box, vec::Vec};
+use alloc::vec::Vec;
 
 #[derive(Clone)]
 struct OverflowEntry<EntryType> {

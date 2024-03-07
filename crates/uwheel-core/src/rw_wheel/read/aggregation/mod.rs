@@ -1,8 +1,5 @@
 use crate::{aggregator::Aggregator, time_internal::Duration};
 
-#[cfg(feature = "rayon")]
-use rayon::prelude::*;
-
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::{
@@ -416,15 +413,6 @@ impl<A: Aggregator> AggregationWheel<A> {
     pub fn insert_slot(&mut self, slot: WheelSlot<A>) {
         // update roll-up aggregates
         self.insert_head(slot.total);
-    }
-
-    /// Merges a vector of wheels in parallel into an AggregationWheel
-    #[cfg(feature = "rayon")]
-    pub fn merge_parallel(wheels: Vec<Self>) -> Option<Self> {
-        wheels.into_par_iter().reduce_with(|mut a, b| {
-            a.merge(&b);
-            a
-        })
     }
 
     /// Merges a vector of wheels in parallel into an AggregationWheel

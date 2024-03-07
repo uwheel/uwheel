@@ -35,7 +35,7 @@ impl<T> DeltaState<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{aggregator::sum::U32SumAggregator, NumericalDuration, ReadWheel};
+    use crate::{aggregator::sum::U32SumAggregator, NumericalDuration, ReaderWheel};
 
     #[test]
     fn build_wheel_from_delta_state_test() {
@@ -44,7 +44,7 @@ mod tests {
 
         let state = DeltaState::new(init_time, deltas);
 
-        let read_wheel: ReadWheel<U32SumAggregator> = ReadWheel::from_delta_state(state);
+        let read_wheel: ReaderWheel<U32SumAggregator> = ReaderWheel::from_delta_state(state);
 
         assert_eq!(read_wheel.watermark(), 15000);
         assert_eq!(read_wheel.interval(1.seconds()), Some(15));

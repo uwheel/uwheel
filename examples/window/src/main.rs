@@ -1,20 +1,14 @@
-use uwheel::{
-    aggregator::sum::U64SumAggregator,
-    window::{
-        eager::{Builder, EagerWindowWheel},
-        *,
-    },
-    Entry,
-    NumericalDuration,
-};
+use uwheel::{aggregator::sum::U64SumAggregator, Entry, NumericalDuration, RwWheel};
+
 fn main() {
-    let mut window: EagerWindowWheel<U64SumAggregator> = Builder::default()
-        .with_range(10.seconds())
-        .with_slide(3.seconds())
-        .build();
+    let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(0);
+
+    // Install window
+    wheel.window(10.seconds(), 3.seconds());
+
     for i in 1..=22 {
-        window.insert(Entry::new(i, i * 1000 - 1));
+        wheel.insert(Entry::new(i, i * 1000 - 1));
     }
-    let results = window.advance(22.seconds());
+    let results = wheel.advance(22.seconds());
     println!("{:#?}", results);
 }

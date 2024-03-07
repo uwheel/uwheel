@@ -54,7 +54,7 @@ fn delta_advance(deltas: u64, bencher: &mut Bencher) {
     bencher.iter_batched(
         || {
             let time = 0;
-            let wheel: ReadWheel<U64SumAggregator> = ReadWheel::new(time);
+            let wheel: ReaderWheel<U64SumAggregator> = ReaderWheel::new(time);
             let deltas: Vec<_> = (0..deltas)
                 .map(|_| Some(fastrand::u64(1..100000u64)))
                 .collect();

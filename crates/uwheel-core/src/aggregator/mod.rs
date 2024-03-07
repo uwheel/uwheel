@@ -1,8 +1,4 @@
-use core::{
-    default::Default,
-    fmt::Debug,
-    marker::{Copy, Send},
-};
+use core::fmt::Debug;
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;

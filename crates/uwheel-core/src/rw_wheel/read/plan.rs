@@ -25,7 +25,7 @@ pub enum ExecutionPlan {
     /// Execution can be queried through a landmark window
     LandmarkAggregation,
     /// Execution can be queried through a combination of landmark window + inverse combine
-    InverseLandmarkAggregation(WheelAggregation),
+    InverseLandmarkAggregation(WheelAggregations),
 }
 
 impl ExecutionPlan {
@@ -44,7 +44,9 @@ impl ExecutionPlan {
             ExecutionPlan::WheelAggregation(w) => w.cost(),
             ExecutionPlan::CombinedAggregation(c) => c.cost(),
             ExecutionPlan::LandmarkAggregation => 6,
-            ExecutionPlan::InverseLandmarkAggregation(w) => w.cost() + 6 + 2, // 6 Wheels + 2 combine operations at end
+            ExecutionPlan::InverseLandmarkAggregation(w) => {
+                w.iter().map(|m| m.cost()).sum::<usize>() + 6 + 2
+            }
         }
     }
 }

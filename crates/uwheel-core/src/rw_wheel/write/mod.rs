@@ -14,7 +14,7 @@ use alloc::{boxed::Box, vec::Vec};
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone)]
-pub struct WriteAheadWheel<A: Aggregator> {
+pub struct WriterWheel<A: Aggregator> {
     watermark: u64,
     num_slots: usize,
     capacity: usize,
@@ -24,13 +24,13 @@ pub struct WriteAheadWheel<A: Aggregator> {
     tail: usize,
     head: usize,
 }
-impl<A: Aggregator> Default for WriteAheadWheel<A> {
+impl<A: Aggregator> Default for WriterWheel<A> {
     fn default() -> Self {
         Self::with_watermark(0)
     }
 }
 
-impl<A: Aggregator> WriteAheadWheel<A> {
+impl<A: Aggregator> WriterWheel<A> {
     /// Creates a Write wheel starting from the given watermark and a capacity of [DEFAULT_WRITE_AHEAD_SLOTS]
     pub fn with_watermark(watermark: u64) -> Self {
         Self::with_capacity_and_watermark(DEFAULT_WRITE_AHEAD_SLOTS, watermark)
@@ -142,7 +142,7 @@ impl<A: Aggregator> WriteAheadWheel<A> {
     }
 }
 
-impl<A: Aggregator> WheelExt for WriteAheadWheel<A> {
+impl<A: Aggregator> WheelExt for WriterWheel<A> {
     fn num_slots(&self) -> usize {
         self.num_slots
     }
@@ -169,8 +169,8 @@ mod tests {
 
     #[test]
     fn write_ahead_test() {
-        let mut wheel: WriteAheadWheel<U64SumAggregator> =
-            WriteAheadWheel::with_capacity_and_watermark(16, 0);
+        let mut wheel: WriterWheel<U64SumAggregator> =
+            WriterWheel::with_capacity_and_watermark(16, 0);
 
         assert!(wheel.insert(Entry::new(1, 0)).is_ok());
         assert!(wheel.insert(Entry::new(10, 1000)).is_ok());

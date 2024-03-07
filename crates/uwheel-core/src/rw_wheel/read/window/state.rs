@@ -1,11 +1,11 @@
-use crate::util::{create_pair_type, PairType};
-use uwheel_core::time_internal::Duration;
+use super::util::{create_pair_type, PairType};
+use crate::time_internal::Duration;
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug)]
 pub struct State {
-    range: usize,
-    slide: usize,
+    pub range: usize,
+    pub slide: usize,
     pub pair_type: PairType,
     pub pair_ticks_remaining: usize,
     pub current_pair_len: usize,
@@ -26,7 +26,7 @@ impl State {
             range,
             slide,
             current_pair_len,
-            pair_ticks_remaining: current_pair_len / 1000,
+            pair_ticks_remaining: current_pair_len / 1000, // to seconds
             pair_type,
             next_window_end: time + range as u64,
             next_pair_end,

@@ -9,7 +9,7 @@ pub enum PairType {
 }
 impl PairType {
     /// Returns `true` if the [PairType] is Uneven
-    pub fn is_uneven(&self) -> bool {
+    pub fn _is_uneven(&self) -> bool {
         matches!(self, PairType::Uneven { .. })
     }
 }
@@ -37,15 +37,5 @@ pub const fn pairs_space(range: usize, slide: usize) -> usize {
         range / slide
     } else {
         ceil_div(2 * range, slide)
-    }
-}
-
-/// Verifies that returned capacity is a power of two
-pub const fn pairs_capacity(range: usize, slide: usize) -> usize {
-    let space = pairs_space(range, slide);
-    if space.is_power_of_two() {
-        space
-    } else {
-        space.next_power_of_two()
     }
 }

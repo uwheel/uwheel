@@ -6,21 +6,25 @@ pub mod aggregation;
 pub mod hierarchical;
 
 mod plan;
-
-#[cfg(feature = "cache")]
-mod cache;
+mod window;
 
 #[cfg(feature = "profiler")]
 pub(crate) mod stats;
 #[cfg(feature = "timer")]
 use crate::rw_wheel::timer::{TimerAction, TimerError};
+use crate::time_internal;
 
-use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, time_internal::Duration, WriteAheadWheel};
+use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, time_internal::Duration};
 pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 
 use crate::aggregator::Aggregator;
 
-use self::hierarchical::HawConf;
+use self::hierarchical::{HawConf, Window};
+
+use super::write::WriterWheel;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 
 /// A read wheel with hierarchical aggregation wheels backed by interior mutability.
 ///
@@ -28,13 +32,13 @@ use self::hierarchical::HawConf;
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone)]
-pub struct ReadWheel<A>
+pub struct ReaderWheel<A>
 where
     A: Aggregator,
 {
     inner: Inner<A>,
 }
-impl<A> ReadWheel<A>
+impl<A> ReaderWheel<A>
 where
     A: Aggregator,
 {
@@ -121,18 +125,27 @@ where
         self.inner.write().schedule_repeat(at, interval, f)
     }
 
+    #[doc(hidden)]
+    pub fn window(&mut self, range: time_internal::Duration, slide: time_internal::Duration) {
+        self.inner.write().window(range, slide);
+    }
+
     /// Advance the watermark of the wheel by the given [Duration]
     #[inline]
     #[doc(hidden)]
-    pub fn advance(&self, duration: Duration, waw: &mut WriteAheadWheel<A>) {
-        self.inner.write().advance(duration, waw);
+    pub fn advance(
+        &self,
+        duration: Duration,
+        waw: &mut WriterWheel<A>,
+    ) -> Vec<Window<A::PartialAggregate>> {
+        self.inner.write().advance(duration, waw)
     }
     #[inline]
     #[doc(hidden)]
     pub fn advance_and_emit_deltas(
         &self,
         duration: Duration,
-        waw: &mut WriteAheadWheel<A>,
+        waw: &mut WriterWheel<A>,
     ) -> DeltaState<A::PartialAggregate> {
         let current_wm = self.watermark();
         let deltas = self.inner.write().advance_and_emit_deltas(duration, waw);
@@ -141,8 +154,12 @@ where
 
     /// Advances the time of the wheel aligned by the lowest unit (Second)
     #[inline]
-    pub(crate) fn advance_to(&self, watermark: u64, waw: &mut WriteAheadWheel<A>) {
-        self.inner.write().advance_to(watermark, waw);
+    pub(crate) fn advance_to(
+        &self,
+        watermark: u64,
+        waw: &mut WriterWheel<A>,
+    ) -> Vec<Window<A::PartialAggregate>> {
+        self.inner.write().advance_to(watermark, waw)
     }
 
     /// Advances the wheel by applying a set of deltas, each representing the lowest unit.
@@ -183,7 +200,7 @@ where
     pub fn landmark(&self) -> Option<A::PartialAggregate> {
         self.inner.read().landmark()
     }
-    /// Merges another [ReadWheel] into this one
+    /// Merges another [ReaderWheel] into this one
     pub fn merge(&self, other: &Self) {
         self.inner.write().merge(&mut other.inner.write());
     }
@@ -193,7 +210,7 @@ where
     }
 }
 
-// Two different Inner Read Wheel implementations below:
+// Two different Inner Reader Wheel implementations below:
 
 cfg_not_sync! {
     #[cfg(not(feature = "std"))]

@@ -1,13 +1,6 @@
 use crate::{aggregator::PartialAggregateType, Aggregator};
 
-use core::{
-    clone::Clone,
-    cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd},
-    default::Default,
-    fmt::Debug,
-    marker::Copy,
-    option::{Option, Option::Some},
-};
+use core::cmp::Ordering;
 
 /// Aggregate State for the [AllAggregator]
 #[derive(Default, Debug, Clone, Copy)]

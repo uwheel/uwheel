@@ -1,9 +1,4 @@
-use crate::{
-    soe::{TwoStacks, Window},
-    state::State,
-    util::pairs_space,
-    WindowExt,
-};
+use crate::{state::State, two_stacks::TwoStacks, util::pairs_space, Window, WindowExt};
 
 use uwheel_core::{
     aggregator::Aggregator,
@@ -11,7 +6,7 @@ use uwheel_core::{
         read::{
             aggregation::conf::RetentionPolicy,
             hierarchical::{HawConf, WheelRange},
-            ReadWheel,
+            ReaderWheel,
         },
         write::DEFAULT_WRITE_AHEAD_SLOTS,
     },
@@ -273,7 +268,7 @@ impl<A: Aggregator> WindowExt<A> for WindowWheel<A> {
         self.wheel.insert(entry);
     }
     /// Returns a reference to the underlying HAW
-    fn wheel(&self) -> &ReadWheel<A> {
+    fn wheel(&self) -> &ReaderWheel<A> {
         self.wheel.read()
     }
     #[cfg(feature = "stats")]
@@ -363,7 +358,7 @@ impl<A: Aggregator> WindowExt<A> for RawWindowWheel<A> {
         self.wheel.insert(entry);
     }
     /// Returns a reference to the underlying HAW
-    fn wheel(&self) -> &ReadWheel<A> {
+    fn wheel(&self) -> &ReaderWheel<A> {
         self.wheel.read()
     }
     #[cfg(feature = "stats")]

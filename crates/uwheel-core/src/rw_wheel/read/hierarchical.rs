@@ -1,22 +1,15 @@
 use core::{
     cmp,
     fmt::{self, Display},
-    iter::IntoIterator,
-    option::{
-        Option,
-        Option::{None, Some},
-    },
 };
 use time::OffsetDateTime;
 
 use super::{
-    super::write::WriteAheadWheel,
+    super::write::WriterWheel,
     aggregation::{conf::RetentionPolicy, maybe::MaybeWheel, AggregationWheel},
     plan::{ExecutionPlan, WheelAggregation, WheelRanges},
+    window::WindowManager,
 };
-
-#[cfg(feature = "cache")]
-use super::cache::WheelCache;
 
 use crate::{
     aggregator::Aggregator,
@@ -46,6 +39,9 @@ crate::cfg_timer! {
     use core::cell::RefCell;
 }
 use super::aggregation::conf::WheelConf;
+
+/// Type Alias for a Window result
+pub type Window<T> = (u64, T);
 
 /// Default Second tick represented in milliseconds
 pub const SECOND_TICK_MS: u64 = time::Duration::SECOND.whole_milliseconds() as u64;
@@ -459,10 +455,8 @@ where
     days_wheel: MaybeWheel<A>,
     weeks_wheel: MaybeWheel<A>,
     years_wheel: MaybeWheel<A>,
+    window_manager: Option<WindowManager<A>>,
     optimizer: Optimizer,
-    #[cfg(feature = "cache")]
-    #[cfg_attr(feature = "serde", serde(skip))]
-    cache: WheelCache<A::PartialAggregate>,
     #[cfg(feature = "timer")]
     timer: Rc<RefCell<RawTimerWheel<TimerAction<A>>>>,
     #[cfg(feature = "profiler")]
@@ -521,8 +515,7 @@ where
             weeks_wheel: MaybeWheel::new(weeks),
             years_wheel: MaybeWheel::new(years),
             optimizer: conf.optimizer,
-            #[cfg(feature = "cache")]
-            cache: WheelCache::<A::PartialAggregate>::with_capacity(10),
+            window_manager: None,
             #[cfg(feature = "timer")]
             timer: Rc::new(RefCell::new(RawTimerWheel::default())),
             #[cfg(feature = "profiler")]
@@ -597,23 +590,80 @@ where
         OffsetDateTime::from_unix_timestamp(ts as i64 / 1000).unwrap()
     }
 
+    /// Installs a periodic window
+    pub fn window(&mut self, range: time_internal::Duration, slide: time_internal::Duration) {
+        assert!(
+            range >= slide,
+            "Window range must be larger or equal to slide"
+        );
+        self.window_manager = Some(WindowManager::new(
+            self.watermark,
+            range.whole_milliseconds() as usize,
+            slide.whole_milliseconds() as usize,
+        ));
+    }
+
     /// Advance the watermark of the wheel by the given [time::Duration]
     #[inline(always)]
-    pub fn advance(&mut self, duration: time_internal::Duration, waw: &mut WriteAheadWheel<A>) {
+    pub fn advance(
+        &mut self,
+        duration: time_internal::Duration,
+        waw: &mut WriterWheel<A>,
+    ) -> Vec<Window<A::PartialAggregate>> {
         let ticks: usize = duration.whole_seconds() as usize;
+        let mut windows = Vec::new();
 
-        // helper fn to tick N times
-        let tick_n = |ticks: usize, haw: &mut Self, waw: &mut WriteAheadWheel<A>| {
+        if ticks <= Self::CYCLE_LENGTH_SECS as usize {
             for _ in 0..ticks {
                 // tick the write wheel and freeze mutable aggregate
-                haw.tick(waw.tick().map(|m| A::freeze(m)));
+                self.tick(waw.tick().map(|m| A::freeze(m)));
+                self.handle_window_maybe(&mut windows);
             }
-        };
-        if ticks <= Self::CYCLE_LENGTH_SECS as usize {
-            tick_n(ticks, self, waw);
         } else {
             // Exceeds full cycle length, clear all!
             self.clear();
+        }
+        windows
+    }
+    fn handle_window_maybe(&mut self, windows: &mut Vec<Window<A::PartialAggregate>>) {
+        // TODO: refactor this..
+
+        let (pairs_remaining, current_pair_len) =
+            if let Some(manager) = self.window_manager.as_mut() {
+                manager.state.pair_ticks_remaining -= 1;
+                (
+                    manager.state.pair_ticks_remaining,
+                    manager.state.current_pair_len,
+                )
+            } else {
+                return;
+            };
+
+        if pairs_remaining == 0 {
+            let from = Self::to_offset_date(self.watermark - current_pair_len as u64);
+            let to = Self::to_offset_date(self.watermark);
+            let pair = self.combine_range(WheelRange::new(from, to));
+
+            let manager = self.window_manager.as_mut().unwrap();
+            let state = &mut manager.state;
+            let window = &mut manager.window;
+
+            // insert pair into window aggregator
+            window.push(pair.unwrap_or(A::IDENTITY));
+
+            // Update pair metadata
+            state.update_pair_len();
+            state.next_pair_end = self.watermark + state.current_pair_len as u64;
+            state.pair_ticks_remaining = state.current_pair_duration().whole_seconds() as usize;
+
+            if self.watermark == state.next_window_end {
+                // insert window result
+                windows.push((self.watermark, window.query()));
+                // clean up
+                window.pop();
+                // adjust next window end
+                state.next_window_end += state.slide as u64;
+            }
         }
     }
 
@@ -622,7 +672,7 @@ where
     pub fn advance_and_emit_deltas(
         &mut self,
         duration: time_internal::Duration,
-        waw: &mut WriteAheadWheel<A>,
+        waw: &mut WriterWheel<A>,
     ) -> Vec<Option<A::PartialAggregate>> {
         let ticks: usize = duration.whole_seconds() as usize;
 
@@ -640,9 +690,13 @@ where
 
     /// Advances the time of the wheel aligned by the lowest unit (Second)
     #[inline]
-    pub(crate) fn advance_to(&mut self, watermark: u64, waw: &mut WriteAheadWheel<A>) {
+    pub(crate) fn advance_to(
+        &mut self,
+        watermark: u64,
+        waw: &mut WriterWheel<A>,
+    ) -> Vec<Window<A::PartialAggregate>> {
         let diff = watermark.saturating_sub(self.watermark());
-        self.advance(time_internal::Duration::milliseconds(diff as i64), waw);
+        self.advance(time_internal::Duration::milliseconds(diff as i64), waw)
     }
 
     /// Advances the wheel by applying a set of deltas where each delta represents the lowest unit of time
@@ -742,14 +796,6 @@ where
 
         assert!(end > start, "End date needs to be larger than start date");
 
-        #[cfg(feature = "cache")]
-        {
-            // Checks whether the wheel range is already cached, avoiding overhead of query planning + execution
-            if let Some(agg) = self.cache.get(&range) {
-                return (Some(agg), 0);
-            }
-        }
-
         // create the best possible execution plan
         let exec = self.create_exec_plan(range);
 
@@ -759,8 +805,9 @@ where
             }
             ExecutionPlan::CombinedAggregation(combined) => self.combined_aggregation(combined),
             ExecutionPlan::LandmarkAggregation => self.analyze_landmark(),
-            ExecutionPlan::InverseLandmarkAggregation(wheel_agg) => {
-                self.inverse_landmark_aggregation(wheel_agg)
+            ExecutionPlan::InverseLandmarkAggregation(wheel_aggs) => {
+                let (result, cost) = self.inverse_landmark_aggregation(wheel_aggs);
+                (Some(result), cost)
             }
         }
     }
@@ -768,11 +815,6 @@ where
     // Used when optimizer hints is enabled to calculate a bound for executing combined aggregation
     #[inline]
     fn combined_aggregation_hint_bound(&self) -> usize {
-        // #[cfg(feature = "simd")]
-        // {
-        //     let remainder = slots % A::SIMD_LANES;
-        //     slots = (slots / A::SIMD_LANES) + remainder;
-        // }
         let heuristics = &self.optimizer.heuristics;
 
         match (A::combine_hint(), A::simd_support()) {
@@ -788,19 +830,24 @@ where
     /// Performs a given Combined Aggregation and returns the partial aggregate and the cost of the operation
     fn inverse_landmark_aggregation(
         &self,
-        wheel_aggregation: WheelAggregation,
-    ) -> (Option<A::PartialAggregate>, usize) {
+        wheel_aggregations: WheelAggregations,
+    ) -> (A::PartialAggregate, usize) {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.inverse_landmark);
 
         // get landmark partial
         let (landmark, lcost) = self.analyze_landmark();
-        // get [wheel_start, start) agg
-        let agg = self.wheel_aggregation(wheel_aggregation.range);
-        // apply inverse combine to get the result
         let combine_inverse = A::combine_inverse().unwrap(); // assumed to be safe as it has been verified by the plan generation
-        let inversed = combine_inverse(landmark.unwrap_or(A::IDENTITY), agg.unwrap_or(A::IDENTITY));
-        (Some(inversed), lcost + wheel_aggregation.cost())
+
+        wheel_aggregations
+            .iter()
+            .fold((landmark.unwrap_or(A::IDENTITY), lcost), |mut acc, plan| {
+                let cost = plan.cost();
+                let agg = self.wheel_aggregation(plan.range).unwrap_or(A::IDENTITY);
+                acc.0 = combine_inverse(acc.0, agg);
+                acc.1 += cost;
+                acc
+            })
     }
 
     /// Performs a given Combined Aggregation and returns the partial aggregate and the cost of the operation
@@ -854,14 +901,24 @@ where
             return best_plan;
         }
 
-        // Inverse Landmark Aggregation optimization
-        if A::invertible() && end_ms >= self.watermark() {
-            // [wheel_start, start)
-            let wheel_agg = self.wheel_aggregation_plan(WheelRange::new(
+        if A::invertible() {
+            let mut aggregations = WheelAggregations::default();
+
+            // always include: [wheel_start, start]
+            aggregations.push(self.wheel_aggregation_plan(WheelRange::new(
                 Self::to_offset_date(wheel_start),
                 range.start,
-            ));
-            let inverse_plan = ExecutionPlan::InverseLandmarkAggregation(wheel_agg);
+            )));
+
+            // if range.end != current watermark also include [end, watermark_now]
+            if end_ms < self.watermark() {
+                aggregations.push(self.wheel_aggregation_plan(WheelRange::new(
+                    range.end,
+                    Self::to_offset_date(self.watermark()),
+                )));
+            }
+
+            let inverse_plan = ExecutionPlan::InverseLandmarkAggregation(aggregations);
 
             best_plan = cmp::min(best_plan, inverse_plan);
         }
@@ -1317,9 +1374,9 @@ where
 
         // make sure both wheels are aligned by time
         if self.watermark() > other_watermark {
-            other.advance_to(self.watermark(), &mut WriteAheadWheel::default());
+            other.advance_to(self.watermark(), &mut WriterWheel::default());
         } else {
-            self.advance_to(other_watermark, &mut WriteAheadWheel::default());
+            self.advance_to(other_watermark, &mut WriterWheel::default());
         }
 
         // merge all aggregation wheels
@@ -1558,8 +1615,8 @@ mod tests {
 
         // Runs a Inverse Landmark Execution
         let result = haw.combine_range(WheelRange::new(start, end));
-        // let plan = haw.create_exec_plan(WheelRange::new(start, end));
-        // assert!(matches!(plan, ExecutionPlan::InverseLandmarkAggregation(_)));
+        let plan = haw.create_exec_plan(WheelRange::new(start, end));
+        assert!(matches!(plan, ExecutionPlan::InverseLandmarkAggregation(_)));
         assert_eq!(result, Some(241200));
     }
 }

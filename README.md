@@ -24,16 +24,7 @@ Features:
     - ``#[no_std]`` compatible (requires ``alloc``)
     - WASM friendly
 
-## How it works
-
-µWheel is designed around event-time (Low Watermarking) indexed aggregate wheels.
-Writes are handled by a writer wheel, which supports in-place aggregation and is
-optimized for single-threaded ingestion. Reads, on the other hand, are managed through a hierarchically event-time-indexed
-reader wheel which uses a wheel-centric query optimizer.
-
-
 ## Aggregation Framework
-
 
 * ``lift(input) -> MutablePartialAggregate``
     * Lifts input data into a mutable aggregate
@@ -76,8 +67,6 @@ See a user-defined aggregator example [here](examples/aggregator/).
     - Enables all aggregation
 - `top_n`
     - Enables Top-N aggregation
-- `window`
-    - Enables optimizations for streaming window aggregation queries
 - `simd` (_requires `nightly`_)
     - Enables support to speed up aggregation functions with SIMD operations
 - `sync` (_implicitly enables `std`_)
