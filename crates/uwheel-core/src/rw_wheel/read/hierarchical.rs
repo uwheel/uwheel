@@ -458,6 +458,7 @@ where
     window_manager: Option<WindowManager<A>>,
     optimizer: Optimizer,
     #[cfg(feature = "timer")]
+    #[cfg_attr(feature = "serde", serde(skip))]
     timer: Rc<RefCell<RawTimerWheel<TimerAction<A>>>>,
     #[cfg(feature = "profiler")]
     stats: Stats,

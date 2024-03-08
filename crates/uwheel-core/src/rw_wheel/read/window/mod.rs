@@ -1,7 +1,7 @@
 mod state;
 mod util;
 
-use crate::aggregator::Aggregator;
+use crate::{aggregator::Aggregator, time_internal::Duration};
 use state::State;
 
 #[cfg(not(feature = "std"))]
@@ -14,17 +14,54 @@ use std::collections::VecDeque;
 
 use self::util::pairs_space;
 
+/// A builder used to define a window specfification
+#[derive(Copy, Clone)]
+pub struct WindowBuilder {
+    /// Defines the window range
+    pub range: Duration,
+    /// Defines the slide of the window
+    pub slide: Duration,
+}
+
+impl Default for WindowBuilder {
+    fn default() -> Self {
+        Self {
+            range: Duration::seconds(0),
+            slide: Duration::seconds(0),
+        }
+    }
+}
+
+impl WindowBuilder {
+    /// Configures the builder to create a window with the given range
+    pub fn with_range(mut self, range: Duration) -> Self {
+        self.range = range;
+        self
+    }
+    /// Configures the builder to create a window with the given slide
+    pub fn with_slide(mut self, slide: Duration) -> Self {
+        self.slide = slide;
+        self
+    }
+}
+
+impl From<(Duration, Duration)> for WindowBuilder {
+    fn from(val: (Duration, Duration)) -> Self {
+        WindowBuilder::default().with_range(val.0).with_slide(val.1)
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 pub struct WindowManager<A: Aggregator> {
-    pub(crate) window: Window<A>,
+    pub(crate) window: WindowAggregator<A>,
     pub(crate) state: State,
 }
 impl<A: Aggregator> WindowManager<A> {
     pub fn new(watermark: u64, range: usize, slide: usize) -> Self {
         let state = State::new(watermark, range, slide);
         let pairs = pairs_space(range, slide);
-        let window = Window::with_capacity(pairs);
+        let window = WindowAggregator::with_capacity(pairs);
 
         Self { window, state }
     }
@@ -32,46 +69,46 @@ impl<A: Aggregator> WindowManager<A> {
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
-pub enum Window<A: Aggregator> {
+pub enum WindowAggregator<A: Aggregator> {
     Soe(SubtractOnEvict<A>),
     TwoStacks(TwoStacks<A>),
 }
-impl<A: Aggregator> Default for Window<A> {
+impl<A: Aggregator> Default for WindowAggregator<A> {
     fn default() -> Self {
         if A::invertible() {
-            Window::Soe(SubtractOnEvict::new())
+            WindowAggregator::Soe(SubtractOnEvict::new())
         } else {
-            Window::TwoStacks(TwoStacks::new())
+            WindowAggregator::TwoStacks(TwoStacks::new())
         }
     }
 }
 
-impl<A: Aggregator> Window<A> {
+impl<A: Aggregator> WindowAggregator<A> {
     pub fn with_capacity(capacity: usize) -> Self {
         if A::invertible() {
-            Window::Soe(SubtractOnEvict::with_capacity(capacity))
+            WindowAggregator::Soe(SubtractOnEvict::with_capacity(capacity))
         } else {
-            Window::TwoStacks(TwoStacks::with_capacity(capacity))
+            WindowAggregator::TwoStacks(TwoStacks::with_capacity(capacity))
         }
     }
     pub fn push(&mut self, agg: A::PartialAggregate) {
         match self {
-            Window::Soe(soe) => soe.push(agg),
-            Window::TwoStacks(stacks) => stacks.push(agg),
+            WindowAggregator::Soe(soe) => soe.push(agg),
+            WindowAggregator::TwoStacks(stacks) => stacks.push(agg),
         }
     }
 
     pub fn query(&self) -> A::PartialAggregate {
         match self {
-            Window::Soe(soe) => soe.query(),
-            Window::TwoStacks(stacks) => stacks.query(),
+            WindowAggregator::Soe(soe) => soe.query(),
+            WindowAggregator::TwoStacks(stacks) => stacks.query(),
         }
     }
 
     pub fn pop(&mut self) {
         match self {
-            Window::Soe(soe) => soe.pop(),
-            Window::TwoStacks(stacks) => stacks.pop(),
+            WindowAggregator::Soe(soe) => soe.pop(),
+            WindowAggregator::TwoStacks(stacks) => stacks.pop(),
         }
     }
 }
@@ -189,12 +226,17 @@ impl<A: Aggregator> TwoStacks<A> {
 
 #[cfg(test)]
 mod tests {
+    use super::WindowBuilder;
     use crate::{aggregator::sum::U64SumAggregator, Duration, Entry, NumericalDuration, RwWheel};
 
     #[test]
     fn window_30_sec_range_10_sec_slide_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(1533081600000);
-        wheel.window(Duration::seconds(30), Duration::seconds(10));
+        wheel.window(
+            WindowBuilder::default()
+                .with_range(Duration::seconds(30))
+                .with_slide(Duration::seconds(10)),
+        );
 
         window_30_sec_range_10_sec_slide(wheel);
     }
@@ -246,7 +288,11 @@ mod tests {
     #[test]
     fn window_60_sec_range_10_sec_slide_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(0);
-        wheel.window(Duration::seconds(60), Duration::seconds(10));
+        wheel.window(
+            WindowBuilder::default()
+                .with_range(Duration::seconds(60))
+                .with_slide(Duration::seconds(10)),
+        );
         window_60_sec_range_10_sec_slide(wheel);
     }
 
@@ -288,7 +334,11 @@ mod tests {
     #[test]
     fn window_2_min_range_10_sec_slide_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(0);
-        wheel.window(Duration::minutes(2), Duration::seconds(10));
+        wheel.window(
+            WindowBuilder::default()
+                .with_range(Duration::minutes(2))
+                .with_slide(Duration::seconds(10)),
+        );
         window_120_sec_range_10_sec_slide(wheel);
     }
     #[test]
@@ -296,7 +346,11 @@ mod tests {
     fn window_10_sec_range_3_sec_slide_test() {
         // TODO: fixed uneven pairs
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(0);
-        wheel.window(Duration::seconds(10), Duration::seconds(3));
+        wheel.window(
+            WindowBuilder::default()
+                .with_range(Duration::seconds(10))
+                .with_slide(Duration::seconds(3)),
+        );
         window_10_sec_range_3_sec_slide(wheel);
     }
 

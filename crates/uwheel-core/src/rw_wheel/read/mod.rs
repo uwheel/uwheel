@@ -6,20 +6,22 @@ pub mod aggregation;
 pub mod hierarchical;
 
 mod plan;
-mod window;
+pub(crate) mod window;
 
 #[cfg(feature = "profiler")]
 pub(crate) mod stats;
 #[cfg(feature = "timer")]
 use crate::rw_wheel::timer::{TimerAction, TimerError};
-use crate::time_internal;
 
 use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, time_internal::Duration};
 pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 
 use crate::aggregator::Aggregator;
 
-use self::hierarchical::{HawConf, Window};
+use self::{
+    hierarchical::{HawConf, Window},
+    window::WindowBuilder,
+};
 
 use super::write::WriterWheel;
 
@@ -126,8 +128,8 @@ where
     }
 
     #[doc(hidden)]
-    pub fn window(&mut self, range: time_internal::Duration, slide: time_internal::Duration) {
-        self.inner.write().window(range, slide);
+    pub fn window(&mut self, window: WindowBuilder) {
+        self.inner.write().window(window.range, window.slide);
     }
 
     /// Advance the watermark of the wheel by the given [Duration]

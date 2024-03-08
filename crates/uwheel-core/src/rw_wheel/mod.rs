@@ -25,6 +25,7 @@ pub use wheel_ext::WheelExt;
 
 use self::read::{
     hierarchical::{HawConf, Window},
+    window::WindowBuilder,
     ReaderWheel,
 };
 
@@ -110,8 +111,8 @@ where
     /// Configures a periodic window aggregation with range ``range`` and slide ``slide``
     ///
     /// Results of the window are returned when advancing the wheel [Self::advance_to]
-    pub fn window(&mut self, range: time_internal::Duration, slide: time_internal::Duration) {
-        self.reader.window(range, slide);
+    pub fn window(&mut self, window: impl Into<WindowBuilder>) {
+        self.reader.window(window.into());
     }
 
     /// Inserts an entry into the wheel
