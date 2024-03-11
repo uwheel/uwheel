@@ -1,0 +1,14 @@
+[package]
+name = "compression"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+categories.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[dependencies]
+uwheel.workspace = true
+fastrand.workspace = true
+clap.workspace = true
+pco.workspace = true

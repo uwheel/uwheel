@@ -3,6 +3,9 @@ use core::fmt::Debug;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
+#[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
+
 use crate::rw_wheel::read::hierarchical::CombineHint;
 
 /// An All Aggregator enabling the following functions (MAX, MIN, SUM, COUNT, AVG).
@@ -155,7 +158,41 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     fn combine_hint() -> Option<CombineHint> {
         None
     }
+
+    #[doc(hidden)]
+    fn compression_support() -> bool {
+        Self::compression().is_some()
+    }
+
+    /// Optional compression support for partial aggregates
+    ///
+    /// A default ``None`` is returned if there is no compression support available.
+    fn compression() -> Option<Compression<Self::PartialAggregate>> {
+        None
+    }
 }
+
+/// Defines how partial aggregates are to be compressed and decompressed
+#[allow(dead_code)]
+pub struct Compression<T> {
+    pub(crate) compressor: Compressor<T>,
+    pub(crate) decompressor: Decompressor<T>,
+}
+
+impl<T> Compression<T> {
+    /// Creates a new Compression object
+    pub fn new(compressor: Compressor<T>, decompressor: Decompressor<T>) -> Self {
+        Self {
+            compressor,
+            decompressor,
+        }
+    }
+}
+
+/// Alias for a Compression function
+pub type Compressor<T> = Box<dyn Fn(&[T]) -> Vec<u8>>;
+/// Alias for a Decompression function
+pub type Decompressor<T> = Box<dyn Fn(&[u8]) -> Vec<T>>;
 
 #[cfg(not(feature = "serde"))]
 /// Bounds for Aggregator Input

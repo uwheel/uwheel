@@ -16,10 +16,11 @@ Features:
     - Pre-aggregation
     - Exploits hierarchical nature of time
     - Implicit timestamps (event-time indexed wheels)
+    - Workload-aware Compression
 - Performance
     - Decoupled write and read paths
     - High-throughput ingestion
-    - Low-latency queries
+    - Low-latency queries through wheel-based query optimizer
 - Embeddable
     - ``#[no_std]`` compatible (requires ``alloc``)
     - WASM friendly

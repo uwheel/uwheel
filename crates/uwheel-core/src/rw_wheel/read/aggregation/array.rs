@@ -3,6 +3,12 @@ use crate::Aggregator;
 use core::ops::{Bound, Range, RangeBounds};
 
 #[cfg(not(feature = "std"))]
+use alloc::collections::VecDeque;
+
+#[cfg(feature = "std")]
+use std::collections::VecDeque;
+
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
 /// An array of partial aggregates referenced from an underlying byte slice
@@ -299,5 +305,105 @@ impl<A: Aggregator> PrefixArray<A> {
         };
         // dbg!(start, end, len);
         A::prefix_query(self.prefix.as_ref(), start, end)
+    }
+}
+
+/// A Compressed array which enables user-defined compression
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
+#[derive(Clone, Debug)]
+pub struct CompressedArray<A: Aggregator> {
+    buffer: MutablePartialArray<A>,
+    chunks: VecDeque<Vec<u8>>,
+    pub(crate) chunk_size: usize,
+}
+
+impl<A: Aggregator> CompressedArray<A> {
+    pub(crate) fn new(chunk_size: usize) -> Self {
+        assert!(
+            A::compression_support(),
+            "CompressedArray requires the Compression method to implemented in Aggregator"
+        );
+
+        Self {
+            buffer: Default::default(),
+            chunks: Default::default(),
+            chunk_size,
+        }
+    }
+
+    pub(crate) fn get(&self, slot: usize) -> Option<&A::PartialAggregate> {
+        self.buffer.get(slot)
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        (self.chunk_size * self.chunks.len()) + self.buffer.len()
+    }
+    pub(crate) fn _is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[doc(hidden)]
+    pub fn size_bytes(&self) -> usize {
+        let buffer_size = self.buffer.size_bytes();
+        let compressed_size = self.chunks.iter().fold(0, |mut acc, chunk| {
+            acc += chunk.len();
+            acc
+        });
+
+        buffer_size + compressed_size
+    }
+
+    pub(crate) fn push_front(&mut self, agg: A::PartialAggregate) {
+        self.buffer.push_front(agg);
+        // if we have reached the chunk size then compress
+        if self.buffer.len() == self.chunk_size {
+            let compressor = A::compression().unwrap().compressor;
+            let chunk = (compressor)(self.buffer.as_ref());
+            self.chunks.push_front(chunk);
+
+            // clear current buffer
+            self.buffer.clear();
+        }
+    }
+    pub(crate) fn pop_back(&mut self) {
+        self.chunks.pop_back();
+    }
+
+    #[inline]
+    pub(crate) fn range_query<R>(&self, range: R) -> Option<A::PartialAggregate>
+    where
+        R: RangeBounds<usize>,
+    {
+        let len = self.len();
+
+        let start = match range.start_bound() {
+            Bound::Included(&n) => n,
+            Bound::Excluded(&n) => n + 1,
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(&n) => n + 1,
+            Bound::Excluded(&n) => n - 1,
+            Bound::Unbounded => len,
+        };
+
+        let query_len = end - start;
+        let mut array: MutablePartialArray<A> = MutablePartialArray::with_capacity(query_len);
+        array.extend_from_slice(self.buffer.as_ref());
+
+        // get len of range without the buffer
+        let without_buffer_len = query_len.saturating_sub(self.buffer.len());
+        // calculate number of chunks we need to decompress
+        let chunks = (without_buffer_len % self.chunk_size) + 1;
+
+        // decompress chunks and extend array
+        for chunk in self.chunks.iter().take(chunks) {
+            let decompressor = A::compression().unwrap().decompressor;
+            let decompressed_chunk = (decompressor)(chunk);
+            array.extend_from_slice(&decompressed_chunk);
+        }
+        // finally query the partials
+        array.range_query(range)
     }
 }

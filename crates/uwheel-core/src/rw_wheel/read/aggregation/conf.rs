@@ -70,17 +70,29 @@ impl CompressionPolicy {
     }
 }
 
+/// Enum containing different data layouts
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Copy, Clone, Default, Debug)]
+pub enum DataLayout {
+    /// The default layout which maintains partial aggregates in its raw format
+    #[default]
+    Normal,
+    /// Configures the data to use compression and compresses at the given chunk size
+    Compressed(usize),
+    /// A prefix-sum data layout that requires double the space of the normal layout
+    Prefix,
+}
+
 /// Configuration for an Aggregation Wheel
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Copy, Clone, Debug)]
 pub struct WheelConf {
     pub(crate) capacity: usize,
     pub(crate) watermark: u64,
-    pub(crate) compression: CompressionPolicy,
+    pub(crate) data_layout: DataLayout,
     pub(crate) tick_size_ms: u64,
     pub(crate) retention: RetentionPolicy,
     pub(crate) drill_down: bool,
-    pub(crate) prefix_sum: bool,
 }
 
 impl WheelConf {
@@ -89,17 +101,11 @@ impl WheelConf {
         Self {
             capacity,
             watermark: Default::default(),
-            compression: Default::default(),
+            data_layout: Default::default(),
             tick_size_ms,
             retention: Default::default(),
             drill_down: false,
-            prefix_sum: false,
         }
-    }
-
-    /// Sets the prefix-sum flag
-    pub fn set_prefix_sum(&mut self, prefix_sum: bool) {
-        self.prefix_sum = prefix_sum;
     }
 
     /// Sets the drill down flag
@@ -116,22 +122,18 @@ impl WheelConf {
         self
     }
 
-    /// Configures the wheel to use prefix-sum optimization
-    pub fn with_prefix_sum(mut self, prefix_sum: bool) -> Self {
-        self.prefix_sum = prefix_sum;
-        self
-    }
     /// Sets the retention policy for this wheel
     pub fn set_retention_policy(&mut self, policy: RetentionPolicy) {
         self.retention = policy;
     }
-    /// Sets the compression for this wheel
-    pub fn set_compression_policy(&mut self, policy: CompressionPolicy) {
-        self.compression = policy;
+
+    /// Sets the data layout for this wheel
+    pub fn set_data_layout(&mut self, layout: DataLayout) {
+        self.data_layout = layout;
     }
-    /// Sets the compression for this wheel
-    pub fn with_compression_policy(mut self, policy: CompressionPolicy) -> Self {
-        self.compression = policy;
+    /// Configures the wheel to use the given data layout
+    pub fn with_data_layout(mut self, layout: DataLayout) -> Self {
+        self.data_layout = layout;
         self
     }
     /// Configures the wheel to use the given retention policy

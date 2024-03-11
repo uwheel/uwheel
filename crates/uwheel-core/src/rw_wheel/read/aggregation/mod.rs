@@ -38,7 +38,7 @@ use array::MutablePartialArray;
 
 use self::{
     array::PartialArray,
-    conf::{CompressionPolicy, RetentionPolicy, WheelConf},
+    conf::{DataLayout, RetentionPolicy, WheelConf},
     data::Data,
 };
 
@@ -132,8 +132,6 @@ pub struct AggregationWheel<A: Aggregator> {
     total: Option<A::PartialAggregate>,
     /// The current watermark for this wheel
     watermark: u64,
-    /// Compression policy for the wheel
-    compression: CompressionPolicy,
     /// Configured tick size in milliseconds (seconds wheel -> 1000ms)
     tick_size_ms: u64,
     /// Retention policy for the wheel
@@ -143,8 +141,6 @@ pub struct AggregationWheel<A: Aggregator> {
     data: Data<A>,
     /// Higher-order aggregates indexed by event time
     drill_down_slots: MutablePartialArray<A>,
-    /// flag indicating whether prefix-sum optimizations is turned on
-    prefix_sum: bool,
     /// Keeps track whether we have done a full rotation (rotation_count == num_slots)
     rotation_count: usize,
     #[cfg(test)]
@@ -159,28 +155,31 @@ impl<A: Aggregator> AggregationWheel<A> {
         let capacity = conf.capacity;
         let num_slots = crate::capacity_to_slots!(capacity);
 
-        // sanity check
-        let data = if conf.prefix_sum {
-            assert!(
-                A::invertible(),
-                "Cannot configure prefix-sum without invertible agg function"
-            );
-            Data::create_prefix_array()
-        } else {
-            Data::create_array_with_capacity(num_slots)
+        // Configure data layout
+        let data = match conf.data_layout {
+            DataLayout::Normal => Data::create_array_with_capacity(num_slots),
+            DataLayout::Prefix => {
+                assert!(
+                    A::invertible(),
+                    "Cannot configure prefix-sum without invertible agg function"
+                );
+                Data::create_prefix_array()
+            }
+            DataLayout::Compressed(chunk_size) => {
+                assert!(A::compression_support(), "Compressed data layout requires the aggregator to implement compressor + decompressor");
+                Data::create_compressed_array(chunk_size)
+            }
         };
 
         Self {
             capacity,
             num_slots,
             data,
-            prefix_sum: conf.prefix_sum,
             drill_down_slots: MutablePartialArray::default(),
             total: None,
             watermark: conf.watermark,
             tick_size_ms: conf.tick_size_ms,
             drill_down: conf.drill_down,
-            compression: conf.compression,
             retention: conf.retention,
             rotation_count: 0,
             #[cfg(test)]
@@ -347,7 +346,7 @@ impl<A: Aggregator> AggregationWheel<A> {
     where
         R: RangeBounds<usize>,
     {
-        self.aggregate(range).map(|res| A::lower(res))
+        self.aggregate(range).map(A::lower)
     }
 
     /// Shift the tail and clear any old entry
@@ -382,11 +381,10 @@ impl<A: Aggregator> AggregationWheel<A> {
         let mut new = Self::new(WheelConf {
             capacity: self.capacity,
             watermark: self.watermark,
-            compression: self.compression,
+            data_layout: self.data.layout(),
             tick_size_ms: self.tick_size_ms,
             retention: self.retention,
             drill_down: self.drill_down,
-            prefix_sum: self.prefix_sum,
         });
         core::mem::swap(self, &mut new);
     }
@@ -545,16 +543,63 @@ impl<A: Aggregator> WheelExt for AggregationWheel<A> {
 mod tests {
     use super::*;
     use crate::{
-        aggregator::{min::U64MinAggregator, sum::U64SumAggregator},
+        aggregator::{
+            min::U64MinAggregator,
+            sum::{U32SumAggregator, U64SumAggregator},
+            Compression,
+        },
         rw_wheel::read::hierarchical::HOUR_TICK_MS,
     };
+
+    #[derive(Clone, Debug, Default)]
+    pub struct PcoSumAggregator;
+
+    impl Aggregator for PcoSumAggregator {
+        const IDENTITY: Self::PartialAggregate = 0;
+        type CombineSimd = fn(&[Self::PartialAggregate]) -> Self::PartialAggregate;
+
+        type CombineInverse =
+            fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate;
+
+        type Input = u32;
+        type PartialAggregate = u32;
+        type MutablePartialAggregate = u32;
+        type Aggregate = u32;
+
+        fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
+            input
+        }
+        fn combine_mutable(mutable: &mut Self::MutablePartialAggregate, input: Self::Input) {
+            *mutable += input
+        }
+        fn freeze(a: Self::MutablePartialAggregate) -> Self::PartialAggregate {
+            a
+        }
+
+        fn combine(a: Self::PartialAggregate, b: Self::PartialAggregate) -> Self::PartialAggregate {
+            a + b
+        }
+        fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
+            a
+        }
+
+        fn compression() -> Option<Compression<Self::PartialAggregate>> {
+            let compressor = Box::new(|slice: &[u32]| {
+                pco::standalone::auto_compress(slice, pco::DEFAULT_COMPRESSION_LEVEL)
+            });
+            let decompressor = Box::new(|slice: &[u8]| {
+                pco::standalone::auto_decompress(slice).expect("failed to decompress")
+            });
+            Some(Compression::new(compressor, decompressor))
+        }
+    }
 
     #[test]
     #[should_panic]
     fn invalid_prefix_conf() {
         let conf = WheelConf::new(HOUR_TICK_MS, 24)
             .with_retention_policy(RetentionPolicy::Keep)
-            .with_prefix_sum(true);
+            .with_data_layout(DataLayout::Prefix);
         // should panic as U64MinAggregator does not support prefix-sum
         let _wheel = AggregationWheel::<U64MinAggregator>::new(conf);
     }
@@ -563,7 +608,7 @@ mod tests {
     fn agg_wheel_prefix_test() {
         let prefix_conf = WheelConf::new(HOUR_TICK_MS, 24)
             .with_retention_policy(RetentionPolicy::Keep)
-            .with_prefix_sum(true);
+            .with_data_layout(DataLayout::Prefix);
         let mut prefix_wheel = AggregationWheel::<U64SumAggregator>::new(prefix_conf);
 
         let conf = WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
@@ -581,6 +626,48 @@ mod tests {
         let prefix_result = prefix_wheel.aggregate(0..4);
         let result = wheel.aggregate(0..4);
         assert_eq!(prefix_result, result);
+    }
+
+    #[test]
+    fn compressed_array_test() {
+        let compressed_conf = WheelConf::new(HOUR_TICK_MS, 24)
+            .with_retention_policy(RetentionPolicy::Keep)
+            .with_data_layout(DataLayout::Compressed(60));
+        let mut compressed_wheel = AggregationWheel::<PcoSumAggregator>::new(compressed_conf);
+
+        let conf = WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
+        let mut wheel = AggregationWheel::<U32SumAggregator>::new(conf);
+
+        for i in 0..120 {
+            wheel.insert_slot(WheelSlot::with_total(Some(i)));
+            compressed_wheel.insert_slot(WheelSlot::with_total(Some(i)));
+
+            wheel.tick();
+            compressed_wheel.tick();
+        }
+
+        let compressed_result = compressed_wheel.aggregate(0..4);
+        let result = wheel.aggregate(0..4);
+        assert_eq!(compressed_result, result);
+
+        assert_eq!(compressed_wheel.aggregate(0..4), wheel.aggregate(0..4));
+        assert_eq!(compressed_wheel.aggregate(55..75), wheel.aggregate(55..75));
+        assert_eq!(
+            compressed_wheel.aggregate(60..120),
+            wheel.aggregate(60..120)
+        );
+
+        // add half of the chunk_size to check whether it still works as intended
+        for i in 0..30 {
+            wheel.insert_slot(WheelSlot::with_total(Some(i)));
+            compressed_wheel.insert_slot(WheelSlot::with_total(Some(i)));
+
+            wheel.tick();
+            compressed_wheel.tick();
+        }
+
+        assert_eq!(compressed_wheel.aggregate(55..75), wheel.aggregate(55..75));
+        assert_eq!(compressed_wheel.aggregate(60..85), wheel.aggregate(60..85));
     }
 
     #[test]

@@ -6,7 +6,11 @@ use time::OffsetDateTime;
 
 use super::{
     super::write::WriterWheel,
-    aggregation::{conf::RetentionPolicy, maybe::MaybeWheel, AggregationWheel},
+    aggregation::{
+        conf::{DataLayout, RetentionPolicy},
+        maybe::MaybeWheel,
+        AggregationWheel,
+    },
     plan::{ExecutionPlan, WheelAggregation, WheelRanges},
     window::WindowManager,
 };
@@ -108,12 +112,12 @@ impl HawConf {
 
     /// Configures all wheels with prefix-sum enabled
     pub fn with_prefix_sum(mut self) -> Self {
-        self.seconds.set_prefix_sum(true);
-        self.minutes.set_prefix_sum(true);
-        self.hours.set_prefix_sum(true);
-        self.days.set_prefix_sum(true);
-        self.weeks.set_prefix_sum(true);
-        self.years.set_prefix_sum(true);
+        self.seconds.set_data_layout(DataLayout::Prefix);
+        self.minutes.set_data_layout(DataLayout::Prefix);
+        self.hours.set_data_layout(DataLayout::Prefix);
+        self.days.set_data_layout(DataLayout::Prefix);
+        self.weeks.set_data_layout(DataLayout::Prefix);
+        self.years.set_data_layout(DataLayout::Prefix);
 
         self
     }

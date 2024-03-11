@@ -54,6 +54,7 @@ time = { workspace = true, default-features = false, features = [
 fastrand.workspace = true
 rand.workspace = true
 criterion.workspace = true
+pco.workspace = true
 
 [[bench]]
 name = "combine"
