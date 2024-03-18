@@ -19,6 +19,11 @@ impl<T> DeltaState<T> {
         Self { oldest_ts, deltas }
     }
 
+    /// Pushes a delta into the Delta State
+    pub fn push(&mut self, delta: Option<T>) {
+        self.deltas.push(delta);
+    }
+
     /// Merge another DeltaState into this one
     ///
     /// Note that this assumes the states are sequential and the current wheel must contain the

@@ -68,6 +68,11 @@ where
         rw.delta_advance(state.deltas);
         rw
     }
+
+    /// Returns the current Delta State for the Reader Wheel
+    pub fn delta_state(&self) -> DeltaState<A::PartialAggregate> {
+        self.inner.read().delta_state()
+    }
     /// Returns the number of wheel slots used
     pub fn len(&self) -> usize {
         self.inner.read().len()
@@ -142,17 +147,6 @@ where
     ) -> Vec<Window<A::PartialAggregate>> {
         self.inner.write().advance(duration, waw)
     }
-    #[inline]
-    #[doc(hidden)]
-    pub fn advance_and_emit_deltas(
-        &self,
-        duration: Duration,
-        waw: &mut WriterWheel<A>,
-    ) -> DeltaState<A::PartialAggregate> {
-        let current_wm = self.watermark();
-        let deltas = self.inner.write().advance_and_emit_deltas(duration, waw);
-        DeltaState::new(current_wm, deltas)
-    }
 
     /// Advances the time of the wheel aligned by the lowest unit (Second)
     #[inline]
@@ -203,6 +197,7 @@ where
         self.inner.read().landmark()
     }
     /// Merges another [ReaderWheel] into this one
+    #[inline]
     pub fn merge(&self, other: &Self) {
         self.inner.write().merge(&mut other.inner.write());
     }

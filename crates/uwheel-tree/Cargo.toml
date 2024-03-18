@@ -12,9 +12,10 @@ targets = []
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-time = { version = "0.3.30", default-features = false, features = ["macros"]}
+time.workspace = true
 concurrent-map = "5.0.31"
 uwheel-core = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
 uwheel-core = { workspace = true, features = ["sum"] }
+time = { workspace = true, features = ["macros"] }

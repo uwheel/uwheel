@@ -11,13 +11,6 @@ pub fn advance_time_benchmark(c: &mut Criterion) {
                 advance_time(ticks as usize, b);
             },
         );
-        group.bench_with_input(
-            BenchmarkId::from_parameter(format!("advance-emit-deltas-{}-seconds", ticks)),
-            ticks,
-            |b, &ticks| {
-                advance_time_and_emit_deltas(ticks as usize, b);
-            },
-        );
     }
     for deltas in [1, 100, 1000, 10000, 100000, 1000000, 10000000].iter() {
         group.bench_with_input(
@@ -38,15 +31,6 @@ fn advance_time(ticks: usize, bencher: &mut Bencher) {
     bencher.iter(|| {
         time += ticks_as_ms;
         wheel.advance_to(time)
-    });
-}
-fn advance_time_and_emit_deltas(ticks: usize, bencher: &mut Bencher) {
-    let mut time = 0;
-    let ticks_as_ms = (ticks * 1000) as u64;
-    let mut wheel = RwWheel::<U64SumAggregator>::new(time);
-    bencher.iter(|| {
-        time += ticks_as_ms;
-        wheel.advance_to_and_emit_deltas(time)
     });
 }
 

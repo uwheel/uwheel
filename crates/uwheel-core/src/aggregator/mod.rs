@@ -6,8 +6,6 @@ use alloc::vec::Vec;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 
-use crate::rw_wheel::read::hierarchical::CombineHint;
-
 /// An All Aggregator enabling the following functions (MAX, MIN, SUM, COUNT, AVG).
 #[cfg(feature = "all")]
 pub mod all;
@@ -150,13 +148,6 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     #[doc(hidden)]
     fn simd_support() -> bool {
         Self::combine_simd().is_some()
-    }
-
-    /// Sets a hint whether the combine operation is cheap or expensive
-    ///
-    /// If specified the query optimizer will take this into context when creating plans
-    fn combine_hint() -> Option<CombineHint> {
-        None
     }
 
     #[doc(hidden)]

@@ -1,7 +1,7 @@
 //! uwheel-tree contains the Wheel-Tree index
 
 use core::hash::Hash;
-use uwheel_core::{aggregator::Aggregator, rw_wheel::read::hierarchical::WheelRange, ReadWheel};
+use uwheel_core::{aggregator::Aggregator, rw_wheel::read::hierarchical::WheelRange, ReaderWheel};
 
 pub trait Key: PartialEq + Ord + Hash + Eq + Send + Sync + Clone + 'static {}
 impl<T> Key for T where T: PartialEq + Ord + Hash + Eq + Send + Sync + Clone + 'static {}
@@ -34,8 +34,8 @@ pub struct WheelTree<K: Key + Minimum, A: Aggregator + Clone>
 where
     A::PartialAggregate: Sync,
 {
-    star: ReadWheel<A>,
-    inner: ConcurrentMap<K, ReadWheel<A>>,
+    star: ReaderWheel<A>,
+    inner: ConcurrentMap<K, ReaderWheel<A>>,
 }
 impl<K: Key + Minimum, A: Aggregator + Clone + 'static> Default for WheelTree<K, A>
 where
@@ -52,13 +52,13 @@ where
 {
     pub fn new() -> Self {
         Self {
-            star: ReadWheel::new(0),
+            star: ReaderWheel::new(0),
             inner: ConcurrentMap::new(),
         }
     }
-    /// Returns the ReadWheel for a given key
+    /// Returns the ReaderWheel for a given key
     #[inline]
-    pub fn get<Q>(&self, key: &Q) -> Option<ReadWheel<A>>
+    pub fn get<Q>(&self, key: &Q) -> Option<ReaderWheel<A>>
     where
         K: Borrow<Q>,
         Q: ?Sized + Ord + PartialEq,
@@ -261,11 +261,11 @@ where
     ///
     /// Note that this wheel may be updated from a different thread.
     #[inline]
-    pub fn insert(&self, key: K, wheel: ReadWheel<A>) {
+    pub fn insert(&self, key: K, wheel: ReaderWheel<A>) {
         self.inner.insert(key, wheel);
     }
 
-    pub fn insert_star(&mut self, wheel: ReadWheel<A>) {
+    pub fn insert_star(&mut self, wheel: ReaderWheel<A>) {
         self.star = wheel;
     }
 
@@ -275,7 +275,7 @@ where
         if let Some(wheel) = self.get(&key) {
             wheel.delta_advance(delta.deltas);
         } else {
-            let wheel = ReadWheel::from_delta_state(delta);
+            let wheel = ReaderWheel::from_delta_state(delta);
             self.inner.insert(key, wheel);
         }
     }
@@ -283,11 +283,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use uwheel_core::{
-        aggregator::sum::U64SumAggregator,
-        datetime,
-        time_internal::NumericalDuration,
-    };
+    use time::macros::datetime;
+    use uwheel_core::{aggregator::sum::U64SumAggregator, time_internal::NumericalDuration};
 
     use super::*;
 

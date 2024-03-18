@@ -19,11 +19,12 @@ use crate::{
     aggregator::Aggregator,
     cfg_not_sync,
     cfg_sync,
+    delta::DeltaState,
     rw_wheel::read::{
         aggregation::combine_or_insert,
         plan::{CombinedAggregation, WheelAggregations},
     },
-    time_internal::{self},
+    time_internal,
 };
 
 #[cfg(not(feature = "std"))]
@@ -61,6 +62,7 @@ pub const WEEK_TICK_MS: u64 = time::Duration::WEEK.whole_milliseconds() as u64;
 pub const YEAR_TICK_MS: u64 = WEEK_TICK_MS * 52;
 
 /// Configuration for a Hierarchical Aggregation Wheel
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug)]
 pub struct HawConf {
     /// Initial watermark of the wheel
@@ -79,6 +81,8 @@ pub struct HawConf {
     pub years: WheelConf,
     /// Optimizer configuration
     pub optimizer: Optimizer,
+    /// Flag indicating whether to maintain deltas within the wheel
+    pub generate_deltas: bool,
 }
 
 impl Default for HawConf {
@@ -92,6 +96,7 @@ impl Default for HawConf {
             weeks: WheelConf::new(WEEK_TICK_MS, WEEKS),
             years: WheelConf::new(YEAR_TICK_MS, YEARS),
             optimizer: Default::default(),
+            generate_deltas: false,
         }
     }
 }
@@ -162,6 +167,12 @@ impl HawConf {
     /// Configures the years granularity
     pub fn with_years(mut self, years: WheelConf) -> Self {
         self.years = years;
+        self
+    }
+
+    /// Configures the wheel to generate and maintain deltas
+    pub fn with_deltas(mut self) -> Self {
+        self.generate_deltas = true;
         self
     }
 }
@@ -364,51 +375,20 @@ cfg_sync! {
 
 }
 
-/// Enum with combine cost variants
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[derive(Default, Debug, Clone, Copy, PartialEq)]
-pub enum CombineHint {
-    #[default]
-    /// Hints to a cheap aggregate function (e.g., SUM)
-    Cheap,
-    /// Hints to a computationally expensive combine operator (e.g., Top-N)
-    Expensive,
-}
-
-/// Default aggregation limit for cheap combine function + no SIMD
-pub const DEFAULT_CHEAP_COMBINE_NO_SIMD: usize = 1000;
-/// Default aggregation limit for cheap combine function + SIMD
-pub const DEFAULT_CHEAP_COMBINE_SIMD: usize = 15000;
-/// Default aggregation limit for expensive combine function + no SIMD
-pub const DEFAULT_EXPENSIVE_COMBINE_NO_SIMD: usize = 100;
-/// Default aggregation limit for expensive combine function + SIMD
-pub const DEFAULT_EXPENSIVE_COMBINE_SIMD: usize = 500;
-/// Default aggregation limit for unknown combine cost + no SIMD
-pub const DEFAULT_UNKNOWN_COST_NO_SIMD: usize = 500;
-/// Default aggregation limit for unknown combine cost + SIMD
-pub const DEFAULT_UNKNOWN_COST_SIMD: usize = 1000;
+/// Default threshold for SIMD-based Wheel Aggregations
+pub const DEFAULT_SIMD_THRESHOLD: usize = 15000;
 
 /// Optimizer Heuristics
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, Copy)]
 pub struct Heuristics {
-    cheap_combine_no_simd: usize,
-    cheap_combine_simd: usize,
-    expensive_combine_no_simd: usize,
-    expensive_combine_simd: usize,
-    unknown_cost_no_simd: usize,
-    unknown_cost_simd: usize,
+    simd_threshold: usize,
 }
 
 impl Default for Heuristics {
     fn default() -> Self {
         Self {
-            cheap_combine_no_simd: DEFAULT_CHEAP_COMBINE_NO_SIMD,
-            cheap_combine_simd: DEFAULT_CHEAP_COMBINE_SIMD,
-            expensive_combine_no_simd: DEFAULT_EXPENSIVE_COMBINE_NO_SIMD,
-            expensive_combine_simd: DEFAULT_EXPENSIVE_COMBINE_SIMD,
-            unknown_cost_no_simd: DEFAULT_UNKNOWN_COST_NO_SIMD,
-            unknown_cost_simd: DEFAULT_UNKNOWN_COST_SIMD,
+            simd_threshold: DEFAULT_SIMD_THRESHOLD,
         }
     }
 }
@@ -461,6 +441,8 @@ where
     years_wheel: MaybeWheel<A>,
     window_manager: Option<WindowManager<A>>,
     optimizer: Optimizer,
+    conf: HawConf,
+    delta: DeltaState<A::PartialAggregate>,
     #[cfg(feature = "timer")]
     #[cfg_attr(feature = "serde", serde(skip))]
     timer: Rc<RefCell<RawTimerWheel<TimerAction<A>>>>,
@@ -520,6 +502,8 @@ where
             weeks_wheel: MaybeWheel::new(weeks),
             years_wheel: MaybeWheel::new(years),
             optimizer: conf.optimizer,
+            conf,
+            delta: DeltaState::new(time, Vec::new()),
             window_manager: None,
             #[cfg(feature = "timer")]
             timer: Rc::new(RefCell::new(RawTimerWheel::default())),
@@ -531,6 +515,11 @@ where
     #[doc(hidden)]
     pub fn set_optimizer_hints(&mut self, hints: bool) {
         self.optimizer.use_hints = hints;
+    }
+
+    /// Returns the current DeltaState object
+    pub fn delta_state(&self) -> DeltaState<A::PartialAggregate> {
+        self.delta.clone()
     }
 
     /// Returns how many wheel slots are utilised
@@ -621,7 +610,17 @@ where
         if ticks <= Self::CYCLE_LENGTH_SECS as usize {
             for _ in 0..ticks {
                 // tick the write wheel and freeze mutable aggregate
-                self.tick(waw.tick().map(|m| A::freeze(m)));
+                let delta = waw.tick().map(A::freeze);
+
+                // Store delta if configured to
+                if self.conf.generate_deltas {
+                    self.delta.push(delta);
+                }
+
+                // Tick the HAW
+                self.tick(delta);
+
+                // maybe handle window if there is any configured
                 self.handle_window_maybe(&mut windows);
             }
         } else {
@@ -670,27 +669,6 @@ where
                 state.next_window_end += state.slide as u64;
             }
         }
-    }
-
-    /// Advances the watermark by the given duration and returns deltas that were applied
-    #[inline(always)]
-    pub fn advance_and_emit_deltas(
-        &mut self,
-        duration: time_internal::Duration,
-        waw: &mut WriterWheel<A>,
-    ) -> Vec<Option<A::PartialAggregate>> {
-        let ticks: usize = duration.whole_seconds() as usize;
-
-        let mut deltas = Vec::with_capacity(ticks);
-
-        for _ in 0..ticks {
-            let delta = waw.tick().map(|m| A::freeze(m));
-            // tick wheel first in case any timer has to fire
-            self.tick(delta);
-            // insert delta to our vec
-            deltas.push(delta);
-        }
-        deltas
     }
 
     /// Advances the time of the wheel aligned by the lowest unit (Second)
@@ -817,21 +795,6 @@ where
         }
     }
 
-    // Used when optimizer hints is enabled to calculate a bound for executing combined aggregation
-    #[inline]
-    fn combined_aggregation_hint_bound(&self) -> usize {
-        let heuristics = &self.optimizer.heuristics;
-
-        match (A::combine_hint(), A::simd_support()) {
-            (Some(CombineHint::Cheap), false) => heuristics.cheap_combine_no_simd,
-            (Some(CombineHint::Cheap), true) => heuristics.cheap_combine_simd,
-            (Some(CombineHint::Expensive), false) => heuristics.expensive_combine_no_simd,
-            (Some(CombineHint::Expensive), true) => heuristics.expensive_combine_simd,
-            (None, false) => heuristics.unknown_cost_no_simd,
-            (None, true) => heuristics.unknown_cost_simd,
-        }
-    }
-
     /// Performs a given Combined Aggregation and returns the partial aggregate and the cost of the operation
     fn inverse_landmark_aggregation(
         &self,
@@ -931,8 +894,9 @@ where
         // Check whether it is worth to create a combined plan as it comes with some overhead
         let combined_aggregation = {
             let scan_estimation = best_plan.cost();
-            if self.optimizer.use_hints {
-                scan_estimation > self.combined_aggregation_hint_bound()
+
+            if self.optimizer.use_hints && A::simd_support() {
+                scan_estimation > self.optimizer.heuristics.simd_threshold
             } else {
                 true // always generate a combined aggregation plan
             }

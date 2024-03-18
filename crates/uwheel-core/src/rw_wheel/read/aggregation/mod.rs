@@ -33,11 +33,9 @@ mod data;
 #[cfg(feature = "profiler")]
 use stats::Stats;
 
-use crate::rw_wheel::WheelExt;
 use array::MutablePartialArray;
 
 use self::{
-    array::PartialArray,
     conf::{DataLayout, RetentionPolicy, WheelConf},
     data::Data,
 };
@@ -316,6 +314,18 @@ impl<A: Aggregator> AggregationWheel<A> {
         }
     }
 
+    /// Returns number of slots used
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Returns ``true`` if the wheel is empty otherwise ``false``
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Returns the number of queryable slots
     #[inline]
     pub fn total_slots(&self) -> usize {
@@ -421,32 +431,6 @@ impl<A: Aggregator> AggregationWheel<A> {
         })
     }
 
-    /// Merges the slots from a zero-copy partial array into this one
-    pub fn merge_from_array(&mut self, array: &PartialArray<A>) {
-        if let Some(total) = array.combine_range(..) {
-            combine_or_insert::<A>(&mut self.total, total);
-        }
-        // self.slots.merge_with_ref(array);
-        unimplemented!();
-    }
-
-    /// Merges the slots from a reference
-    pub fn merge_from_ref(&mut self, array: impl AsRef<[A::PartialAggregate]>) {
-        if let Some(total) = A::combine_slice(array.as_ref()) {
-            combine_or_insert::<A>(&mut self.total, total);
-        }
-
-        // self.slots.merge_with_ref(array);
-        unimplemented!();
-    }
-
-    /// Merges the slots from an array partial arrays into this wheel
-    pub fn merge_from_arrays(&mut self, arrays: &[PartialArray<A>]) {
-        for array in arrays {
-            self.merge_from_array(array)
-        }
-    }
-
     /// Returns a reference to roll-up slots
     pub fn slots(&self) -> &MutablePartialArray<A> {
         unimplemented!();
@@ -463,9 +447,7 @@ impl<A: Aggregator> AggregationWheel<A> {
             combine_or_insert::<A>(&mut self.total, other_total)
         }
 
-        // self.slots.merge(&other.slots);
-        // self.drill_down_slots.merge(&other.drill_down_slots);
-        // TODO: merge drill-down also
+        self.data.merge(&other.data);
     }
 
     /// Tick the wheel by 1 slot
@@ -514,28 +496,6 @@ impl<A: Aggregator> AggregationWheel<A> {
     /// Returns a reference to the stats of the [AggregationWheel]
     pub fn stats(&self) -> &Stats {
         &self.stats
-    }
-}
-
-impl<A: Aggregator> WheelExt for AggregationWheel<A> {
-    fn num_slots(&self) -> usize {
-        self.num_slots
-    }
-    fn capacity(&self) -> usize {
-        self.capacity
-    }
-    fn head(&self) -> usize {
-        panic!("not supported")
-    }
-    fn tail(&self) -> usize {
-        panic!("not supported")
-    }
-
-    fn size_bytes(&self) -> Option<usize> {
-        // roll-up slots are stored on the heap, calculate how much bytes we are using for them..
-        let inner_slots = mem::size_of::<Option<A::PartialAggregate>>() * self.data.len();
-
-        Some(mem::size_of::<Self>() + inner_slots)
     }
 }
 

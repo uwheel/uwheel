@@ -1,4 +1,4 @@
-use crate::{aggregator::Aggregator, rw_wheel::read::hierarchical::CombineHint};
+use crate::aggregator::Aggregator;
 use core::{fmt::Debug, marker::PhantomData};
 
 mod entry;
@@ -72,10 +72,6 @@ where
     #[inline]
     fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
         a
-    }
-    // hint that this top-n combine operation is expensive
-    fn combine_hint() -> Option<CombineHint> {
-        Some(CombineHint::Expensive)
     }
 }
 #[cfg(test)]

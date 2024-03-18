@@ -16,7 +16,7 @@ mod stats;
 #[allow(dead_code)]
 mod timer;
 
-use crate::{aggregator::Aggregator, delta::DeltaState, time_internal, Entry, Error};
+use crate::{aggregator::Aggregator, time_internal, Entry, Error};
 use core::fmt::Debug;
 use write::{WriterWheel, DEFAULT_WRITE_AHEAD_SLOTS};
 
@@ -150,16 +150,6 @@ where
         let to = self.watermark() + duration.whole_milliseconds() as u64;
         self.advance_to(to)
     }
-    /// Advance the watermark of the wheel by the given [time::Duration] and returns deltas
-    #[inline]
-    pub fn advance_and_emit_deltas(
-        &mut self,
-        duration: time_internal::Duration,
-    ) -> DeltaState<A::PartialAggregate> {
-        let to = self.watermark() + duration.whole_milliseconds() as u64;
-        self.advance_to_and_emit_deltas(to)
-    }
-
     /// Advances the time of the wheel aligned by the lowest unit (Second)
     #[inline]
     pub fn advance_to(&mut self, watermark: u64) -> Vec<Window<A::PartialAggregate>> {
@@ -170,24 +160,7 @@ where
         self.reader.advance_to(watermark, &mut self.writer)
         // debug_assert_eq!(self.writer.watermark(), self.reader.watermark())
     }
-    /// Advances the time of the wheel aligned by the lowest unit (Second) and emits deltas
-    #[inline]
-    pub fn advance_to_and_emit_deltas(
-        &mut self,
-        watermark: u64,
-    ) -> DeltaState<A::PartialAggregate> {
-        #[cfg(feature = "profiler")]
-        profile_scope!(&self.stats.advance);
 
-        // Advance the read wheel
-        let delta_state = self.reader.advance_and_emit_deltas(
-            time_internal::Duration::milliseconds((watermark - self.watermark()) as i64),
-            &mut self.writer,
-        );
-        debug_assert_eq!(self.writer.watermark(), self.reader.watermark());
-
-        delta_state
-    }
     /// Returns an estimation of bytes used by the wheel
     pub fn size_bytes(&self) -> usize {
         let read = self.reader.as_ref().size_bytes();
@@ -312,14 +285,19 @@ mod tests {
     use crate::{aggregator::sum::U32SumAggregator, time_internal::*, *};
 
     #[test]
-    fn delta_emit_test() {
-        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
+    fn delta_generate_test() {
+        let haw_conf = HawConf::default().with_deltas();
+        let options = Options::default().with_haw_conf(haw_conf);
+
+        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::with_options(0, options);
         rw_wheel.insert(Entry::new(250, 1000));
         rw_wheel.insert(Entry::new(250, 2000));
         rw_wheel.insert(Entry::new(250, 3000));
         rw_wheel.insert(Entry::new(250, 4000));
 
-        let delta_state = rw_wheel.advance_to_and_emit_deltas(5000);
+        rw_wheel.advance_to(5000);
+        let delta_state = rw_wheel.read().delta_state();
+
         assert_eq!(delta_state.oldest_ts, 0);
         assert_eq!(
             delta_state.deltas,
@@ -501,29 +479,6 @@ mod tests {
     }
 
     // #[test]
-    // fn eager_wheel_test() {
-    //     let mut wheel = RwWheel::<U32SumAggregator, Eager>::new(0);
-
-    //     wheel.advance(60.seconds());
-    //     let watermark = wheel.watermark();
-
-    //     wheel.insert(Entry::new(100, watermark));
-    //     wheel.insert(Entry::new(10, watermark + 1000));
-
-    //     wheel.advance(1.seconds());
-
-    //     // both last 1 second and 1 minute should have a sum of 100
-    //     // as aggregation is done eagerly across both wheels
-    //     assert_eq!(wheel.read().interval(1.seconds()), Some(100));
-    //     assert_eq!(wheel.read().interval(1.minutes()), Some(100));
-
-    //     wheel.insert(Entry::new(10, watermark + 1000));
-
-    //     wheel.advance(60.seconds());
-    //     assert_eq!(wheel.read().interval(2.minutes()), Some(120));
-    // }
-
-    // #[test]
     // fn full_cycle_test() {
     //     let mut wheel = RwWheel::<U32SumAggregator>::new(0);
 
@@ -675,26 +630,6 @@ mod tests {
                 .sum::<u64>(),
             60u64 * 60 * 24
         );
-
-        // // test cut of last 5 seconds of last 1 minute + first 10 aggregates of last 2 min
-        // let decoded = wheel
-        //     .read()
-        //     .as_ref()
-        //     .minutes_unchecked()
-        //     .drill_down_cut(
-        //         DrillCut {
-        //             slot: 1,
-        //             range: 55..,
-        //         },
-        //         DrillCut {
-        //             slot: 2,
-        //             range: ..10,
-        //         },
-        //     )
-        //     .unwrap();
-        // assert_eq!(decoded.len(), 15);
-        // let sum = decoded.iter().sum::<u64>();
-        // assert_eq!(sum, 15u64);
     }
 
     #[should_panic]
@@ -779,62 +714,5 @@ mod tests {
         assert_eq!(wheel.read().landmark(), Some(6));
         // assert_eq!(wheel.read().interval(2.seconds()), Some(5));
         assert_eq!(wheel.read().interval(10.seconds()), Some(6));
-    }
-
-    #[test]
-    fn merge_drill_down_test() {
-        // let mut time = 0;
-
-        // let mut haw_conf = HawConf::default();
-        // haw_conf.seconds.set_drill_down(true);
-        // let minutes = haw_conf
-        //     .minutes
-        //     .with_drill_down(true)
-        //     .with_retention_policy(read::aggregation::conf::RetentionPolicy::Keep);
-        // let haw_conf = haw_conf.with_minutes(minutes);
-
-        // let options = Options::default().with_haw_conf(haw_conf);
-
-        // let mut wheel = RwWheel::<U32SumAggregator>::with_options(time, options);
-        // for _ in 0..30 {
-        //     let entry = Entry::new(1u32, time);
-        //     wheel.insert(entry);
-        //     time += 2000; // increase by 2 seconds
-        //     wheel.advance_to(time);
-        // }
-
-        // wheel.advance_to(time);
-
-        // let mut time = 0;
-        // let mut other_wheel = RwWheel::<U32SumAggregator>::with_options(time, options);
-
-        // for _ in 0..30 {
-        //     let entry = Entry::new(1u32, time);
-        //     other_wheel.insert(entry);
-        //     time += 2000; // increase by 2 seconds
-        //     other_wheel.advance_to(time);
-        // }
-
-        // other_wheel.advance_to(time);
-
-        // // merge other_wheel into ´wheel´
-        // wheel.read().merge(other_wheel.read());
-
-        // // same as drill_down_holes test but confirm that drill down slots have be merged between wheels
-        // let decoded = wheel
-        //     .read()
-        //     .as_ref()
-        //     .minutes_unchecked()
-        //     .table()
-        //     .drill_down(0)
-        //     .unwrap()
-        //     .to_vec();
-        // assert_eq!(decoded[0], 2);
-        // assert_eq!(decoded[1], 0);
-        // assert_eq!(decoded[2], 2);
-        // assert_eq!(decoded[3], 0);
-
-        // assert_eq!(decoded[58], 2);
-        // assert_eq!(decoded[59], 0);
     }
 }

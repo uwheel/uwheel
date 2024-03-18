@@ -1,5 +1,4 @@
 use super::super::Aggregator;
-use crate::rw_wheel::read::hierarchical::CombineHint;
 
 #[cfg(feature = "simd")]
 use core::simd::prelude::{SimdFloat, SimdInt, SimdUint};
@@ -84,10 +83,6 @@ macro_rules! sum_impl {
             #[inline]
             fn combine_simd() -> Option<Self::CombineSimd> {
                 Some(|slice: &[$pa]| Self::simd_sum(slice))
-            }
-
-            fn combine_hint() -> Option<CombineHint> {
-                Some(CombineHint::Cheap)
             }
         }
         impl $struct {

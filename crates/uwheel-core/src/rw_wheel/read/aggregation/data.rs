@@ -69,6 +69,14 @@ impl<A: Aggregator> Data<A> {
             Data::CompressedArray(arr) => arr.pop_back(),
         }
     }
+
+    pub fn merge(&mut self, other: &Self) {
+        match (self, other) {
+            (Data::Array(arr), Data::Array(arr_other)) => arr.merge(arr_other),
+            _ => unimplemented!("Only Array Merging supported as of now"),
+        }
+    }
+
     pub fn get(&self, index: usize) -> Option<&A::PartialAggregate> {
         match self {
             Data::Array(arr) => arr.get(index),

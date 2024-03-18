@@ -1,12 +1,7 @@
 [workspace]
-resolver = "1" # resolver 1 needed for uwheel-demo to work on web
+resolver = "1"                                   # resolver 1 needed for uwheel-demo to work on web
 members = ["crates/*", "examples/*"]
-exclude = [
-  "benchmarks/*",
-  "crates/uwheel-demo",
-  "crates/uwheel-tree",
-  "crates/uwheel-window",
-]
+exclude = ["benchmarks/*", "crates/uwheel-demo"]
 
 
 [workspace.package]
@@ -22,7 +17,6 @@ opt-level = 2 # fast and small wasm
 [workspace.dependencies]
 uwheel = { path = "crates/uwheel", version = "0.1.0" }
 uwheel-core = { path = "crates/uwheel-core", version = "0.1.0", default-features = false }
-uwheel-window = { path = "crates/uwheel-window", version = "0.1.0" }
 uwheel-tree = { path = "crates/uwheel-tree", version = "0.1.0" }
 uwheel-stats = { path = "crates/uwheel-stats", version = "0.1.0" }
 
