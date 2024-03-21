@@ -1,4 +1,8 @@
 //! This module contains a Hierarchical Wheel Timer implementation
+//!
+//! It has been taken from the following [crate](https://github.com/Bathtor/rust-hash-wheel-timer/tree/master)
+//! and has been modified to support ``no_std``.
+//! License: MIT
 
 mod byte_wheel;
 mod quad_wheel;

@@ -71,7 +71,7 @@ See a user-defined aggregator example [here](examples/aggregator/).
 - `simd` (_requires `nightly`_)
     - Enables support to speed up aggregation functions with SIMD operations
 - `sync` (_implicitly enables `std`_)
-    - Enables a sync version of ``ReadWheel`` that can be shared and queried across threads
+    - Enables a sync version of ``ReaderWheel`` that can be shared and queried across threads
 - `stats` (_implicitly enables `std`_)
     - Enables recording of latencies for various operations
 - `serde`

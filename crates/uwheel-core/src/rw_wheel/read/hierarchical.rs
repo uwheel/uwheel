@@ -440,7 +440,6 @@ where
     weeks_wheel: MaybeWheel<A>,
     years_wheel: MaybeWheel<A>,
     window_manager: Option<WindowManager<A>>,
-    optimizer: Optimizer,
     conf: HawConf,
     delta: DeltaState<A::PartialAggregate>,
     #[cfg(feature = "timer")]
@@ -501,7 +500,6 @@ where
             days_wheel: MaybeWheel::new(days),
             weeks_wheel: MaybeWheel::new(weeks),
             years_wheel: MaybeWheel::new(years),
-            optimizer: conf.optimizer,
             conf,
             delta: DeltaState::new(time, Vec::new()),
             window_manager: None,
@@ -514,7 +512,7 @@ where
 
     #[doc(hidden)]
     pub fn set_optimizer_hints(&mut self, hints: bool) {
-        self.optimizer.use_hints = hints;
+        self.conf.optimizer.use_hints = hints;
     }
 
     /// Returns the current DeltaState object
@@ -597,6 +595,29 @@ where
         ));
     }
 
+    /// Advances the time of the wheel aligned by the lowest unit (Second)
+    #[inline]
+    pub(crate) fn advance_to(
+        &mut self,
+        watermark: u64,
+        waw: &mut WriterWheel<A>,
+    ) -> Vec<Window<A::PartialAggregate>> {
+        let diff = watermark.saturating_sub(self.watermark());
+        self.advance(time_internal::Duration::milliseconds(diff as i64), waw)
+    }
+
+    /// Advances the wheel by applying a set of deltas where each delta represents the lowest unit of time
+    ///
+    /// Note that deltas are processed in the order of the iterator. If you have the following deltas
+    /// [Some(10),  Some(20)], it will first insert Some(10) into the wheel and then Some(20).
+    #[inline]
+    pub fn delta_advance(&mut self, deltas: impl IntoIterator<Item = Option<A::PartialAggregate>>) {
+        for delta in deltas {
+            // TODO: does not new deltas and does not return possible windows
+            self.tick(delta);
+        }
+    }
+
     /// Advance the watermark of the wheel by the given [time::Duration]
     #[inline(always)]
     pub fn advance(
@@ -671,28 +692,6 @@ where
         }
     }
 
-    /// Advances the time of the wheel aligned by the lowest unit (Second)
-    #[inline]
-    pub(crate) fn advance_to(
-        &mut self,
-        watermark: u64,
-        waw: &mut WriterWheel<A>,
-    ) -> Vec<Window<A::PartialAggregate>> {
-        let diff = watermark.saturating_sub(self.watermark());
-        self.advance(time_internal::Duration::milliseconds(diff as i64), waw)
-    }
-
-    /// Advances the wheel by applying a set of deltas where each delta represents the lowest unit of time
-    ///
-    /// Note that deltas are processed in the order of the iterator. If you have the following deltas
-    /// [Some(10),  Some(20)], it will first insert Some(10) into the wheel and then Some(20).
-    #[inline]
-    pub fn delta_advance(&mut self, deltas: impl IntoIterator<Item = Option<A::PartialAggregate>>) {
-        for delta in deltas {
-            self.tick(delta);
-        }
-    }
-
     /// Clears the state of all wheels
     pub fn clear(&mut self) {
         self.seconds_wheel.clear();
@@ -756,13 +755,6 @@ where
         self.minutes_wheel.as_mut().unwrap().to_array();
         self.hours_wheel.as_mut().unwrap().to_array();
         self.days_wheel.as_mut().unwrap().to_array();
-    }
-
-    fn _optimize_check(&self) {
-        for (_granularity, _freq) in self.frequencies.outliers() {
-            // Check whether this wheel granularity can be optimized for queries
-            // For example: Convert Data layout to PrefixArray from Array
-        }
     }
 
     /// Combines partial aggregates within the given date range [start, end) into a final partial aggregate
@@ -895,8 +887,8 @@ where
         let combined_aggregation = {
             let scan_estimation = best_plan.cost();
 
-            if self.optimizer.use_hints && A::simd_support() {
-                scan_estimation > self.optimizer.heuristics.simd_threshold
+            if self.conf.optimizer.use_hints && A::simd_support() {
+                scan_estimation > self.conf.optimizer.heuristics.simd_threshold
             } else {
                 true // always generate a combined aggregation plan
             }
@@ -1162,6 +1154,12 @@ where
         self.analyze_landmark().0
     }
 
+    /// Executes a Landmark Window that combines total partial aggregates across all wheels and lowers the result
+    #[inline]
+    pub fn landmark_and_lower(&self) -> Option<A::Aggregate> {
+        self.landmark().map(|partial| A::lower(partial))
+    }
+
     /// Executes a Landmark Window that combines total partial aggregates across all wheels and returns the cost
     #[inline]
     pub fn analyze_landmark(&self) -> (Option<A::PartialAggregate>, usize) {
@@ -1177,12 +1175,6 @@ where
             self.years_wheel.total(),
         ];
         Self::reduce(wheels)
-    }
-
-    /// Executes a Landmark Window that combines total partial aggregates across all wheels and lowers the result
-    #[inline]
-    pub fn landmark_and_lower(&self) -> Option<A::Aggregate> {
-        self.landmark().map(|partial| A::lower(partial))
     }
 
     #[inline]
