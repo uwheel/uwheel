@@ -38,10 +38,7 @@ use uwheel_stats::profile_scope;
 crate::cfg_timer! {
     #[cfg(not(feature = "std"))]
     use alloc::{boxed::Box, rc::Rc};
-    #[cfg(feature = "std")]
-    use std::rc::Rc;
-    use crate::rw_wheel::timer::{RawTimerWheel, TimerError, TimerAction};
-    use core::cell::RefCell;
+    use crate::rw_wheel::timer::{RawTimerWheel, TimerWheel, TimerError, TimerAction};
 }
 use super::aggregation::conf::WheelConf;
 
@@ -444,7 +441,7 @@ where
     delta: DeltaState<A::PartialAggregate>,
     #[cfg(feature = "timer")]
     #[cfg_attr(feature = "serde", serde(skip))]
-    timer: Rc<RefCell<RawTimerWheel<TimerAction<A>>>>,
+    timer: TimerWheel<A>,
     #[cfg(feature = "profiler")]
     stats: Stats,
 }
@@ -504,7 +501,7 @@ where
             delta: DeltaState::new(time, Vec::new()),
             window_manager: None,
             #[cfg(feature = "timer")]
-            timer: Rc::new(RefCell::new(RawTimerWheel::default())),
+            timer: TimerWheel::new(RawTimerWheel::default()),
             #[cfg(feature = "profiler")]
             stats: Stats::default(),
         }
@@ -1113,7 +1110,7 @@ where
         f: impl Fn(&Haw<A>) + 'static,
     ) -> Result<(), TimerError<TimerAction<A>>> {
         self.timer
-            .borrow_mut()
+            .write()
             .schedule_at(time, TimerAction::Oneshot(Box::new(f)))
     }
     /// Schedules a timer to fire repeatedly
@@ -1125,7 +1122,7 @@ where
         f: impl Fn(&Haw<A>) + 'static,
     ) -> Result<(), TimerError<TimerAction<A>>> {
         self.timer
-            .borrow_mut()
+            .write()
             .schedule_at(at, TimerAction::Repeat((at, interval, Box::new(f))))
     }
 
@@ -1256,7 +1253,7 @@ where
         // Fire any outgoing timers
         #[cfg(feature = "timer")]
         {
-            let mut timer = self.timer.borrow_mut();
+            let mut timer = self.timer.write();
 
             for action in timer.advance_to(self.watermark) {
                 match action {

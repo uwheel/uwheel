@@ -8,7 +8,7 @@ mod byte_wheel;
 mod quad_wheel;
 pub(crate) mod raw_wheel;
 
-use crate::rw_wheel::read::Haw;
+use crate::{cfg_not_sync, cfg_sync, rw_wheel::read::Haw};
 use core::{fmt::Debug, hash::Hash, time::Duration};
 pub(super) use raw_wheel::RawTimerWheel;
 
@@ -116,4 +116,75 @@ pub type WheelFn<A> = Box<dyn Fn(&Haw<A>)>;
 pub enum TimerAction<A: Aggregator> {
     Oneshot(WheelFn<A>),
     Repeat((u64, time_internal::Duration, WheelFn<A>)),
+}
+
+// Two Timer Wheel implementations
+
+cfg_not_sync! {
+    #[cfg(not(feature = "std"))]
+    use alloc::rc::Rc;
+    use core::cell::RefCell;
+    #[cfg(feature = "std")]
+    use std::rc::Rc;
+
+    /// An immutably borrowed Timer from [`RefCell::borrow´]
+    pub type TimerRef<'a, T> = core::cell::Ref<'a, RawTimerWheel<TimerAction<T>>>;
+    /// A mutably borrowed Timer from [`RefCell::borrow_mut´]
+    pub type TimerRefMut<'a, T> = core::cell::RefMut<'a, RawTimerWheel<TimerAction<T>>>;
+
+    /// An timer wheel impl for single-threaded executions
+    #[derive(Clone, Default)]
+    #[doc(hidden)]
+    pub struct TimerWheel<T: Aggregator>(Rc<RefCell<RawTimerWheel<TimerAction<T>>>>);
+
+    impl<T: Aggregator> TimerWheel<T> {
+        #[inline(always)]
+        pub fn new(val: RawTimerWheel<TimerAction<T>>) -> Self {
+            Self(Rc::new(RefCell::new(val)))
+        }
+
+        #[inline(always)]
+        pub fn read(&self) -> TimerRef<'_, T> {
+            self.0.borrow()
+        }
+
+        #[inline(always)]
+        pub fn write(&self) -> TimerRefMut<'_, T> {
+            self.0.borrow_mut()
+        }
+    }
+
+}
+
+cfg_sync! {
+    use parking_lot::{MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock};
+    use std::sync::Arc;
+
+    /// The lock you get from [`RwLock::read`].
+    pub type TimerRef<'a, T> = MappedRwLockReadGuard<'a, RawTimerWheel<TimerAction<T>>>;
+    /// The lock you get from [`RwLock::write`].
+    pub type TimerRefMut<'a, T> = MappedRwLockWriteGuard<'a, RawTimerWheel<TimerAction<T>>>;
+
+    /// An timer impl for multi-reader setups
+    #[derive(Clone, Default)]
+    #[doc(hidden)]
+    pub struct TimerWheel<T: Aggregator>(Arc<RwLock<RawTimerWheel<TimerAction<T>>>>);
+
+    impl<T: Aggregator> TimerWheel<T> {
+        #[inline(always)]
+        pub fn new(val: RawTimerWheel<TimerAction<T>>) -> Self {
+            Self(Arc::new(RwLock::new(val)))
+        }
+
+        #[inline(always)]
+        pub fn read(&self) -> TimerRef<'_, T> {
+            parking_lot::RwLockReadGuard::map(self.0.read(), |v| v)
+        }
+
+        #[inline(always)]
+        pub fn write(&self) -> TimerRefMut<'_, T> {
+            parking_lot::RwLockWriteGuard::map(self.0.write(), |v| v)
+        }
+    }
+
 }

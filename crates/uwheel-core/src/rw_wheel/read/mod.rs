@@ -207,6 +207,14 @@ where
     }
 }
 
+impl<A: Aggregator> From<Haw<A>> for ReaderWheel<A> {
+    fn from(value: Haw<A>) -> Self {
+        Self {
+            inner: Inner::new(value),
+        }
+    }
+}
+
 // Two different Inner Reader Wheel implementations below:
 
 cfg_not_sync! {

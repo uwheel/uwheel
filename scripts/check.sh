@@ -22,5 +22,7 @@ cargo hack test --workspace
 (cd crates/uwheel && cargo check --features "sync")
 (cd crates/uwheel && cargo check --features "serde")
 (cd crates/uwheel && cargo check --features "sync, serde")
+(cd crates/uwheel && cargo check --features "sync, timer")
+(cd crates/uwheel && cargo check --features "sync, timer, serde")
 (cd crates/uwheel && cargo check --features "sync, profiler")
 (cd crates/uwheel/fuzz && cargo check)
