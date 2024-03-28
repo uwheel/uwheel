@@ -54,6 +54,7 @@ use uwheel_stats::profile_scope;
 /// Aggregates once moved to below the watermark become immutable and are inserted into
 /// a hierarchical aggregation wheel [ReaderWheel]. A data structure which materializes aggregates
 /// across time.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct RwWheel<A>
 where
     A: Aggregator,

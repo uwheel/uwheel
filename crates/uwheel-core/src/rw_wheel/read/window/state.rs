@@ -3,8 +3,9 @@ use crate::time_internal::Duration;
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct State {
-    pub range: usize,
+    pub(crate) range: usize,
     pub slide: usize,
     pub pair_type: PairType,
     pub pair_ticks_remaining: usize,

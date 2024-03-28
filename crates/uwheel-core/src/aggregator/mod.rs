@@ -6,6 +6,9 @@ use alloc::vec::Vec;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 
+#[cfg(feature = "serde")]
+use zerovec::ule::AsULE;
+
 /// An All Aggregator enabling the following functions (MAX, MIN, SUM, COUNT, AVG).
 #[cfg(feature = "all")]
 pub mod all;
@@ -230,7 +233,7 @@ pub trait PartialAggregateBounds: Default + Debug + Clone + Copy + Send {}
 /// Trait bounds for a partial aggregate type
 #[cfg(feature = "serde")]
 pub trait PartialAggregateBounds:
-    Default + Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
+    Default + Debug + Clone + Copy + Send + AsULE + serde::Serialize + for<'a> serde::Deserialize<'a>
 {
 }
 
@@ -239,7 +242,14 @@ impl<T> PartialAggregateBounds for T where T: Default + Debug + Clone + Copy + S
 
 #[cfg(feature = "serde")]
 impl<T> PartialAggregateBounds for T where
-    T: Default + Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
+    T: Default
+        + Debug
+        + Clone
+        + Copy
+        + Send
+        + AsULE
+        + serde::Serialize
+        + for<'a> serde::Deserialize<'a>
 {
 }
 
@@ -273,15 +283,8 @@ macro_rules! tuple_partial {
     };
 }
 
-tuple_partial!(A);
 tuple_partial!(A B);
 tuple_partial!(A B C);
 tuple_partial!(A B C D);
 tuple_partial!(A B C D E);
 tuple_partial!(A B C D E F);
-tuple_partial!(A B C D E F G);
-tuple_partial!(A B C D E F G H);
-tuple_partial!(A B C D E F G H I);
-tuple_partial!(A B C D E F G H I J);
-tuple_partial!(A B C D E F G H I J K);
-tuple_partial!(A B C D E F G H I J K L);

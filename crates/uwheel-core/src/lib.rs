@@ -44,7 +44,7 @@ pub use rw_wheel::{
     Options,
     RwWheel,
 };
-pub use time::{Duration as TimeDuration, OffsetDateTime};
+pub use time::OffsetDateTime;
 
 /// A type containing error variants that may arise when using a wheel
 #[derive(Debug)]

@@ -24,6 +24,7 @@ top_n = ["dep:hashbrown"]
 serde = [
   "dep:serde",
   "dep:serde-big-array",
+  "dep:zerovec",
   "parking_lot?/serde",
   "hashbrown?/serde",
   "uwheel-stats?/serde",
@@ -45,6 +46,10 @@ serde = { workspace = true, optional = true, features = ["derive", "rc"] }
 serde-big-array = { workspace = true, optional = true }
 prettytable-rs = { version = "0.10.0", optional = true }
 smallvec = { workspace = true, optional = true }
+zerovec = { version = "0.10.1", features = [
+  "derive",
+  "serde",
+], optional = true }
 
 [dev-dependencies]
 time = { workspace = true, default-features = false, features = [

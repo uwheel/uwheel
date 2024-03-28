@@ -74,7 +74,7 @@ See a user-defined aggregator example [here](examples/aggregator/).
     - Enables a sync version of ``ReaderWheel`` that can be shared and queried across threads
 - `stats` (_implicitly enables `std`_)
     - Enables recording of latencies for various operations
-- `serde`
+- `serde` (_implicitly enables `ZeroVec` for zero-copy deserialization_)
     - Enables serde support
 - `timer`
     - Enables scheduling user-defined functions

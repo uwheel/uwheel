@@ -11,6 +11,17 @@ macro_rules! cfg_timer {
 
 #[macro_export]
 #[doc(hidden)]
+macro_rules! cfg_serde {
+    ($($item:item)*) => {
+        $(
+            #[cfg(feature = "serde")]
+            $item
+        )*
+    }
+}
+
+#[macro_export]
+#[doc(hidden)]
 macro_rules! cfg_sync {
     ($($item:item)*) => {
         $(

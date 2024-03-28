@@ -1,5 +1,5 @@
 use super::{combine_or_insert, into_range};
-use crate::Aggregator;
+use crate::{cfg_serde, Aggregator};
 use core::ops::{Bound, Range, RangeBounds};
 
 #[cfg(not(feature = "std"))]
@@ -89,6 +89,37 @@ impl<'a, A: Aggregator> PartialArray<'a, A> {
         }
 
         accumulator
+    }
+}
+
+cfg_serde! {
+    use serde::{Serialize, Deserialize};
+    use zerovec::{ule::AsULE, ZeroVec};
+
+    /// A read-only partial array that supports zero-copy deserialization
+    #[derive(Default, Clone, Debug, Serialize, Deserialize)]
+    #[serde(bound = "A: Default")]
+    pub struct PartialArrayz<'a, A: Aggregator> {
+        #[serde(borrow)]
+        inner: ZeroVec<'a, A::PartialAggregate>,
+    }
+
+
+    impl<'a, A: Aggregator> PartialArrayz<'a, A> {
+        /// Combines partial aggregates from the array
+        #[inline]
+        pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
+        where
+            R: RangeBounds<usize>,
+        {
+            Some(
+                self.inner.as_ule_slice()[into_range(&range, self.inner.len())]
+                    .iter()
+                    .copied()
+                    .map(<<A as Aggregator>::PartialAggregate as AsULE>::from_unaligned)
+                    .fold(A::IDENTITY, A::combine),
+            )
+        }
     }
 }
 
