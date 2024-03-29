@@ -12,7 +12,7 @@ use uwheel_core::{
     rw_wheel::read::{
         aggregation::{
             conf::{RetentionPolicy, WheelConf},
-            AggregationWheel,
+            Wheel,
             WheelSlot,
         },
         hierarchical::HOUR_TICK_MS,
@@ -62,7 +62,7 @@ fn merge_many<A: Aggregator<PartialAggregate = u64>>(
                 WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
             let mut wheels = Vec::with_capacity(total_wheels as usize);
             for _i in 0..total_wheels {
-                let mut w = AggregationWheel::<A>::new(conf);
+                let mut w = Wheel::<A>::new(conf);
                 for _i in 0..partials {
                     w.insert_slot(WheelSlot::new(Some(fastrand::u64(100..1000)), None));
                     w.tick();
@@ -71,7 +71,7 @@ fn merge_many<A: Aggregator<PartialAggregate = u64>>(
             }
             wheels
         },
-        |wheels| black_box(AggregationWheel::merge_many(wheels)),
+        |wheels| black_box(Wheel::merge_many(wheels)),
         BatchSize::PerIteration,
     );
 }

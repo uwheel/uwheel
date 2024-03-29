@@ -1,6 +1,6 @@
 use time::OffsetDateTime;
 
-use super::{conf::WheelConf, AggregationWheel};
+use super::{conf::WheelConf, Wheel};
 use crate::{
     aggregator::Aggregator,
     rw_wheel::read::{
@@ -16,7 +16,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub(crate) struct MaybeWheel<A: Aggregator> {
     conf: WheelConf,
-    inner: Option<AggregationWheel<A>>,
+    inner: Option<Wheel<A>>,
 }
 impl<A: Aggregator> MaybeWheel<A> {
     pub fn new(conf: WheelConf) -> Self {
@@ -105,7 +105,7 @@ impl<A: Aggregator> MaybeWheel<A> {
 
     pub fn size_bytes(&self) -> usize {
         if let Some(inner) = self.inner.as_ref() {
-            inner.size_bytesz().unwrap() // safe as we know its implemented for AggregationWheel
+            inner.size_bytesz().unwrap() // safe as we know its implemented for Wheel
         } else {
             0
         }
@@ -120,16 +120,16 @@ impl<A: Aggregator> MaybeWheel<A> {
         self.inner.as_ref().map(|w| w.total_slots()).unwrap_or(0)
     }
 
-    pub(crate) fn as_mut(&mut self) -> Option<&mut AggregationWheel<A>> {
+    pub(crate) fn as_mut(&mut self) -> Option<&mut Wheel<A>> {
         self.inner.as_mut()
     }
-    pub fn as_ref(&self) -> Option<&AggregationWheel<A>> {
+    pub fn as_ref(&self) -> Option<&Wheel<A>> {
         self.inner.as_ref()
     }
     #[inline]
-    pub fn get_or_insert(&mut self) -> &mut AggregationWheel<A> {
+    pub fn get_or_insert(&mut self) -> &mut Wheel<A> {
         if self.inner.is_none() {
-            let agg_wheel = AggregationWheel::new(self.conf);
+            let agg_wheel = Wheel::new(self.conf);
             self.inner = Some(agg_wheel);
         }
         self.inner.as_mut().unwrap()

@@ -9,7 +9,7 @@ use super::{
     aggregation::{
         conf::{DataLayout, RetentionPolicy},
         maybe::MaybeWheel,
-        AggregationWheel,
+        Wheel,
     },
     plan::{ExecutionPlan, WheelAggregation, WheelRanges},
     window::WindowManager,
@@ -58,7 +58,7 @@ pub const WEEK_TICK_MS: u64 = time::Duration::WEEK.whole_milliseconds() as u64;
 /// Default Year tick represented in milliseconds
 pub const YEAR_TICK_MS: u64 = WEEK_TICK_MS * 52;
 
-/// Configuration for a Hierarchical Aggregation Wheel
+/// Configuration for a Hierarchical Aggregate Wheel
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug)]
 pub struct HawConf {
@@ -404,7 +404,7 @@ impl Optimizer {
     }
 }
 
-/// Hierarchical Aggregation Wheel
+/// Hierarchical Aggregate Wheel
 ///
 /// Similarly to Hierarchical Wheel Timers, HAW exploits the hierarchical nature of time and utilise several aggregation wheels,
 /// each with a different time granularity. This enables a compact representation of aggregates across time
@@ -1272,55 +1272,55 @@ where
     }
 
     /// Returns a reference to the seconds wheel
-    pub fn seconds(&self) -> Option<&AggregationWheel<A>> {
+    pub fn seconds(&self) -> Option<&Wheel<A>> {
         self.seconds_wheel.as_ref()
     }
     /// Returns an unchecked reference to the seconds wheel
-    pub fn seconds_unchecked(&self) -> &AggregationWheel<A> {
+    pub fn seconds_unchecked(&self) -> &Wheel<A> {
         self.seconds_wheel.as_ref().unwrap()
     }
 
     /// Returns a reference to the minutes wheel
-    pub fn minutes(&self) -> Option<&AggregationWheel<A>> {
+    pub fn minutes(&self) -> Option<&Wheel<A>> {
         self.minutes_wheel.as_ref()
     }
     /// Returns an unchecked reference to the minutes wheel
-    pub fn minutes_unchecked(&self) -> &AggregationWheel<A> {
+    pub fn minutes_unchecked(&self) -> &Wheel<A> {
         self.minutes_wheel.as_ref().unwrap()
     }
     /// Returns a reference to the hours wheel
-    pub fn hours(&self) -> Option<&AggregationWheel<A>> {
+    pub fn hours(&self) -> Option<&Wheel<A>> {
         self.hours_wheel.as_ref()
     }
     /// Returns an unchecked reference to the hours wheel
-    pub fn hours_unchecked(&self) -> &AggregationWheel<A> {
+    pub fn hours_unchecked(&self) -> &Wheel<A> {
         self.hours_wheel.as_ref().unwrap()
     }
     /// Returns a reference to the days wheel
-    pub fn days(&self) -> Option<&AggregationWheel<A>> {
+    pub fn days(&self) -> Option<&Wheel<A>> {
         self.days_wheel.as_ref()
     }
     /// Returns an unchecked reference to the days wheel
-    pub fn days_unchecked(&self) -> &AggregationWheel<A> {
+    pub fn days_unchecked(&self) -> &Wheel<A> {
         self.days_wheel.as_ref().unwrap()
     }
 
     /// Returns a reference to the weeks wheel
-    pub fn weeks(&self) -> Option<&AggregationWheel<A>> {
+    pub fn weeks(&self) -> Option<&Wheel<A>> {
         self.weeks_wheel.as_ref()
     }
 
     /// Returns an unchecked reference to the weeks wheel
-    pub fn weeks_unchecked(&self) -> &AggregationWheel<A> {
+    pub fn weeks_unchecked(&self) -> &Wheel<A> {
         self.weeks_wheel.as_ref().unwrap()
     }
 
     /// Returns a reference to the years wheel
-    pub fn years(&self) -> Option<&AggregationWheel<A>> {
+    pub fn years(&self) -> Option<&Wheel<A>> {
         self.years_wheel.as_ref()
     }
     /// Returns a reference to the years wheel
-    pub fn years_unchecked(&self) -> &AggregationWheel<A> {
+    pub fn years_unchecked(&self) -> &Wheel<A> {
         self.years_wheel.as_ref().unwrap()
     }
 

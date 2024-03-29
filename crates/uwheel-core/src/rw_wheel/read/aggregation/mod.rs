@@ -21,11 +21,11 @@ pub(crate) mod stats;
 
 /// Array implementations for Partial Aggregates
 pub mod array;
-/// Configuration for [AggregationWheel]
+/// Configuration for [Wheel]
 pub mod conf;
-/// Iterator implementations for [AggregationWheel]
+/// Iterator implementations for [Wheel]
 pub mod iter;
-/// A maybe initialized [AggregationWheel]
+/// A maybe initialized [Wheel]
 pub mod maybe;
 
 mod data;
@@ -121,7 +121,7 @@ impl<A: Aggregator> WheelSlot<A> {
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone, Debug)]
-pub struct AggregationWheel<A: Aggregator> {
+pub struct Wheel<A: Aggregator> {
     /// Number of slots (60 seconds => 60 slots)
     capacity: usize,
     /// Total number of wheel slots (must be power of two)
@@ -147,8 +147,8 @@ pub struct AggregationWheel<A: Aggregator> {
     stats: Stats,
 }
 
-impl<A: Aggregator> AggregationWheel<A> {
-    /// Creates a new AggregationWheel using the given [WheelConf]
+impl<A: Aggregator> Wheel<A> {
+    /// Creates a new Wheel using the given [WheelConf]
     pub fn new(conf: WheelConf) -> Self {
         let capacity = conf.capacity;
         let num_slots = crate::capacity_to_slots!(capacity);
@@ -423,7 +423,7 @@ impl<A: Aggregator> AggregationWheel<A> {
         self.insert_head(slot.total);
     }
 
-    /// Merges a vector of wheels in parallel into an AggregationWheel
+    /// Merges a vector of wheels in parallel into an Wheel
     pub fn merge_many(wheels: Vec<Self>) -> Option<Self> {
         wheels.into_iter().reduce(|mut a, b| {
             a.merge(&b);
@@ -436,7 +436,7 @@ impl<A: Aggregator> AggregationWheel<A> {
         unimplemented!();
     }
 
-    /// Merge two AggregationWheels of similar granularity
+    /// Merge two Wheels of similar granularity
     ///
     /// NOTE: must ensure wheels have been advanced to the same time
     #[allow(clippy::useless_conversion)]
@@ -493,7 +493,7 @@ impl<A: Aggregator> AggregationWheel<A> {
     }
 
     #[cfg(feature = "profiler")]
-    /// Returns a reference to the stats of the [AggregationWheel]
+    /// Returns a reference to the stats of the [Wheel]
     pub fn stats(&self) -> &Stats {
         &self.stats
     }
@@ -561,7 +561,7 @@ mod tests {
             .with_retention_policy(RetentionPolicy::Keep)
             .with_data_layout(DataLayout::Prefix);
         // should panic as U64MinAggregator does not support prefix-sum
-        let _wheel = AggregationWheel::<U64MinAggregator>::new(conf);
+        let _wheel = Wheel::<U64MinAggregator>::new(conf);
     }
 
     #[test]
@@ -569,10 +569,10 @@ mod tests {
         let prefix_conf = WheelConf::new(HOUR_TICK_MS, 24)
             .with_retention_policy(RetentionPolicy::Keep)
             .with_data_layout(DataLayout::Prefix);
-        let mut prefix_wheel = AggregationWheel::<U64SumAggregator>::new(prefix_conf);
+        let mut prefix_wheel = Wheel::<U64SumAggregator>::new(prefix_conf);
 
         let conf = WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
-        let mut wheel = AggregationWheel::<U64SumAggregator>::new(conf);
+        let mut wheel = Wheel::<U64SumAggregator>::new(conf);
 
         for i in 0..30 {
             wheel.insert_slot(WheelSlot::with_total(Some(i)));
@@ -593,10 +593,10 @@ mod tests {
         let compressed_conf = WheelConf::new(HOUR_TICK_MS, 24)
             .with_retention_policy(RetentionPolicy::Keep)
             .with_data_layout(DataLayout::Compressed(60));
-        let mut compressed_wheel = AggregationWheel::<PcoSumAggregator>::new(compressed_conf);
+        let mut compressed_wheel = Wheel::<PcoSumAggregator>::new(compressed_conf);
 
         let conf = WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
-        let mut wheel = AggregationWheel::<U32SumAggregator>::new(conf);
+        let mut wheel = Wheel::<U32SumAggregator>::new(conf);
 
         for i in 0..120 {
             wheel.insert_slot(WheelSlot::with_total(Some(i)));
@@ -657,7 +657,7 @@ mod tests {
     #[test]
     fn retention_keep_test() {
         let conf = WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
-        let mut wheel = AggregationWheel::<U64SumAggregator>::new(conf);
+        let mut wheel = Wheel::<U64SumAggregator>::new(conf);
 
         for i in 0..60 {
             wheel.insert_slot(WheelSlot::with_total(Some(i)));
@@ -669,7 +669,7 @@ mod tests {
     fn retention_keep_with_limit_test() {
         let conf = WheelConf::new(HOUR_TICK_MS, 24)
             .with_retention_policy(RetentionPolicy::KeepWithLimit(10));
-        let mut wheel = AggregationWheel::<U64SumAggregator>::new(conf);
+        let mut wheel = Wheel::<U64SumAggregator>::new(conf);
 
         for i in 0..60 {
             wheel.insert_slot(WheelSlot::with_total(Some(i)));
