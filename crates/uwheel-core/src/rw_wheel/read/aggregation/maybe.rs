@@ -9,7 +9,7 @@ use crate::{
     },
 };
 
-// An internal wrapper Struct that containing a possible AggregationWheel
+// An internal wrapper Struct that containing a possible [Wheel]
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
@@ -73,25 +73,18 @@ impl<A: Aggregator> MaybeWheel<A> {
     }
 
     /// Returns estimated cost for performing the given aggregate on this wheel
-    #[allow(unused_mut)]
     pub fn aggregate_plan(&self, range: &WheelRange, gran: Granularity) -> Aggregation {
         if self.prefix_support() {
             Aggregation::Prefix
         } else {
             let diff = range.end - range.start;
-            let mut slots = (match gran {
+            let slots = (match gran {
                 Granularity::Second => diff.whole_seconds(),
                 Granularity::Minute => diff.whole_minutes(),
                 Granularity::Hour => diff.whole_hours(),
                 Granularity::Day => diff.whole_days(),
             }) as usize;
 
-            // TODO: may not be fully correct depending on alignment
-            // #[cfg(feature = "simd")]
-            // {
-            //     let remainder = slots % A::SIMD_LANES;
-            //     slots = (slots / A::SIMD_LANES) + remainder;
-            // }
             Aggregation::Scan(slots)
         }
     }
@@ -100,7 +93,6 @@ impl<A: Aggregator> MaybeWheel<A> {
     #[inline]
     pub fn prefix_support(&self) -> bool {
         self.inner.as_ref().map(|w| w.is_prefix()).unwrap_or(false)
-        // A::PREFIX_SUPPORT && self.conf.prefix_sum
     }
 
     pub fn size_bytes(&self) -> usize {

@@ -1,7 +1,4 @@
-use core::{
-    cmp,
-    fmt::{self, Display},
-};
+use core::cmp;
 use time::OffsetDateTime;
 
 use super::{
@@ -17,8 +14,6 @@ use super::{
 
 use crate::{
     aggregator::Aggregator,
-    cfg_not_sync,
-    cfg_sync,
     delta::DeltaState,
     rw_wheel::read::{
         aggregation::combine_or_insert,
@@ -253,124 +248,6 @@ pub(crate) enum Granularity {
     Hour,
     Day,
 }
-impl Granularity {
-    fn from_usize(value: usize) -> Self {
-        match value {
-            0 => Granularity::Second,
-            1 => Granularity::Minute,
-            2 => Granularity::Hour,
-            3 => Granularity::Day,
-            _ => unreachable!(),
-        }
-    }
-}
-
-#[derive(Default, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-struct WheelFrequencies {
-    // sum/count, can get avg slot scans then
-    table: [Frequency; 6],
-}
-impl WheelFrequencies {
-    /// Returns wheel granularities that are outliers in access frequency
-    #[allow(dead_code)]
-    fn outliers(&self) -> Vec<(Granularity, u64)> {
-        let percentile = |data: &[Frequency; 6], p: f64| {
-            let mut sorted: Vec<_> = data.iter().map(|m| m.avg()).collect();
-            sorted.sort();
-            let index = (p / 100.0 * sorted.len() as f64) as usize;
-            sorted[index - 1] as f64
-        };
-        let q1 = percentile(&self.table, 25.0);
-        let q3 = percentile(&self.table, 75.0);
-        let iqr = q3 - q1;
-        let lower_bound = q1 - 1.5 * iqr;
-        let higher_bound = q3 + 1.5 * iqr;
-        self.table
-            .iter()
-            .enumerate()
-            .filter(|(_, value)| {
-                value.avg() < lower_bound as u64 || value.avg() > higher_bound as u64
-            })
-            .map(|(pos, v)| (Granularity::from_usize(pos), v.avg()))
-            .collect()
-    }
-    #[inline]
-    fn add(&self, gran: Granularity, value: usize) {
-        let slot = &self.table[gran as usize];
-        slot.record(value as u64);
-    }
-}
-
-cfg_not_sync! {
-    use core::cell::Cell;
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-    #[derive(Clone, Default)]
-    #[doc(hidden)]
-    pub struct Frequency {
-        sum: Cell<u64>,
-        count: Cell<u64>
-    }
-
-    impl Frequency {
-
-        #[inline(always)]
-        pub fn sum(&self) -> u64 {
-            self.sum.get()
-        }
-        #[inline(always)]
-        pub fn count(&self) -> u64 {
-            self.count.get()
-        }
-        #[inline(always)]
-        pub fn avg(&self) -> u64 {
-            self.sum() / self.count()
-        }
-
-        #[inline(always)]
-        pub fn record(&self, value: u64) {
-            self.sum.set(self.sum.get() + value);
-            self.count.set(self.count.get() + 1);
-        }
-    }
-}
-
-cfg_sync! {
-    use std::sync::Arc;
-    use core::sync::atomic::{AtomicU64, Ordering};
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-    #[derive(Clone, Default)]
-    #[doc(hidden)]
-    // NOTE: optimize this..
-    pub struct Frequency {
-        sum: Arc<AtomicU64>,
-        count: Arc<AtomicU64>,
-    }
-
-    impl Frequency {
-        #[inline(always)]
-        pub fn sum(&self) -> u64 {
-            self.sum.load(Ordering::Relaxed)
-        }
-
-        #[inline(always)]
-        pub fn count(&self) -> u64 {
-            self.count.load(Ordering::Relaxed)
-        }
-
-        #[inline(always)]
-        pub fn avg(&self) -> u64 {
-            self.sum() / self.count()
-        }
-
-        #[inline(always)]
-        pub fn record(&self, value: u64) {
-            self.sum.fetch_add(value, Ordering::Relaxed);
-            self.count.fetch_add(1, Ordering::Relaxed);
-        }
-    }
-
-}
 
 /// Default threshold for SIMD-based Wheel Aggregations
 pub const DEFAULT_SIMD_THRESHOLD: usize = 15000;
@@ -408,9 +285,11 @@ impl Optimizer {
 ///
 /// Similarly to Hierarchical Wheel Timers, HAW exploits the hierarchical nature of time and utilise several aggregation wheels,
 /// each with a different time granularity. This enables a compact representation of aggregates across time
-/// with a low memory footprint and makes it highly compressible and efficient to store on disk. HAWs are event-time driven and uses the notion of a Watermark which means that no timestamps are stored as they are implicit in the wheel slots. It is up to the user of the wheel to advance the watermark and thus roll up aggregates continously up the time hierarchy.
+/// with a low memory footprint and makes it highly compressible and efficient to store on disk.
+/// HAWs are event-time driven and uses the notion of a Watermark which means that no timestamps are stored as they are implicit in the wheel slots.
+/// It is up to the user of the wheel to advance the watermark and thus roll up aggregates continously up the time hierarchy.
 /// For instance, to store aggregates with second granularity up to 10 years, we would need the following aggregation wheels:
-
+///
 /// * Seconds wheel with 60 slots
 /// * Minutes wheel with 60 slots
 /// * Hours wheel with 24 slots
@@ -423,27 +302,41 @@ impl Optimizer {
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
-// #[derive(Clone)]
 pub struct Haw<A>
 where
     A: Aggregator,
 {
+    /// The current low watermark for this wheel
     watermark: u64,
-    frequencies: WheelFrequencies,
+    /// A seconds wheel which may or may not be initialized
     seconds_wheel: MaybeWheel<A>,
+    /// A minutes wheel which may or may not be initialized
     minutes_wheel: MaybeWheel<A>,
+    /// A hours wheel which may or may not be initialized
     hours_wheel: MaybeWheel<A>,
+    /// A days wheel which may or may not be initialized
     days_wheel: MaybeWheel<A>,
+    /// A weeks  wheel which may or may not be initialized
     weeks_wheel: MaybeWheel<A>,
+    /// A years  wheel which may or may not be initialized
     years_wheel: MaybeWheel<A>,
+    /// An optional window manager that manages windows if configured
     window_manager: Option<WindowManager<A>>,
+    /// Defines the configuration of the Hierarchical Aggregate Wheel
     conf: HawConf,
+    /// Maintains deltas if the wheel has been configured to do so
     delta: DeltaState<A::PartialAggregate>,
     #[cfg(feature = "timer")]
     #[cfg_attr(feature = "serde", serde(skip))]
     timer: TimerWheel<A>,
     #[cfg(feature = "profiler")]
     stats: Stats,
+}
+
+impl<A: Aggregator> Default for Haw<A> {
+    fn default() -> Self {
+        Self::new(0, Default::default())
+    }
 }
 
 impl<A> Haw<A>
@@ -490,7 +383,6 @@ where
 
         Self {
             watermark: time,
-            frequencies: Default::default(),
             seconds_wheel: MaybeWheel::new(seconds),
             minutes_wheel: MaybeWheel::new(minutes),
             hours_wheel: MaybeWheel::new(hours),
@@ -836,7 +728,7 @@ where
     #[inline]
     fn create_exec_plan(&self, range: WheelRange) -> ExecutionPlan {
         #[cfg(feature = "profiler")]
-        profile_scope!(&self.stats.logical_plan);
+        profile_scope!(&self.stats.exec_plan);
 
         let mut best_plan = ExecutionPlan::WheelAggregation(self.wheel_aggregation_plan(range));
 
@@ -1061,45 +953,26 @@ where
         );
         let gran = range.lowest_granularity();
 
-        let (result, scans) = match gran {
+        match gran {
             Granularity::Second => {
                 let seconds = (end - start).whole_seconds() as usize;
-                (
-                    self.seconds_wheel
-                        .aggregate(start, seconds, Granularity::Second),
-                    seconds,
-                )
+                self.seconds_wheel
+                    .aggregate(start, seconds, Granularity::Second)
             }
             Granularity::Minute => {
                 let minutes = (end - start).whole_minutes() as usize;
-                self.frequencies.add(gran, minutes);
-                (
-                    self.minutes_wheel
-                        .aggregate(start, minutes, Granularity::Minute),
-                    minutes,
-                )
+                self.minutes_wheel
+                    .aggregate(start, minutes, Granularity::Minute)
             }
             Granularity::Hour => {
                 let hours = (end - start).whole_hours() as usize;
-                self.frequencies.add(gran, hours);
-                (
-                    self.hours_wheel.aggregate(start, hours, Granularity::Hour),
-                    hours,
-                )
+                self.hours_wheel.aggregate(start, hours, Granularity::Hour)
             }
             Granularity::Day => {
                 let days = (end - start).whole_days() as usize;
-                self.frequencies.add(gran, days);
-                (
-                    self.days_wheel.aggregate(start, days, Granularity::Day),
-                    days,
-                )
+                self.days_wheel.aggregate(start, days, Granularity::Day)
             }
-        };
-        // record stats about wheel accesses
-        self.frequencies.add(gran, scans);
-
-        result
+        }
     }
 
     /// Schedules a timer to fire once the given time has been reached
@@ -1349,20 +1222,6 @@ where
     /// Returns a reference to the stats of the [HAW]
     pub fn stats(&self) -> &Stats {
         &self.stats
-    }
-}
-
-/// A type containing error variants that may arise when querying a wheel
-#[derive(Copy, Clone, Debug)]
-pub enum QueryError {
-    /// Invalid Date Range
-    Invalid,
-}
-impl Display for QueryError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            QueryError::Invalid => write!(f, "Invalid Date Range"),
-        }
     }
 }
 

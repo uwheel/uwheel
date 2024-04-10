@@ -23,7 +23,7 @@ max = ["uwheel-core/max"]
 smallvec = ["uwheel-core/smallvec"]
 top_n = ["uwheel-core/top_n"]
 sync = ["uwheel-core/sync"]
-# tree = ["dep:uwheel-tree"]
+tree = ["dep:uwheel-tree"]
 stats = ["std", "dep:uwheel-stats"]
 serde = ["uwheel-core/serde"]
 profiler = ["std", "uwheel-core/profiler"]
@@ -32,7 +32,7 @@ simd = ["uwheel-core/simd", "std"]
 
 [dependencies]
 uwheel-core = { workspace = true, default-features = false }
-# uwheel-tree = { workspace = true, optional = true }
+uwheel-tree = { workspace = true, optional = true }
 uwheel-stats = { workspace = true, optional = true }
 
 [dev-dependencies]

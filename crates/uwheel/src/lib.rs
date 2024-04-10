@@ -1,4 +1,4 @@
-//! uwheel is a lightweight aggregate management system for unfied stream and warehousing
+//! µWheel is an embeddable aggregate management system for hybrid stream and analytical processing.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]
@@ -10,9 +10,6 @@ extern crate alloc;
 extern crate std;
 
 pub use uwheel_core::*;
-
-#[cfg(feature = "window")]
-pub use uwheel_window as window;
 
 #[cfg(feature = "tree")]
 pub use uwheel_tree as tree;

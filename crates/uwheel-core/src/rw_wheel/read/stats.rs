@@ -15,10 +15,8 @@ pub struct Stats {
     pub combine_range: Sketch,
     /// A sketch for recording latencies of generating combine range plans
     pub combine_range_plan: Sketch,
-    /// A sketch for recording latencies of generating the logical plan
-    pub logical_plan: Sketch,
-    /// A sketch for recording latencies of generating the physical plan
-    pub physical_plan: Sketch,
+    /// A sketch for recording latencies of generating the execution plan
+    pub exec_plan: Sketch,
     /// A sketch for recording latencies of generating combine aggregation plan
     pub combined_aggregation_plan: Sketch,
     /// A sketch for recording latencies of executing combined aggregation
@@ -36,8 +34,7 @@ impl core::fmt::Debug for Stats {
             .field("interval", &self.interval.percentiles())
             .field("landmark", &self.landmark.percentiles())
             .field("combine_range", &self.combine_range.percentiles())
-            .field("logical_plan", &self.logical_plan.percentiles())
-            .field("physical_plan", &self.physical_plan.percentiles())
+            .field("exec_plan", &self.exec_plan.percentiles())
             .field("combine_range_plan", &self.combine_range_plan.percentiles())
             .field(
                 "combined_aggregation_plan",

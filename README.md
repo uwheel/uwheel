@@ -2,35 +2,39 @@
   <img width="300" height="300" src="assets/logo.png">
 </p>
 
+[![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
+[![Apache](https://img.shields.io/badge/license-Apache-blue.svg)](https://github.com/Max-Meldrum/uwheel/blob/main/LICENSE-APACHE)
+[![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Max-Meldrum/uwheel/blob/main/LICENSE-MIT)
+
 # µWheel
 
-µWheel is an Event-driven Aggregate Management System.
+µWheel is an Embeddable Aggregate Management System for Hybrid Stream and Analytical Processing.
 
-Features:
+## Features
 
-- Versatile
-    - Event-driven Stream Analytics
-    - Temporal Warehousing
-    - Time-Series Analysis
-- Lightweight
-    - Pre-aggregation
-    - Exploits hierarchical nature of time
-    - Implicit timestamps (event-time indexed wheels)
-    - Workload-aware Compression
-- Performance
-    - Decoupled write and read paths
-    - High-throughput ingestion
-    - Low-latency queries through wheel-based query optimizer
-- Embeddable
-    - ``#[no_std]`` compatible (requires ``alloc``)
-    - WASM friendly
+- Wheel-based query optimizer
+- Vectorized (SIMD) query execution.
+- Out-of-order support using ``low watermarking``.
+- Supports user-defined aggregators.
+- High-throughput stream ingestion.
+- Low space footprint.
+- Zero-copy deserialization.
+- Incremental checkpointing support.
+- Fully mergeable.
+- Compatible with ``#[no_std]`` (requires ``alloc``).
+
+## Use cases
+
+- A mini stream processor ([see example](examples/window))
+- A tiny but powerful materialized view for streaming databases.
+- A compact and mergeable system for analytics at the edge ([see example](examples/aggregator)).
 
 ## Aggregation Framework
 
 * ``lift(input) -> MutablePartialAggregate``
     * Lifts input data into a mutable aggregate
 * ``combine_mutable(mutable, input)``
-    * Combines the input data into a mutable aggregate
+    * Combines ⊙ the input data into a mutable aggregate
 * ``freeze(mutable) -> PartialAggregate``
     * Freezes the mutable aggregate into an immutable one
 * ``combine(a, a) -> a``
@@ -97,27 +101,24 @@ uwheel = { version = "0.1.0", default-features = false }
 ```rust
 use uwheel::{aggregator::U32SumAggregator, time::NumericalDuration, Entry, RwWheel};
 
-// Initial start time (represented as milliseconds)
-let mut time = 0;
-let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(time);
+// Initial start watermark 2023-11-09 00:00:00 (represented as milliseconds)
+let mut watermark = 1699488000000;
+// Create a Reader-Writer Wheel with U32 Sum Aggregation using the default configuration
+let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(watermark);
 
-// Fill the seconds wheel (60 slots)
-for _ in 0..60 {
-    wheel.write().insert(Entry::new(1u32, time)).unwrap();
-    time += 1000;
+// Fill the wheel 3600 worth of seconds
+for _ in 0..3600 {
+    // Insert entry into the wheel
+    wheel.write().insert(Entry::new(1u32, watermark)).unwrap();
+    // bump the watermark by 1 second and also advanced the wheel
+    watermark += 1000;
+    wheel.advance_to(watermark);
 }
 
-// force a rotation of the seconds wheel
-wheel.advance(60.seconds());
-
-// interval of last 1 minute
-assert_eq!(wheel.read().interval(1.minutes()), Some(60));
-
-// full range of data
-assert_eq!(wheel.read().landmark(), Some(60));
-
-// interval of last 15 seconds
+// query the wheel using different intervals
 assert_eq!(wheel.read().interval(15.seconds()), Some(15));
+assert_eq!(wheel.read().interval(1.minutes()), Some(60));
+assert_eq!(wheel.read().interval(1.hours()), Some(3600));
 ```
 
 See more examples [here](examples).
@@ -126,7 +127,7 @@ See more examples [here](examples).
 
 <img src="crates/uwheel-demo/assets/uwheel_demo.gif">
 
-An interactive demo [application](crates/uwheel-demo/) that works both natively and on the web.
+Give µWheel a try directly on the [web](https://maxmeldrum.com/uwheel) or build the demo application [locally](crates/uwheel-demo/) 
 
 
 ## License

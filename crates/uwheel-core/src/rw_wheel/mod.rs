@@ -215,9 +215,8 @@ where
             &read.stats().combined_aggregation,
         );
 
-        add_row("logical plan", &mut table, &read.stats().logical_plan);
+        add_row("execution plan", &mut table, &read.stats().exec_plan);
 
-        add_row("physical plan", &mut table, &read.stats().physical_plan);
         add_row(
             "combined aggregation plan",
             &mut table,

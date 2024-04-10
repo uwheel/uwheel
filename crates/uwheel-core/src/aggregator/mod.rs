@@ -144,6 +144,8 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     }
 
     /// Returns a function that combines aggregates using explicit SIMD instructions
+    ///
+    /// Is set to `None` by default
     fn combine_simd() -> Option<Self::CombineSimd> {
         None
     }
