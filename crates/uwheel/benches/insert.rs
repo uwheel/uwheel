@@ -99,9 +99,8 @@ fn insert_out_of_order(percentage: f32, bencher: &mut Bencher) {
 }
 
 fn insert_wheel_random(seconds: u64, bencher: &mut Bencher) {
-    //let mut wheel = RwWheel::<U64SumAggregator>::new(0);
-    let opts = uwheel::rw_wheel::Options::default().with_write_ahead(16);
-    let mut wheel = RwWheel::<U64SumAggregator>::with_options(0, opts);
+    let conf = uwheel::rw_wheel::Conf::default().with_write_ahead(16);
+    let mut wheel = RwWheel::<U64SumAggregator>::with_conf(conf);
     bencher.iter(|| {
         let ts = fastrand::u64(1..=seconds) * 1000;
         wheel.insert(Entry::new(1, ts));

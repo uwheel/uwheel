@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 pub struct DeltaState<T> {
     /// Oldest timestamp for the set deltas
     ///
-    // May be used to initate a new wheel somewhere else
+    /// May be used to initate a new wheel somewhere else
     pub oldest_ts: u64,
     /// Deltas ordered from Oldest to newest
     pub deltas: Vec<Option<T>>,

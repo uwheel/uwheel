@@ -10,7 +10,7 @@ pub const DEFAULT_WRITE_AHEAD_SLOTS: usize = 64;
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, vec::Vec};
 
-/// A fixed-sized Write-ahead Wheel where slots are represented as seconds
+/// A writer wheel optimized for single-threaded ingestion of aggregates.
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone)]
@@ -35,7 +35,7 @@ impl<A: Aggregator> WriterWheel<A> {
     pub fn with_watermark(watermark: u64) -> Self {
         Self::with_capacity_and_watermark(DEFAULT_WRITE_AHEAD_SLOTS, watermark)
     }
-    /// Creates a Write wheel starting from the given watermark and capacity
+    /// Creates a WriterWheel starting from the given watermark and capacity
     pub fn with_capacity_and_watermark(capacity: usize, watermark: u64) -> Self {
         let num_slots = crate::capacity_to_slots!(capacity);
         Self {

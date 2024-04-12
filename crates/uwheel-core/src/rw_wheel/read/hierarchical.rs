@@ -151,7 +151,7 @@ impl HawConf {
         self.days = days;
         self
     }
-    /// Configures the minutes granularity
+    /// Configures the weeks granularity
     pub fn with_weeks(mut self, weeks: WheelConf) -> Self {
         self.weeks = weeks;
         self
@@ -182,7 +182,7 @@ pub const WEEKS: usize = 52;
 /// Default capacity of year slots
 pub const YEARS: usize = 10;
 
-/// A Wheel range representing a closed-open interval of [start, end)
+/// A Wheel time range representing a closed-open interval of [start, end)
 #[derive(Debug, Copy, Hash, PartialEq, Eq, Clone)]
 pub struct WheelRange {
     pub(crate) start: OffsetDateTime,
@@ -267,11 +267,13 @@ impl Default for Heuristics {
     }
 }
 
-/// Optimization configuration
+/// HAW Query optimization configuration
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Optimizer {
+    /// Defines whether the optimizer should use framework provided hints
     use_hints: bool,
+    /// A set of heuristics that the optimizer takes into context
     heuristics: Heuristics,
 }
 impl Optimizer {
@@ -283,11 +285,13 @@ impl Optimizer {
 
 /// Hierarchical Aggregate Wheel
 ///
+/// # How it works
+///
 /// Similarly to Hierarchical Wheel Timers, HAW exploits the hierarchical nature of time and utilise several aggregation wheels,
 /// each with a different time granularity. This enables a compact representation of aggregates across time
 /// with a low memory footprint and makes it highly compressible and efficient to store on disk.
-/// HAWs are event-time driven and uses the notion of a Watermark which means that no timestamps are stored as they are implicit in the wheel slots.
-/// It is up to the user of the wheel to advance the watermark and thus roll up aggregates continously up the time hierarchy.
+/// HAWs are event-time driven and indexed by low watermarking which means that no timestamps are stored as they are implicit in the wheel slots.
+/// It is up to the user of the wheel to advance the low watermark and thus roll up aggregates continously up the time hierarchy.
 /// For instance, to store aggregates with second granularity up to 10 years, we would need the following aggregation wheels:
 ///
 /// * Seconds wheel with 60 slots
@@ -299,6 +303,25 @@ impl Optimizer {
 ///
 /// The above scheme results in a total of 213 wheel slots. This is the minimum number of slots
 /// required to support rolling up aggregates across 10 years with second granularity.
+///
+/// # Query Optimizer
+///
+/// HAW is equipped with a wheel-based query optimizer whose cost function minimizes the number of aggregate operations for a given time range query.
+/// The Optimizer takes advantage of framework-provided hints such as SIMD compatibility and algebraic properties (invertibility) to execute more efficient plans.
+///
+/// # Data Retention
+///
+/// HAW has built-in data retention capabilities meaning it can store more wheel slots than the specified aggregate scheme.
+/// For instance, if you know that queries at the minute granularity will be common then the wheel may be configured to retain all minutes.
+///
+/// # Example
+///
+/// ```
+/// use uwheel_core::{aggregator::sum::U32SumAggregator, NumericalDuration, Haw};
+///
+/// // Creates a Haw with default configuration
+/// let mut haw: Haw<U32SumAggregator> = Haw::default();
+/// ```
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
@@ -328,14 +351,16 @@ where
     delta: DeltaState<A::PartialAggregate>,
     #[cfg(feature = "timer")]
     #[cfg_attr(feature = "serde", serde(skip))]
+    /// A hierarchical timing wheel for scheduling user-defined functions
     timer: TimerWheel<A>,
     #[cfg(feature = "profiler")]
+    /// A profiler that records latencies of various Haw operations
     stats: Stats,
 }
 
 impl<A: Aggregator> Default for Haw<A> {
     fn default() -> Self {
-        Self::new(0, Default::default())
+        Self::new(Default::default())
     }
 }
 
@@ -359,38 +384,18 @@ where
     /// Total number of wheel slots across all granularities
     pub const TOTAL_WHEEL_SLOTS: usize = SECONDS + MINUTES + HOURS + DAYS + WEEKS + YEARS;
 
-    /// Creates a new Wheel starting from the given time and configuration
-    ///
-    /// Time is represented as milliseconds
-    pub fn new(time: u64, conf: HawConf) -> Self {
-        let mut seconds = conf.seconds;
-        seconds.set_watermark(time);
-
-        let mut minutes = conf.minutes;
-        minutes.set_watermark(time);
-
-        let mut hours = conf.hours;
-        hours.set_watermark(time);
-
-        let mut days = conf.days;
-        days.set_watermark(time);
-
-        let mut weeks = conf.weeks;
-        weeks.set_watermark(time);
-
-        let mut years = conf.years;
-        years.set_watermark(time);
-
+    /// Creates a new Wheel from the given configuration
+    pub fn new(conf: HawConf) -> Self {
         Self {
-            watermark: time,
-            seconds_wheel: MaybeWheel::new(seconds),
-            minutes_wheel: MaybeWheel::new(minutes),
-            hours_wheel: MaybeWheel::new(hours),
-            days_wheel: MaybeWheel::new(days),
-            weeks_wheel: MaybeWheel::new(weeks),
-            years_wheel: MaybeWheel::new(years),
+            watermark: conf.watermark,
+            seconds_wheel: MaybeWheel::new(conf.seconds),
+            minutes_wheel: MaybeWheel::new(conf.minutes),
+            hours_wheel: MaybeWheel::new(conf.hours),
+            days_wheel: MaybeWheel::new(conf.days),
+            weeks_wheel: MaybeWheel::new(conf.weeks),
+            years_wheel: MaybeWheel::new(conf.years),
             conf,
-            delta: DeltaState::new(time, Vec::new()),
+            delta: DeltaState::new(conf.watermark, Vec::new()),
             window_manager: None,
             #[cfg(feature = "timer")]
             timer: TimerWheel::new(RawTimerWheel::default()),
@@ -471,7 +476,25 @@ where
         OffsetDateTime::from_unix_timestamp(ts as i64 / 1000).unwrap()
     }
 
-    /// Installs a periodic window
+    // for benching purposes right now
+    #[doc(hidden)]
+    pub fn convert_all_to_prefix(&mut self) {
+        self.seconds_wheel.as_mut().unwrap().to_prefix_array();
+        self.minutes_wheel.as_mut().unwrap().to_prefix_array();
+        self.hours_wheel.as_mut().unwrap().to_prefix_array();
+        self.days_wheel.as_mut().unwrap().to_prefix_array();
+    }
+
+    // for benching purposes right now
+    #[doc(hidden)]
+    pub fn convert_all_to_array(&mut self) {
+        self.seconds_wheel.as_mut().unwrap().to_array();
+        self.minutes_wheel.as_mut().unwrap().to_array();
+        self.hours_wheel.as_mut().unwrap().to_array();
+        self.days_wheel.as_mut().unwrap().to_array();
+    }
+
+    /// Installs a periodic window aggregation query
     pub fn window(&mut self, range: time_internal::Duration, slide: time_internal::Duration) {
         assert!(
             range >= slide,
@@ -539,6 +562,8 @@ where
         }
         windows
     }
+
+    // internal function to handle installed window queries
     fn handle_window_maybe(&mut self, windows: &mut Vec<Window<A::PartialAggregate>>) {
         // TODO: refactor this..
 
@@ -582,6 +607,8 @@ where
     }
 
     /// Clears the state of all wheels
+    ///
+    /// Use with caution as this operation cannot be reversed.
     pub fn clear(&mut self) {
         self.seconds_wheel.clear();
         self.minutes_wheel.clear();
@@ -596,10 +623,6 @@ where
     pub fn watermark(&self) -> u64 {
         self.watermark
     }
-    /// Returns the aggregate in the given time interval
-    pub fn interval_and_lower(&self, dur: time_internal::Duration) -> Option<A::Aggregate> {
-        self.interval(dur).map(|partial| A::lower(partial))
-    }
 
     /// Returns the execution plan for a given combine range query
     #[inline]
@@ -608,42 +631,30 @@ where
     }
 
     /// Combines partial aggregates within the given date range and lowers it to a final aggregate
+    ///
+    /// Returns `None` if the range cannot be answered by the wheel
     #[inline]
     pub fn combine_range_and_lower(&self, range: impl Into<WheelRange>) -> Option<A::Aggregate> {
         self.combine_range(range).map(A::lower)
     }
 
     /// Combines partial aggregates within the given date range [start, end) into a final partial aggregate
+    ///
+    /// Returns `None` if the range cannot be answered by the wheel
     #[inline]
     pub fn combine_range(&self, range: impl Into<WheelRange>) -> Option<A::PartialAggregate> {
         self.combine_range_inner(range).0
     }
 
     /// Executes a combine range query and returns the result + cost (combine ops) of executing it
+    ///
+    /// Returns `None` if the range cannot be answered by the wheel
     #[inline]
     pub fn analyze_combine_range(
         &self,
         range: impl Into<WheelRange>,
     ) -> (Option<A::PartialAggregate>, usize) {
         self.combine_range_inner(range)
-    }
-
-    // for benching purposes right now
-    #[doc(hidden)]
-    pub fn convert_all_to_prefix(&mut self) {
-        self.seconds_wheel.as_mut().unwrap().to_prefix_array();
-        self.minutes_wheel.as_mut().unwrap().to_prefix_array();
-        self.hours_wheel.as_mut().unwrap().to_prefix_array();
-        self.days_wheel.as_mut().unwrap().to_prefix_array();
-    }
-
-    // for benching purposes right now
-    #[doc(hidden)]
-    pub fn convert_all_to_array(&mut self) {
-        self.seconds_wheel.as_mut().unwrap().to_array();
-        self.minutes_wheel.as_mut().unwrap().to_array();
-        self.hours_wheel.as_mut().unwrap().to_array();
-        self.days_wheel.as_mut().unwrap().to_array();
     }
 
     /// Combines partial aggregates within the given date range [start, end) into a final partial aggregate
@@ -676,55 +687,7 @@ where
         }
     }
 
-    /// Performs a given Combined Aggregation and returns the partial aggregate and the cost of the operation
-    fn inverse_landmark_aggregation(
-        &self,
-        wheel_aggregations: WheelAggregations,
-    ) -> (A::PartialAggregate, usize) {
-        #[cfg(feature = "profiler")]
-        profile_scope!(&self.stats.inverse_landmark);
-
-        // get landmark partial
-        let (landmark, lcost) = self.analyze_landmark();
-        let combine_inverse = A::combine_inverse().unwrap(); // assumed to be safe as it has been verified by the plan generation
-
-        wheel_aggregations
-            .iter()
-            .fold((landmark.unwrap_or(A::IDENTITY), lcost), |mut acc, plan| {
-                let cost = plan.cost();
-                let agg = self.wheel_aggregation(plan.range).unwrap_or(A::IDENTITY);
-                acc.0 = combine_inverse(acc.0, agg);
-                acc.1 += cost;
-                acc
-            })
-    }
-
-    /// Performs a given Combined Aggregation and returns the partial aggregate and the cost of the operation
-    #[inline]
-    fn combined_aggregation(
-        &self,
-        combined: CombinedAggregation,
-    ) -> (Option<A::PartialAggregate>, usize) {
-        #[cfg(feature = "profiler")]
-        profile_scope!(&self.stats.combined_aggregation);
-
-        let cost = combined.cost();
-        let agg = combined
-            .aggregations
-            .into_iter()
-            .fold(None, |mut acc, wheel_agg| {
-                match self.wheel_aggregation(wheel_agg.range) {
-                    Some(agg) => {
-                        combine_or_insert::<A>(&mut acc, agg);
-                        acc
-                    }
-                    None => acc,
-                }
-            });
-        (agg, cost)
-    }
-
-    /// Returns the best logical plan possible for a given wheel range
+    /// Returns the best possible execution plan for a given wheel range
     #[inline]
     fn create_exec_plan(&self, range: WheelRange) -> ExecutionPlan {
         #[cfg(feature = "profiler")]
@@ -934,10 +897,60 @@ where
         CombinedAggregation::from(aggregations)
     }
 
+    // Performs a inverse landmark aggregation
+    fn inverse_landmark_aggregation(
+        &self,
+        wheel_aggregations: WheelAggregations,
+    ) -> (A::PartialAggregate, usize) {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.inverse_landmark);
+
+        // get landmark partial
+        let (landmark, lcost) = self.analyze_landmark();
+        let combine_inverse = A::combine_inverse().unwrap(); // assumed to be safe as it has been verified by the plan generation
+
+        wheel_aggregations
+            .iter()
+            .fold((landmark.unwrap_or(A::IDENTITY), lcost), |mut acc, plan| {
+                let cost = plan.cost();
+                let agg = self.wheel_aggregation(plan.range).unwrap_or(A::IDENTITY);
+                acc.0 = combine_inverse(acc.0, agg);
+                acc.1 += cost;
+                acc
+            })
+    }
+
+    /// Performs a given Combined Aggregation and returns the partial aggregate and the cost of the operation
+    #[inline]
+    fn combined_aggregation(
+        &self,
+        combined: CombinedAggregation,
+    ) -> (Option<A::PartialAggregate>, usize) {
+        #[cfg(feature = "profiler")]
+        profile_scope!(&self.stats.combined_aggregation);
+
+        let cost = combined.cost();
+        let agg = combined
+            .aggregations
+            .into_iter()
+            .fold(None, |mut acc, wheel_agg| {
+                match self.wheel_aggregation(wheel_agg.range) {
+                    Some(agg) => {
+                        combine_or_insert::<A>(&mut acc, agg);
+                        acc
+                    }
+                    None => acc,
+                }
+            });
+        (agg, cost)
+    }
+
     /// Combines partial aggregates within [start, end) using the lowest time granularity wheel
     ///
     /// Note that start date is inclusive while end date is exclusive.
     /// For instance, the range [16:00:50, 16:01:00) refers to the 10 remaining seconds of the minute
+    ///
+    /// Returns `None` if the range cannot be answered by the wheel
     #[inline]
     pub fn wheel_aggregation(&self, range: impl Into<WheelRange>) -> Option<A::PartialAggregate> {
         #[cfg(feature = "profiler")]
@@ -975,33 +988,18 @@ where
         }
     }
 
-    /// Schedules a timer to fire once the given time has been reached
-    #[cfg(feature = "timer")]
-    pub(crate) fn schedule_once(
-        &self,
-        time: u64,
-        f: impl Fn(&Haw<A>) + 'static,
-    ) -> Result<(), TimerError<TimerAction<A>>> {
-        self.timer
-            .write()
-            .schedule_at(time, TimerAction::Oneshot(Box::new(f)))
-    }
-    /// Schedules a timer to fire repeatedly
-    #[cfg(feature = "timer")]
-    pub(crate) fn schedule_repeat(
-        &self,
-        at: u64,
-        interval: time_internal::Duration,
-        f: impl Fn(&Haw<A>) + 'static,
-    ) -> Result<(), TimerError<TimerAction<A>>> {
-        self.timer
-            .write()
-            .schedule_at(at, TimerAction::Repeat((at, interval, Box::new(f))))
-    }
-
     /// Returns the partial aggregate in the given time interval
+    ///
+    /// Internally the [Self::combine_range] function is used to produce the result
     pub fn interval(&self, dur: time_internal::Duration) -> Option<A::PartialAggregate> {
         self.interval_with_stats(dur).0
+    }
+
+    /// Returns the partial aggregate in the given time interval and lowers the result
+    ///
+    /// Internally the [Self::combine_range] function is used to produce the result
+    pub fn interval_and_lower(&self, dur: time_internal::Duration) -> Option<A::Aggregate> {
+        self.interval(dur).map(|partial| A::lower(partial))
     }
 
     /// Returns the partial aggregate in the given time interval
@@ -1064,6 +1062,29 @@ where
             })
             .flatten();
         (agg, combines)
+    }
+    /// Schedules a timer to fire once the given time has been reached
+    #[cfg(feature = "timer")]
+    pub(crate) fn schedule_once(
+        &self,
+        time: u64,
+        f: impl Fn(&Haw<A>) + 'static,
+    ) -> Result<(), TimerError<TimerAction<A>>> {
+        self.timer
+            .write()
+            .schedule_at(time, TimerAction::Oneshot(Box::new(f)))
+    }
+    /// Schedules a timer to fire repeatedly
+    #[cfg(feature = "timer")]
+    pub(crate) fn schedule_repeat(
+        &self,
+        at: u64,
+        interval: time_internal::Duration,
+        f: impl Fn(&Haw<A>) + 'static,
+    ) -> Result<(), TimerError<TimerAction<A>>> {
+        self.timer
+            .write()
+            .schedule_at(at, TimerAction::Repeat((at, interval, Box::new(f))))
     }
 
     /// Tick the wheel by a single unit (second)
@@ -1219,7 +1240,7 @@ where
         self.years_wheel.merge(&other.years_wheel);
     }
     #[cfg(feature = "profiler")]
-    /// Returns a reference to the stats of the [HAW]
+    /// Returns a reference to the stats of the [Haw]
     pub fn stats(&self) -> &Stats {
         &self.stats
     }
@@ -1238,7 +1259,7 @@ mod tests {
 
     #[test]
     fn delta_advance_test() {
-        let mut haw: Haw<U64SumAggregator> = Haw::new(0, Default::default());
+        let mut haw: Haw<U64SumAggregator> = Haw::default();
         // oldest to newest
         let deltas = vec![Some(10), None, Some(50), None];
 
@@ -1260,7 +1281,7 @@ mod tests {
         // 2023-11-09 00:00:00
         let watermark = 1699488000000;
         let conf = HawConf::default().with_watermark(watermark);
-        let mut haw: Haw<U64SumAggregator> = Haw::new(watermark, conf);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(conf);
         // oldest to newest
         let deltas = vec![Some(10), None, Some(50), None];
 
@@ -1288,7 +1309,7 @@ mod tests {
         // 2023-11-09 00:00:00
         let watermark = 1699488000000;
         let conf = HawConf::default().with_watermark(watermark);
-        let mut haw: Haw<U64SumAggregator> = Haw::new(watermark, conf);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(conf);
 
         let deltas: Vec<Option<u64>> = (0..180).map(|_| Some(1)).collect();
         haw.delta_advance(deltas);
@@ -1309,7 +1330,7 @@ mod tests {
         // 2023-11-09 00:00:00
         let watermark = 1699488000000;
         let conf = HawConf::default().with_watermark(watermark);
-        let mut haw: Haw<U64SumAggregator> = Haw::new(watermark, conf);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(conf);
 
         let hours_as_secs = 3600;
         let hours = hours_as_secs * 3;
@@ -1335,7 +1356,7 @@ mod tests {
         let conf = HawConf::default()
             .with_watermark(watermark)
             .with_retention_policy(RetentionPolicy::Keep);
-        let mut haw: Haw<U64SumAggregator> = Haw::new(watermark, conf);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(conf);
 
         let days_as_secs = 3600 * 24;
         let days = days_as_secs * 3;

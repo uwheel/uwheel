@@ -100,7 +100,7 @@ fn random_seconds() -> usize {
 
 fn large_wheel() -> RwWheel<AllAggregator> {
     let mut time = 0;
-    let mut wheel: RwWheel<AllAggregator> = RwWheel::with_drill_down(0);
+    let mut wheel: RwWheel<AllAggregator> = RwWheel::new(time);
     let ticks = 604800; // 7-days as seconds
     for _ in 0..ticks {
         wheel.advance_to(time);

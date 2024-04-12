@@ -37,6 +37,8 @@ use uwheel_stats::profile_scope;
 
 /// A Reader-Writer aggregation wheel with decoupled read and write paths.
 ///
+/// # How it works
+///
 /// ## Indexing
 ///
 /// The wheel adopts a low watermark clock which is used for indexing. The watermark
@@ -44,67 +46,75 @@ use uwheel_stats::profile_scope;
 ///
 /// ## Writes
 ///
-/// Writes are handled by a write-ahead wheel which contain aggregates above the current watermark.
-/// The write-ahead wheel has a fixed-sized capacity meaning it only supports N number of seconds above the
-/// watermark. Writes that do not fit within this capacity is scheduled into a Overflow wheel (Hierarchical Timing Wheel)
-/// to be inserted once time has passed enough.
+/// Writes are handled by a [WriterWheel] which manages aggregates above the current watermark.
 ///
 /// ## Reads
 ///
-/// Aggregates once moved to below the watermark become immutable and are inserted into
-/// a hierarchical aggregation wheel [ReaderWheel]. A data structure which materializes aggregates
-/// across time.
+/// Reads are handled by a [ReaderWheel] which hierarchically organizes aggregates across multiple time dimensions.
+/// The reader wheel internally consists of a Hierarchical Aggregate Wheel that is equipped with a wheel-based query optimizer.
+///
+/// ## Aggregate Synchronization
+///
+/// Aggregates are lazily "synchronized" between the writer and reader wheels once the low watermark has been advanced.
+/// The synchronization only occurs once the user decides to advance time either through [Self::advance] or [Self::advance_to].
+///
+/// ## Example
+///
+///
+/// ```
+/// use uwheel_core::{aggregator::sum::U32SumAggregator, NumericalDuration, Entry, RwWheel};
+///
+/// let time = 0;
+/// let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(time);
+/// // Insert an entry into the wheel
+/// wheel.insert(Entry::new(100, time));
+/// // advance the wheel to 1000
+/// wheel.advance_to(1000);
+/// // verify the new low watermark
+/// assert_eq!(wheel.watermark(), 1000);
+/// // query the last second of aggregates
+/// assert_eq!(wheel.read().interval(1.seconds()), Some(100));
+/// ```
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct RwWheel<A>
 where
     A: Aggregator,
 {
+    /// A single-writer wheel designed for high-throughput ingestion of stream aggregates
     writer: WriterWheel<A>,
+    /// A multiple-reader wheel designed for efficient querying of aggregate across arbitrary time ranges
     reader: ReaderWheel<A>,
     #[cfg(feature = "profiler")]
     stats: stats::Stats,
 }
+
+impl<A: Aggregator> Default for RwWheel<A> {
+    fn default() -> Self {
+        Self::with_conf(Default::default())
+    }
+}
+
 impl<A> RwWheel<A>
 where
     A: Aggregator,
 {
-    /// Creates a new Wheel starting from the given time and enables drill-down on all granularities
-    ///
-    /// Time is represented as milliseconds
-    pub fn with_drill_down(time: u64) -> Self {
-        let mut haw_conf = HawConf::default();
-        haw_conf.seconds.set_drill_down(true);
-        haw_conf.minutes.set_drill_down(true);
-        haw_conf.hours.set_drill_down(true);
-        haw_conf.days.set_drill_down(true);
-        haw_conf.weeks.set_drill_down(true);
-        haw_conf.years.set_drill_down(true);
-
-        let options = Options::default().with_haw_conf(haw_conf);
-
-        Self {
-            writer: WriterWheel::with_watermark(time),
-            reader: ReaderWheel::with_conf(time, options.haw_conf),
-            #[cfg(feature = "profiler")]
-            stats: stats::Stats::default(),
-        }
-    }
     /// Creates a new Wheel starting from the given time
     ///
-    /// Time is represented as milliseconds
+    /// Time is represented as milliseconds since unix timestamp
+    ///
+    /// See [`RwWheel::with_conf`] for more detailed configuration possibilities
     pub fn new(time: u64) -> Self {
-        Self {
-            writer: WriterWheel::with_watermark(time),
-            reader: ReaderWheel::new(time),
-            #[cfg(feature = "profiler")]
-            stats: stats::Stats::default(),
-        }
+        let conf = Conf::default().with_haw_conf(HawConf::default().with_watermark(time));
+        Self::with_conf(conf)
     }
-    /// Creates a new wheel starting from the given time and the specified [Options]
-    pub fn with_options(time: u64, opts: Options) -> Self {
+    /// Creates a new wheel using the specified configuration
+    pub fn with_conf(conf: Conf) -> Self {
         Self {
-            writer: WriterWheel::with_capacity_and_watermark(opts.write_ahead_capacity, time),
-            reader: ReaderWheel::with_conf(time, opts.haw_conf),
+            writer: WriterWheel::with_capacity_and_watermark(
+                conf.writer_conf.write_ahead_capacity,
+                conf.reader_conf.haw_conf.watermark,
+            ),
+            reader: ReaderWheel::with_conf(conf.reader_conf.haw_conf),
             #[cfg(feature = "profiler")]
             stats: stats::Stats::default(),
         }
@@ -157,9 +167,7 @@ where
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.advance);
 
-        // Advance the read wheel
         self.reader.advance_to(watermark, &mut self.writer)
-        // debug_assert_eq!(self.writer.watermark(), self.reader.watermark())
     }
 
     /// Returns an estimation of bytes used by the wheel
@@ -168,6 +176,7 @@ where
         let write = self.writer.size_bytes().unwrap();
         read + write
     }
+
     #[cfg(feature = "profiler")]
     /// Prints the stats of the [RwWheel]
     pub fn print_stats(&self) {
@@ -243,33 +252,47 @@ where
     }
 }
 
-/// Options to customise a [RwWheel]
+/// [`WriterWheel`] Configuration
 #[derive(Debug, Copy, Clone)]
-pub struct Options {
+pub struct WriterConf {
     /// Defines the capacity of write-ahead slots
     write_ahead_capacity: usize,
-    /// Hierarchical Aggregation Wheel scheme
-    haw_conf: HawConf,
 }
-impl Default for Options {
+impl Default for WriterConf {
     fn default() -> Self {
         Self {
             write_ahead_capacity: DEFAULT_WRITE_AHEAD_SLOTS,
-            haw_conf: Default::default(),
         }
     }
 }
-impl Options {
+
+/// [`ReaderWheel`] Configuration
+#[derive(Debug, Default, Copy, Clone)]
+pub struct ReaderConf {
+    /// Hierarchical Aggregation Wheel configuration
+    haw_conf: HawConf,
+}
+
+/// Reader-Writer Wheel Configuration
+#[derive(Debug, Default, Copy, Clone)]
+pub struct Conf {
+    /// Writer Wheel Configuration
+    writer_conf: WriterConf,
+    /// Reader Wheel Configuration
+    reader_conf: ReaderConf,
+}
+
+impl Conf {
     /// Configure the number of write-ahead slots
     ///
     /// The default value is [DEFAULT_WRITE_AHEAD_SLOTS]
     pub fn with_write_ahead(mut self, capacity: usize) -> Self {
-        self.write_ahead_capacity = capacity;
+        self.writer_conf.write_ahead_capacity = capacity;
         self
     }
-    /// Configures the wheel to use the given [HawConf]
+    /// Configures the reader wheel to use the given [HawConf]
     pub fn with_haw_conf(mut self, conf: HawConf) -> Self {
-        self.haw_conf = conf;
+        self.reader_conf.haw_conf = conf;
         self
     }
 }
@@ -287,9 +310,9 @@ mod tests {
     #[test]
     fn delta_generate_test() {
         let haw_conf = HawConf::default().with_deltas();
-        let options = Options::default().with_haw_conf(haw_conf);
+        let conf = Conf::default().with_haw_conf(haw_conf);
 
-        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::with_options(0, options);
+        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::with_conf(conf);
         rw_wheel.insert(Entry::new(250, 1000));
         rw_wheel.insert(Entry::new(250, 2000));
         rw_wheel.insert(Entry::new(250, 3000));
@@ -316,7 +339,7 @@ mod tests {
 
     #[test]
     fn insert_test() {
-        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
+        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::default();
         rw_wheel.insert(Entry::new(250, 1000));
         rw_wheel.insert(Entry::new(250, 2000));
         rw_wheel.insert(Entry::new(250, 3000));
@@ -334,7 +357,7 @@ mod tests {
     #[cfg(all(feature = "timer", not(feature = "serde")))]
     #[test]
     fn timer_once_test() {
-        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
+        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::default();
         let gate = Rc::new(RefCell::new(false));
         let inner_gate = gate.clone();
 
@@ -358,7 +381,7 @@ mod tests {
     #[cfg(all(feature = "timer", not(feature = "serde")))]
     #[test]
     fn timer_repeat_test() {
-        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
+        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::default();
         let sum = Rc::new(RefCell::new(0));
         let inner_sum = sum.clone();
 
@@ -392,7 +415,7 @@ mod tests {
     #[cfg(feature = "sync")]
     #[test]
     fn read_wheel_move_thread_test() {
-        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
+        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::default();
         rw_wheel.insert(Entry::new(1, 999));
         rw_wheel.advance(1.seconds());
 
@@ -572,9 +595,9 @@ mod tests {
             .with_hours(hours)
             .with_days(days);
 
-        let options = Options::default().with_haw_conf(haw_conf);
+        let conf = Conf::default().with_haw_conf(haw_conf);
 
-        let mut wheel = RwWheel::<U64SumAggregator>::with_options(time, options);
+        let mut wheel = RwWheel::<U64SumAggregator>::with_conf(conf);
 
         let days_as_secs = time::Duration::days((DAYS + 1) as i64).whole_seconds();
 
@@ -643,9 +666,9 @@ mod tests {
             .with_drill_down(true)
             .with_retention_policy(read::aggregation::conf::RetentionPolicy::Keep);
         let haw_conf = haw_conf.with_minutes(minutes);
-        let options = Options::default().with_haw_conf(haw_conf);
+        let conf = Conf::default().with_haw_conf(haw_conf);
 
-        let mut wheel = RwWheel::<U32SumAggregator>::with_options(time, options);
+        let mut wheel = RwWheel::<U32SumAggregator>::with_conf(conf);
 
         for _ in 0..30 {
             let entry = Entry::new(1u32, time);

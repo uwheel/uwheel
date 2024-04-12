@@ -1,8 +1,8 @@
-/// Aggregation Wheel based on a fixed-sized circular buffer
+/// This module contains the Aggregate Wheel, a core building block of the crate.
 ///
 /// This is the core data structure that is reused between different hierarchies (e.g., seconds, minutes, hours, days)
 pub mod aggregation;
-/// Hierarchical Aggregation Wheel (HAW)
+/// This module contains the Hierarchical Aggregate Wheel (HAW).
 pub mod hierarchical;
 
 mod plan;
@@ -28,7 +28,7 @@ use super::write::WriterWheel;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-/// A read wheel with hierarchical aggregation wheels backed by interior mutability.
+/// A reader wheel containing a hierarchical aggregate wheel [Haw] backed by interior mutability.
 ///
 /// By default allows a single reader using `RefCell`, and multiple-readers with the `sync` flag enabled using `parking_lot`
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -49,20 +49,16 @@ where
     /// Time is represented as milliseconds
     pub fn new(time: u64) -> Self {
         Self {
-            inner: Inner::new(Haw::new(time, Default::default())),
+            inner: Inner::new(Haw::new(HawConf::default().with_watermark(time))),
         }
     }
-    /// Creates a new Wheel starting from the given time and configuration
-    ///
-    /// Time is represented as milliseconds
-    pub fn with_conf(time: u64, conf: HawConf) -> Self {
+    /// Creates a new Wheel starting from the given configuration
+    pub fn with_conf(conf: HawConf) -> Self {
         Self {
-            inner: Inner::new(Haw::new(time, conf)),
+            inner: Inner::new(Haw::new(conf)),
         }
     }
     /// Creates a new Wheel from a set of deltas
-    ///
-    /// Time is represented as milliseconds
     pub fn from_delta_state(state: DeltaState<A::PartialAggregate>) -> Self {
         let rw = Self::new(state.oldest_ts);
         rw.delta_advance(state.deltas);
@@ -113,6 +109,8 @@ where
         self.inner.read().current_time_in_cycle()
     }
     /// Schedules a timer to fire once the given time has been reached
+    ///
+    /// See [`Haw::schedule_once`] for more information.
     #[cfg(feature = "timer")]
     pub fn schedule_once(
         &self,
@@ -121,7 +119,10 @@ where
     ) -> Result<(), TimerError<TimerAction<A>>> {
         self.inner.write().schedule_once(at, f)
     }
+
     /// Schedules a timer to fire repeatedly
+    ///
+    /// See [`Haw::schedule_repeat`] for more information.
     #[cfg(feature = "timer")]
     pub fn schedule_repeat(
         &self,
@@ -159,6 +160,8 @@ where
     }
 
     /// Advances the wheel by applying a set of deltas, each representing the lowest unit.
+    ///
+    /// See [`Haw::delta_advance`] for more information.
     #[inline]
     pub fn delta_advance(&self, deltas: impl IntoIterator<Item = Option<A::PartialAggregate>>) {
         self.inner.write().delta_advance(deltas);
@@ -180,6 +183,8 @@ where
     }
 
     /// Returns the partial aggregate in the given time interval
+    ///
+    /// See [`Haw::interval`] for more information.
     #[inline]
     pub fn interval(&self, dur: Duration) -> Option<A::PartialAggregate> {
         self.inner.read().interval(dur)

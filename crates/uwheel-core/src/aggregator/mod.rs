@@ -132,7 +132,7 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
 
     /// Returns a function that inverse combines two partial aggregates
     ///
-    /// If the aggregator does not support invertability then set it returns ``None``
+    /// Is set to `None` by default
     fn combine_inverse() -> Option<Self::CombineInverse> {
         None
     }
@@ -162,7 +162,7 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
 
     /// Optional compression support for partial aggregates
     ///
-    /// A default ``None`` is returned if there is no compression support available.
+    /// Is set to `None` by default
     fn compression() -> Option<Compression<Self::PartialAggregate>> {
         None
     }

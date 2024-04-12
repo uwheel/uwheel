@@ -10,7 +10,7 @@ pub enum RetentionPolicy {
     Drop,
     /// A no limit policy where data is always kept around
     ///
-    /// Be careful using this in a low granularity wheel (e.g., milli, seconds)
+    /// Be careful using this in a low granularity wheel (e.g., seconds).
     Keep,
     /// A policy that retains data but starts evicting at the given limit
     KeepWithLimit(usize),
@@ -87,11 +87,19 @@ pub enum DataLayout {
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Copy, Clone, Debug)]
 pub struct WheelConf {
+    /// Defines the base capacity of a wheel (e.g., seconds => 60).
     pub(crate) capacity: usize,
+    /// Defines the low watermark of a wheel
     pub(crate) watermark: u64,
+    /// Defines the chosen data layout of a wheel
     pub(crate) data_layout: DataLayout,
+    /// Defines the ticking size in milliseconds
+    ///
+    /// A seconds wheel with 1-second slots must have a tick size of 1000 for example.
     pub(crate) tick_size_ms: u64,
+    /// Defines the data retention policy of a wheel
     pub(crate) retention: RetentionPolicy,
+    /// Defines whether the wheel should maintain drill down slots to another dimension (wheel)
     pub(crate) drill_down: bool,
 }
 

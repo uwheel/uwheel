@@ -6,7 +6,7 @@ use uwheel::{
         hierarchical::HawConf,
     },
     Aggregator,
-    Options,
+    Conf,
     RwWheel,
 };
 
@@ -75,13 +75,13 @@ fn main() {
         .set_data_layout(DataLayout::Compressed(chunk_size));
 
     let pco_wheel: RwWheel<PcoSumAggregator> =
-        RwWheel::with_options(0, Options::default().with_haw_conf(pco_haw_conf));
+        RwWheel::with_conf(Conf::default().with_haw_conf(pco_haw_conf));
 
     let mut haw_conf = HawConf::default();
     haw_conf.seconds.set_retention_policy(RetentionPolicy::Keep);
 
     let wheel: RwWheel<U32SumAggregator> =
-        RwWheel::with_options(0, Options::default().with_haw_conf(haw_conf));
+        RwWheel::with_conf(Conf::default().with_haw_conf(haw_conf));
 
     let deltas: Vec<Option<u32>> = (0..seconds).map(|_| Some(fastrand::u32(1..1000))).collect();
 

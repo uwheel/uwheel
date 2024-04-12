@@ -3,11 +3,7 @@ use std::time::SystemTime;
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 use uwheel_core::{
     aggregator::sum::U64SumAggregator,
-    rw_wheel::read::{
-        aggregation::conf::RetentionPolicy,
-        hierarchical::{HawConf, WheelRange},
-        Haw,
-    },
+    rw_wheel::read::{aggregation::conf::RetentionPolicy, hierarchical::WheelRange},
     *,
 };
 
@@ -93,7 +89,7 @@ fn prepare_haw<A: Aggregator<PartialAggregate = u64>>(
         .with_watermark(start_watermark)
         .with_retention_policy(RetentionPolicy::Keep);
 
-    let mut haw: Haw<A> = Haw::new(start_watermark, conf);
+    let mut haw: Haw<A> = Haw::new(conf);
     let deltas: Vec<Option<u64>> = (0..seconds).map(|_| Some(fastrand::u64(1..1000))).collect();
     haw.delta_advance(deltas);
     haw

@@ -18,13 +18,13 @@ use core::{
     write,
 };
 
-/// Aggregation Interface adopted from the work of [Tangwongsan et al.](http://www.vldb.org/pvldb/vol8/p702-tangwongsan.pdf)
+/// Aggregation interface used by µWheel
 ///
 /// This module also contains a number of pre-defined aggregators (e.g., SUM, ALL, TopK)
 pub mod aggregator;
 /// Wheel deltas that can be used to update or build a wheel
 pub mod delta;
-/// Reader-Writer Wheel
+/// The core Reader-Writer Wheel
 pub mod rw_wheel;
 /// Time utilities
 ///
@@ -39,9 +39,19 @@ mod macros;
 
 pub use aggregator::Aggregator;
 pub use rw_wheel::{
-    read::{window::WindowBuilder, ReaderWheel, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS},
+    read::{
+        hierarchical::{Haw, HawConf},
+        window::WindowBuilder,
+        ReaderWheel,
+        DAYS,
+        HOURS,
+        MINUTES,
+        SECONDS,
+        WEEKS,
+        YEARS,
+    },
     write::WriterWheel,
-    Options,
+    Conf,
     RwWheel,
 };
 pub use time::OffsetDateTime;
