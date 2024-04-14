@@ -23,27 +23,19 @@
 - Fully mergeable.
 - Compatible with ``#[no_std]`` (requires ``alloc``).
 
+## How it works
+
+µWheel is a single-writer and multiple-reader system designed around [low-watermark](http://www.vldb.org/pvldb/vol14/p3135-begoli.pdf) indexed aggregation wheels.
+
+See more about its design [here](DESIGN.md).
+
 ## Use cases
 
 - A mini stream processor ([see example](examples/window))
 - A tiny but powerful materialized view for streaming databases.
 - A compact and mergeable system for analytics at the edge ([see example](examples/aggregator)).
 
-## Aggregation Framework
-
-* ``lift(input) -> MutablePartialAggregate``
-    * Lifts input data into a mutable aggregate
-* ``combine_mutable(mutable, input)``
-    * Combines ⊙ the input data into a mutable aggregate
-* ``freeze(mutable) -> PartialAggregate``
-    * Freezes the mutable aggregate into an immutable one
-* ``combine(a, a) -> a``
-    * Combines ⊕ two partial aggregates into a new one
-* ``lower(a) -> Aggregate``
-    * Lowers a partial aggregate to a final aggregate (e.g., sum/count -> avg)
-
-
-**Pre-defined Aggregators:**
+## Pre-defined Aggregators
 
 | Function | Description | Types | SIMD |
 | ---- | ------| ----- |----- |
@@ -53,7 +45,6 @@
 | AVG |  Arithmetic mean of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &cross; |
 | ALL |  Pre-computed SUM, AVG, MIN, MAX, COUNT | f64 | &cross;|
 | TOP N  |  Top N of all inputs | ``Aggregator`` with aggregate data that implements ``Ord`` | &cross;|
-
 
 See a user-defined aggregator example [here](examples/aggregator/).
 
