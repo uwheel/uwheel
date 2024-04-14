@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
-use uwheel_core::{aggregator::sum::U32SumAggregator, *};
+use uwheel::{aggregator::sum::U32SumAggregator, *};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("merge-wheels");

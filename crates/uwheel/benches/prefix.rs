@@ -7,7 +7,7 @@ use criterion::{
     BenchmarkId,
     Criterion,
 };
-use uwheel_core::{aggregator::sum::U64SumAggregator, *};
+use uwheel::{aggregator::sum::U64SumAggregator, *};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("prefix-sum");

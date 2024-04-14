@@ -14,8 +14,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 time.workspace = true
 concurrent-map = "5.0.31"
-uwheel-core = { workspace = true, features = ["sync"] }
+uwheel = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
-uwheel-core = { workspace = true, features = ["sum"] }
+uwheel = { workspace = true, features = ["sum"] }
 time = { workspace = true, features = ["macros"] }

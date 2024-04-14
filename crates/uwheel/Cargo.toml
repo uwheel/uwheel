@@ -1,7 +1,7 @@
 [package]
 name = "uwheel"
 version = "0.1.0"
-categories = ["index", "temporal warehousing", "streaming", "no-std"]
+categories.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,38 +14,65 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["std", "all", "avg", "sum", "min", "max", "smallvec"]
-std = ["uwheel-core/std"]
-all = ["uwheel-core/all"]
-avg = ["uwheel-core/avg"]
-sum = ["uwheel-core/sum"]
-min = ["uwheel-core/min"]
-max = ["uwheel-core/max"]
-smallvec = ["uwheel-core/smallvec"]
-top_n = ["uwheel-core/top_n"]
-sync = ["uwheel-core/sync"]
-tree = ["dep:uwheel-tree"]
-stats = ["std", "dep:uwheel-stats"]
-serde = ["uwheel-core/serde"]
-profiler = ["std", "uwheel-core/profiler"]
-timer = ["uwheel-core/timer"]
-simd = ["uwheel-core/simd", "std"]
+std = ["serde?/std"]
+all = []
+avg = []
+sum = []
+min = []
+max = []
+top_n = ["dep:hashbrown"]
+simd = ["dep:multiversion"]
+sync = ["dep:parking_lot", "std"]
+serde = [
+  "dep:serde",
+  "dep:serde-big-array",
+  "dep:zerovec",
+  "parking_lot?/serde",
+  "hashbrown?/serde",
+  "uwheel-stats?/serde",
+]
+profiler = ["dep:uwheel-stats", "prettytable-rs", "std"]
+timer = []
 
 [dependencies]
-uwheel-core = { workspace = true, default-features = false }
-uwheel-tree = { workspace = true, optional = true }
+time = { workspace = true, default-features = false }
+
+# Optional
+multiversion = { workspace = true, optional = true }
 uwheel-stats = { workspace = true, optional = true }
+parking_lot = { workspace = true, optional = true }
+hashbrown = { workspace = true, optional = true }
+serde = { workspace = true, optional = true, features = ["derive", "rc"] }
+serde-big-array = { workspace = true, optional = true }
+prettytable-rs = { workspace = true, optional = true }
+smallvec = { workspace = true, optional = true }
+zerovec = { workspace = true, features = ["derive", "serde"], optional = true }
 
 [dev-dependencies]
+time = { workspace = true, default-features = false, features = [
+  "macros",
+  "parsing",
+] }
 fastrand.workspace = true
 rand.workspace = true
 criterion.workspace = true
+pco.workspace = true
 
-[[bench]]
-name = "insert"
-harness = false
 
 [[bench]]
 name = "advance"
+harness = false
+
+[[bench]]
+name = "combine"
+harness = false
+
+[[bench]]
+name = "combine_range"
+harness = false
+
+[[bench]]
+name = "insert"
 harness = false
 
 [[bench]]
@@ -54,4 +81,8 @@ harness = false
 
 [[bench]]
 name = "merge"
+harness = false
+
+[[bench]]
+name = "prefix"
 harness = false

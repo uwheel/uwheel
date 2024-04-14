@@ -7,7 +7,7 @@ use criterion::{
     BenchmarkId,
     Criterion,
 };
-use uwheel_core::{
+use uwheel::{
     aggregator::{
         avg::U64AvgAggregator,
         max::U64MaxAggregator,

@@ -88,19 +88,19 @@ pub enum DataLayout {
 #[derive(Copy, Clone, Debug)]
 pub struct WheelConf {
     /// Defines the base capacity of a wheel (e.g., seconds => 60).
-    pub(crate) capacity: usize,
+    pub capacity: usize,
     /// Defines the low watermark of a wheel
-    pub(crate) watermark: u64,
+    pub watermark: u64,
     /// Defines the chosen data layout of a wheel
-    pub(crate) data_layout: DataLayout,
+    pub data_layout: DataLayout,
     /// Defines the ticking size in milliseconds
     ///
     /// A seconds wheel with 1-second slots must have a tick size of 1000 for example.
-    pub(crate) tick_size_ms: u64,
+    pub tick_size_ms: u64,
     /// Defines the data retention policy of a wheel
-    pub(crate) retention: RetentionPolicy,
+    pub retention: RetentionPolicy,
     /// Defines whether the wheel should maintain drill down slots to another dimension (wheel)
-    pub(crate) drill_down: bool,
+    pub drill_down: bool,
 }
 
 impl WheelConf {

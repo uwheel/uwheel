@@ -62,7 +62,7 @@ use uwheel_stats::profile_scope;
 ///
 ///
 /// ```
-/// use uwheel_core::{aggregator::sum::U32SumAggregator, NumericalDuration, Entry, RwWheel};
+/// use uwheel::{aggregator::sum::U32SumAggregator, NumericalDuration, Entry, RwWheel};
 ///
 /// let time = 0;
 /// let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(time);

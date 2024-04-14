@@ -8,7 +8,7 @@ use criterion::{
     Throughput,
 };
 use rand::prelude::*;
-use uwheel_core::{aggregator::sum::U64SumAggregator, *};
+use uwheel::{aggregator::sum::U64SumAggregator, *};
 
 const NUM_ELEMENTS: usize = 10000;
 

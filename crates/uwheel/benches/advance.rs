@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Bencher, BenchmarkId, Criterion};
-use uwheel_core::{aggregator::sum::U64SumAggregator, *};
+use uwheel::{aggregator::sum::U64SumAggregator, *};
 
 pub fn advance_time_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("advance");

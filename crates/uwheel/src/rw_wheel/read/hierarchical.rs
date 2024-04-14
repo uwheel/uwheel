@@ -317,7 +317,7 @@ impl Optimizer {
 /// # Example
 ///
 /// ```
-/// use uwheel_core::{aggregator::sum::U32SumAggregator, NumericalDuration, Haw};
+/// use uwheel::{aggregator::sum::U32SumAggregator, NumericalDuration, Haw};
 ///
 /// // Creates a Haw with default configuration
 /// let mut haw: Haw<U32SumAggregator> = Haw::default();

@@ -1,7 +1,7 @@
 use std::time::SystemTime;
 
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
-use uwheel_core::{
+use uwheel::{
     aggregator::sum::U64SumAggregator,
     rw_wheel::read::{aggregation::conf::RetentionPolicy, hierarchical::WheelRange},
     *,

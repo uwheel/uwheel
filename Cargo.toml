@@ -3,11 +3,10 @@ resolver = "1"                                   # resolver 1 needed for uwheel-
 members = ["crates/*", "examples/*"]
 exclude = ["benchmarks/*", "crates/uwheel-demo"]
 
-
 [workspace.package]
 authors = ["Max Meldrum <max@meldrum.se>"]
 edition = "2021"
-categories = ["index", "temporal warehousing", "streaming", "no-std"]
+categories = ["aggregation", "embeddable", "streaming", "no-std"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 
@@ -16,7 +15,6 @@ opt-level = 2 # fast and small wasm
 
 [workspace.dependencies]
 uwheel = { path = "crates/uwheel", version = "0.1.0" }
-uwheel-core = { path = "crates/uwheel-core", version = "0.1.0", default-features = false }
 uwheel-tree = { path = "crates/uwheel-tree", version = "0.1.0" }
 uwheel-stats = { path = "crates/uwheel-stats", version = "0.1.0" }
 
@@ -24,9 +22,12 @@ parking_lot = "0.12"
 hashbrown = "0.13"
 sketches-ddsketch = "0.2"
 minstant = "0.1"
+multiversion = { version = "0.7.3", default-features = false }
 fastrand = "1.8.0"
 rand = "0.8.5"
+prettytable-rs = "0.10.0"
 hdrhistogram = "7"
+zerovec = "0.10.1"
 clap = { version = "3.2", features = ["derive"] }
 criterion = "0.4"
 duckdb = { version = "0.10.0", features = ["bundled"] }

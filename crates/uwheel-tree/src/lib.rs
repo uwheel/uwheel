@@ -1,7 +1,7 @@
 //! uwheel-tree contains the Wheel-Tree index
 
 use core::hash::Hash;
-use uwheel_core::{aggregator::Aggregator, rw_wheel::read::hierarchical::WheelRange, ReaderWheel};
+use uwheel::{aggregator::Aggregator, rw_wheel::read::hierarchical::WheelRange, ReaderWheel};
 
 pub trait Key: PartialEq + Ord + Hash + Eq + Send + Sync + Clone + 'static {}
 impl<T> Key for T where T: PartialEq + Ord + Hash + Eq + Send + Sync + Clone + 'static {}
@@ -13,7 +13,7 @@ use std::{
     collections::{BinaryHeap, HashMap},
     ops::Bound,
 };
-use uwheel_core::{
+use uwheel::{
     delta::DeltaState,
     rw_wheel::read::aggregation::combine_or_insert,
     Duration,
@@ -284,7 +284,7 @@ where
 #[cfg(test)]
 mod tests {
     use time::macros::datetime;
-    use uwheel_core::{aggregator::sum::U64SumAggregator, time_internal::NumericalDuration};
+    use uwheel::{aggregator::sum::U64SumAggregator, time_internal::NumericalDuration};
 
     use super::*;
 
