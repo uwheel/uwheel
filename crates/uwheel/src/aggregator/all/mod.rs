@@ -134,7 +134,7 @@ impl Aggregator for AllAggregator {
 
 #[cfg(test)]
 mod tests {
-    use crate::{time_internal::Duration, RwWheel, SECONDS};
+    use crate::{duration::Duration, RwWheel, SECONDS};
 
     use super::*;
 

@@ -19,7 +19,7 @@ use crate::{
         aggregation::combine_or_insert,
         plan::{CombinedAggregation, WheelAggregations},
     },
-    time_internal,
+    Duration,
 };
 
 #[cfg(not(feature = "std"))]
@@ -235,8 +235,8 @@ impl WheelRange {
 
     /// Returns a Duration object for the range
     #[inline]
-    pub fn duration(&self) -> time_internal::Duration {
-        time_internal::Duration::seconds((self.end - self.start).whole_seconds())
+    pub fn duration(&self) -> Duration {
+        Duration::seconds((self.end - self.start).whole_seconds())
     }
 }
 
@@ -456,7 +456,7 @@ where
 
     /// Returns Duration that represents where the wheel currently is in its cycle
     #[inline]
-    pub fn current_time_in_cycle(&self) -> time_internal::Duration {
+    pub fn current_time_in_cycle(&self) -> Duration {
         let secs = self.seconds_wheel.rotation_count() as u64;
         let min_secs = self.minutes_wheel.rotation_count() as u64 * Self::MINUTES_AS_SECS;
         let hr_secs = self.hours_wheel.rotation_count() as u64 * Self::HOURS_AS_SECS;
@@ -464,7 +464,7 @@ where
         let week_secs = self.weeks_wheel.rotation_count() as u64 * Self::WEEK_AS_SECS;
         let year_secs = self.years_wheel.rotation_count() as u64 * Self::YEAR_AS_SECS;
         let cycle_time = secs + min_secs + hr_secs + day_secs + week_secs + year_secs;
-        time_internal::Duration::seconds(cycle_time as i64)
+        Duration::seconds(cycle_time as i64)
     }
 
     #[inline]
@@ -495,7 +495,7 @@ where
     }
 
     /// Installs a periodic window aggregation query
-    pub fn window(&mut self, range: time_internal::Duration, slide: time_internal::Duration) {
+    pub fn window(&mut self, range: Duration, slide: Duration) {
         assert!(
             range >= slide,
             "Window range must be larger or equal to slide"
@@ -515,7 +515,7 @@ where
         waw: &mut WriterWheel<A>,
     ) -> Vec<Window<A::PartialAggregate>> {
         let diff = watermark.saturating_sub(self.watermark());
-        self.advance(time_internal::Duration::milliseconds(diff as i64), waw)
+        self.advance(Duration::milliseconds(diff as i64), waw)
     }
 
     /// Advances the wheel by applying a set of deltas where each delta represents the lowest unit of time
@@ -534,7 +534,7 @@ where
     #[inline(always)]
     pub fn advance(
         &mut self,
-        duration: time_internal::Duration,
+        duration: Duration,
         waw: &mut WriterWheel<A>,
     ) -> Vec<Window<A::PartialAggregate>> {
         let ticks: usize = duration.whole_seconds() as usize;
@@ -991,23 +991,20 @@ where
     /// Returns the partial aggregate in the given time interval
     ///
     /// Internally the [Self::combine_range] function is used to produce the result
-    pub fn interval(&self, dur: time_internal::Duration) -> Option<A::PartialAggregate> {
+    pub fn interval(&self, dur: Duration) -> Option<A::PartialAggregate> {
         self.interval_with_stats(dur).0
     }
 
     /// Returns the partial aggregate in the given time interval and lowers the result
     ///
     /// Internally the [Self::combine_range] function is used to produce the result
-    pub fn interval_and_lower(&self, dur: time_internal::Duration) -> Option<A::Aggregate> {
+    pub fn interval_and_lower(&self, dur: Duration) -> Option<A::Aggregate> {
         self.interval(dur).map(|partial| A::lower(partial))
     }
 
     /// Returns the partial aggregate in the given time interval
     #[inline]
-    pub fn interval_with_stats(
-        &self,
-        dur: time_internal::Duration,
-    ) -> (Option<A::PartialAggregate>, usize) {
+    pub fn interval_with_stats(&self, dur: Duration) -> (Option<A::PartialAggregate>, usize) {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.interval);
 
@@ -1079,7 +1076,7 @@ where
     pub(crate) fn schedule_repeat(
         &self,
         at: u64,
-        interval: time_internal::Duration,
+        interval: Duration,
         f: impl Fn(&Haw<A>) + 'static,
     ) -> Result<(), TimerError<TimerAction<A>>> {
         self.timer
@@ -1250,8 +1247,8 @@ where
 mod tests {
     use crate::{
         aggregator::sum::U64SumAggregator,
+        duration::NumericalDuration,
         rw_wheel::read::plan::Aggregation,
-        time_internal::NumericalDuration,
     };
     use time::macros::datetime;
 

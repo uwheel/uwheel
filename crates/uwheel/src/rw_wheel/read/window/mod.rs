@@ -1,7 +1,7 @@
 mod state;
 mod util;
 
-use crate::{aggregator::Aggregator, time_internal::Duration};
+use crate::{aggregator::Aggregator, duration::Duration};
 use state::State;
 
 #[cfg(not(feature = "std"))]

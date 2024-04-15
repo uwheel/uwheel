@@ -70,7 +70,7 @@ avg_impl!(F64AvgAggregator, f64, (f64, f64));
 
 #[cfg(test)]
 mod tests {
-    use crate::{time_internal::NumericalDuration, RwWheel, SECONDS};
+    use crate::{duration::NumericalDuration, RwWheel, SECONDS};
 
     use super::*;
 

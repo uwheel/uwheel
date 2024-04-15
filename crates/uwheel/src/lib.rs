@@ -24,14 +24,14 @@ use core::{
 pub mod aggregator;
 /// Wheel deltas that can be used to update or build a wheel
 pub mod delta;
-/// The core Reader-Writer Wheel
-pub mod rw_wheel;
-/// Time utilities
+/// Span of time used for µWheel intervals
 ///
 /// Heavily borrowed from the [time](https://docs.rs/time/latest/time/) crate
-pub mod time_internal;
+pub mod duration;
+/// The core Reader-Writer Wheel
+pub mod rw_wheel;
 
-pub use time_internal::{Duration, NumericalDuration};
+pub use duration::{Duration, NumericalDuration};
 
 #[macro_use]
 #[doc(hidden)]

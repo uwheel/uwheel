@@ -1,5 +1,5 @@
 use super::util::{create_pair_type, PairType};
-use crate::time_internal::Duration;
+use crate::duration::Duration;
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug)]

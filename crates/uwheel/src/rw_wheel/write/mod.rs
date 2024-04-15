@@ -1,6 +1,6 @@
 use core::{mem, time::Duration as CoreDuration};
 
-use crate::{aggregator::Aggregator, time_internal::Duration, Entry, Error};
+use crate::{aggregator::Aggregator, duration::Duration, Entry, Error};
 
 use super::{timer::RawTimerWheel, wheel_ext::WheelExt};
 

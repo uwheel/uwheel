@@ -78,7 +78,7 @@ where
 mod tests {
     use crate::{
         aggregator::{all::AllAggregator, sum::U64SumAggregator, top_n::TopNAggregator},
-        time_internal::NumericalDuration,
+        duration::NumericalDuration,
         Entry,
         RwWheel,
     };

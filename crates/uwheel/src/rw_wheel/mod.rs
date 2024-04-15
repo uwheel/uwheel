@@ -16,7 +16,7 @@ mod stats;
 #[allow(dead_code)]
 mod timer;
 
-use crate::{aggregator::Aggregator, time_internal, Entry, Error};
+use crate::{aggregator::Aggregator, duration::Duration, Entry, Error};
 use core::fmt::Debug;
 use write::{WriterWheel, DEFAULT_WRITE_AHEAD_SLOTS};
 
@@ -154,10 +154,7 @@ where
     }
     /// Advance the watermark of the wheel by the given [time::Duration]
     #[inline]
-    pub fn advance(
-        &mut self,
-        duration: time_internal::Duration,
-    ) -> Vec<Window<A::PartialAggregate>> {
+    pub fn advance(&mut self, duration: Duration) -> Vec<Window<A::PartialAggregate>> {
         let to = self.watermark() + duration.whole_milliseconds() as u64;
         self.advance_to(to)
     }
@@ -305,7 +302,7 @@ mod tests {
     use std::rc::Rc;
 
     use super::*;
-    use crate::{aggregator::sum::U32SumAggregator, time_internal::*, *};
+    use crate::{aggregator::sum::U32SumAggregator, duration::*, *};
 
     #[test]
     fn delta_generate_test() {

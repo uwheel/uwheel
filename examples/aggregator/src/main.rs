@@ -1,7 +1,7 @@
 use uwheel::{
     aggregator::{Aggregator, PartialAggregateType},
-    time_internal::NumericalDuration,
     Entry,
+    NumericalDuration,
     RwWheel,
 };
 

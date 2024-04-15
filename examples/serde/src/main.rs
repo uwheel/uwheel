@@ -3,8 +3,9 @@ use std::time::Instant;
 use uwheel::{
     aggregator::sum::U32SumAggregator,
     rw_wheel::RwWheel,
-    time_internal::{Duration, NumericalDuration},
+    Duration,
     Entry,
+    NumericalDuration,
     ReaderWheel,
     SECONDS,
 };

@@ -13,7 +13,7 @@ pub(crate) mod stats;
 #[cfg(feature = "timer")]
 use crate::rw_wheel::timer::{TimerAction, TimerError};
 
-use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, time_internal::Duration};
+use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, duration::Duration};
 pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 
 use crate::aggregator::Aggregator;

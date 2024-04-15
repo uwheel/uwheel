@@ -284,7 +284,7 @@ where
 #[cfg(test)]
 mod tests {
     use time::macros::datetime;
-    use uwheel::{aggregator::sum::U64SumAggregator, time_internal::NumericalDuration};
+    use uwheel::{aggregator::sum::U64SumAggregator, NumericalDuration};
 
     use super::*;
 
