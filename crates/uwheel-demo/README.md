@@ -1,8 +1,8 @@
-## awheel demo
+## µWheel demo
 
-<img src="assets/awheel_demo.gif">
+<img src="assets/uwheel_demo.gif">
 
-Demo Application of awheel using [egui](https://github.com/emilk/egui/). Based on the [eframe_template](https://github.com/emilk/eframe_template).
+µWheel Demo Application using [egui](https://github.com/emilk/egui/). Based on the [eframe_template](https://github.com/emilk/eframe_template).
 
 ### Testing locally
 

@@ -244,7 +244,6 @@ impl<A: Aggregator> Wheel<A> {
     #[inline]
     pub fn drill_down(&self, _slot: usize) -> Option<&[A::PartialAggregate]> {
         None
-        // self.drill_down_slots.get(
     }
 
     /// Returns partial aggregate from `subtrahend` slots backwards from the head
@@ -257,8 +256,7 @@ impl<A: Aggregator> Wheel<A> {
         if subtrahend > self.len() {
             None
         } else {
-            unimplemented!();
-            // self.data.get(subtrahend)
+            self.data.get(subtrahend)
         }
     }
 

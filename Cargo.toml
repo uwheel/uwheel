@@ -1,7 +1,7 @@
 [workspace]
-resolver = "1"                                   # resolver 1 needed for uwheel-demo to work on web
+resolver = "1"                       # resolver 1 needed for uwheel-demo to work on web
 members = ["crates/*", "examples/*"]
-exclude = ["benchmarks/*", "crates/uwheel-demo"]
+exclude = ["benchmarks/*"]
 
 [workspace.package]
 authors = ["Max Meldrum <max@meldrum.se>"]

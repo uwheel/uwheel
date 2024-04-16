@@ -13,8 +13,8 @@ cd "$script_path/.."
 # https://rustwasm.github.io/docs/wasm-bindgen/web-sys/unstable-apis.html
 export RUSTFLAGS=--cfg=web_sys_unstable_apis
 
-CRATE_NAME="awheel-demo"
-CRATE_OUTPUT="awheel_demo"
+CRATE_NAME="uwheel-demo"
+CRATE_OUTPUT="uwheel_demo"
 
 
 OPEN=false
@@ -63,7 +63,7 @@ while test $# -gt 0; do
   esac
 done
 
-OUT_FILE_NAME="awheel_demo"
+OUT_FILE_NAME="uwheel_demo"
 
 
 FINAL_WASM_PATH=docs/${OUT_FILE_NAME}_bg.wasm

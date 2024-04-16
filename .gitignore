@@ -3,6 +3,7 @@
 crates/awheel-demo/dist
 benchmarks/results
 benchmarks/data
+dist/
 benchmarks/plots
 duckdb_ingestion*
 .ipynb_checkpoints/

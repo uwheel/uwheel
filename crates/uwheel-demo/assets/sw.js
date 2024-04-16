@@ -2,8 +2,8 @@ var cacheName = 'demo-pwa';
 var filesToCache = [
   './',
   './index.html',
-  './awheel-demo.js',
-  './awheel-demo.wasm',
+  './uwheel-demo.js',
+  './uwheel-demo.wasm',
 ];
 
 /* Start the service worker and cache all of the app's content */

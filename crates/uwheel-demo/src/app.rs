@@ -1,14 +1,6 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use ahash::AHashMap;
-use awheel::{
-    aggregator::sum::U64SumAggregator,
-    rw_wheel::read::{aggregation::conf::RetentionPolicy, hierarchical::HawConf, Haw, Lazy},
-    time::NumericalDuration,
-    Entry,
-    Options,
-    RwWheel,
-};
 use eframe::egui::{self};
 use egui::{
     plot::{Bar, BarChart, Legend, Plot, PlotPoint},
@@ -21,6 +13,14 @@ use egui::{
 use hdrhistogram::Histogram;
 use postcard::to_allocvec;
 use time::OffsetDateTime;
+use uwheel::{
+    aggregator::sum::U64SumAggregator,
+    rw_wheel::read::{aggregation::conf::RetentionPolicy, hierarchical::HawConf, Haw},
+    Conf,
+    Entry,
+    NumericalDuration,
+    RwWheel,
+};
 
 thread_local! {
     pub static QUERY_LATENCY: RefCell<Histogram<u64>> = RefCell::new(Histogram::new(4).unwrap());
@@ -254,18 +254,18 @@ impl Default for TemplateApp {
         conf.years
             .set_retention_policy(RetentionPolicy::KeepWithLimit(10));
 
-        let opts = Options::default().with_haw_conf(conf);
+        let conf = Conf::default().with_haw_conf(conf);
 
-        let new_wheel = |opts| RwWheel::<DemoAggregator>::with_options(0, opts);
+        let new_wheel = |conf| RwWheel::<DemoAggregator>::with_conf(conf);
 
-        let wheel = new_wheel(opts);
+        let wheel = new_wheel(conf);
         let mut wheels = AHashMap::default();
-        wheels.insert(Student::Max, Rc::new(RefCell::new(new_wheel(opts))));
-        wheels.insert(Student::Adam, Rc::new(RefCell::new(new_wheel(opts))));
-        wheels.insert(Student::Klas, Rc::new(RefCell::new(new_wheel(opts))));
-        wheels.insert(Student::Jonas, Rc::new(RefCell::new(new_wheel(opts))));
-        wheels.insert(Student::Harald, Rc::new(RefCell::new(new_wheel(opts))));
-        wheels.insert(Student::Sonia, Rc::new(RefCell::new(new_wheel(opts))));
+        wheels.insert(Student::Max, Rc::new(RefCell::new(new_wheel(conf))));
+        wheels.insert(Student::Adam, Rc::new(RefCell::new(new_wheel(conf))));
+        wheels.insert(Student::Klas, Rc::new(RefCell::new(new_wheel(conf))));
+        wheels.insert(Student::Jonas, Rc::new(RefCell::new(new_wheel(conf))));
+        wheels.insert(Student::Harald, Rc::new(RefCell::new(new_wheel(conf))));
+        wheels.insert(Student::Sonia, Rc::new(RefCell::new(new_wheel(conf))));
         let labels = HawLabels::new(&wheel);
         Self {
             wheels,
@@ -327,7 +327,7 @@ impl TemplateApp {
 
         let mut bars = Vec::new();
         if let Some(seconds_wheel) = wheel.read().as_ref().seconds() {
-            for i in 1..=awheel::SECONDS {
+            for i in 1..=uwheel::SECONDS {
                 let val = seconds_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Second));
                 pos += 1.0;
@@ -343,7 +343,7 @@ impl TemplateApp {
         // MINUTES
         let mut bars = Vec::new();
         if let Some(minutes_wheel) = wheel.read().as_ref().minutes() {
-            for i in 1..=awheel::MINUTES {
+            for i in 1..=uwheel::MINUTES {
                 let val = minutes_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Minute));
                 pos += 1.0;
@@ -359,7 +359,7 @@ impl TemplateApp {
         // HOURS
         let mut bars = Vec::new();
         if let Some(hours_wheel) = wheel.read().as_ref().hours() {
-            for i in 1..=awheel::HOURS {
+            for i in 1..=uwheel::HOURS {
                 let val = hours_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Hour));
                 pos += 1.0;
@@ -374,7 +374,7 @@ impl TemplateApp {
 
         let mut bars = Vec::new();
         if let Some(days_wheel) = wheel.read().as_ref().days() {
-            for i in 1..=awheel::DAYS {
+            for i in 1..=uwheel::DAYS {
                 let val = days_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Day));
                 pos += 1.0;
@@ -389,7 +389,7 @@ impl TemplateApp {
 
         let mut bars = Vec::new();
         if let Some(weeks_wheel) = wheel.read().as_ref().weeks() {
-            for i in 1..=awheel::WEEKS {
+            for i in 1..=uwheel::WEEKS {
                 let val = weeks_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Week));
                 pos += 1.0;
@@ -404,7 +404,7 @@ impl TemplateApp {
 
         let mut bars = Vec::new();
         if let Some(years_wheel) = wheel.read().as_ref().years() {
-            for i in 1..=awheel::YEARS {
+            for i in 1..=uwheel::YEARS {
                 let val = years_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Year));
                 pos += 1.0;
@@ -439,7 +439,7 @@ impl TemplateApp {
             }
         };
 
-        Plot::new("awheel")
+        Plot::new("uwheel")
             .legend(Legend::default())
             .data_aspect(1.0)
             .auto_bounds_y()
@@ -469,8 +469,7 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Minute, pos)) => {
                                         if let Some(minutes) = wheel.read().as_ref().minutes() {
-                                            if let Some(slots) =
-                                                measure(|| minutes.table().drill_down(pos))
+                                            if let Some(slots) = measure(|| minutes.drill_down(pos))
                                             {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
@@ -498,9 +497,7 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Hour, pos)) => {
                                         if let Some(hours) = wheel.read().as_ref().hours() {
-                                            if let Some(slots) =
-                                                measure(|| hours.table().drill_down(pos))
-                                            {
+                                            if let Some(slots) = measure(|| hours.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
                                                 for (i, s) in slots.iter().enumerate() {
@@ -527,9 +524,7 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Day, pos)) => {
                                         if let Some(days) = wheel.read().as_ref().days() {
-                                            if let Some(slots) =
-                                                measure(|| days.table().drill_down(pos))
-                                            {
+                                            if let Some(slots) = measure(|| days.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
                                                 for (i, s) in slots.iter().enumerate() {
@@ -555,9 +550,7 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Week, pos)) => {
                                         if let Some(weeks) = wheel.read().as_ref().weeks() {
-                                            if let Some(slots) =
-                                                measure(|| weeks.table().drill_down(pos))
-                                            {
+                                            if let Some(slots) = measure(|| weeks.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
                                                 for (i, s) in slots.iter().enumerate() {
@@ -583,9 +576,7 @@ impl TemplateApp {
                                     }
                                     Some((Granularity::Year, pos)) => {
                                         if let Some(years) = wheel.read().as_ref().years() {
-                                            if let Some(slots) =
-                                                measure(|| years.table().drill_down(pos))
-                                            {
+                                            if let Some(slots) = measure(|| years.drill_down(pos)) {
                                                 let mut bars = Vec::new();
                                                 let mut pos = 0.5;
                                                 for (i, s) in slots.iter().enumerate() {
@@ -752,7 +743,7 @@ impl eframe::App for TemplateApp {
             puffin::profile_scope!("side_panel");
 
             ui.horizontal(|ui| {
-                ui.heading("💻 awheel demo");
+                ui.heading("💻 uwheel demo");
                 egui::widgets::global_dark_light_mode_buttons(ui);
                 egui::warn_if_debug_build(ui);
             });
@@ -833,10 +824,10 @@ impl eframe::App for TemplateApp {
                 egui::trace!(ui, format!("Ticking with ticks {}", ticks));
                 if *ticks > 0 {
                     let time = match tick_granularity {
-                        Granularity::Second => awheel::time::Duration::seconds(*ticks as i64),
-                        Granularity::Minute => awheel::time::Duration::minutes(*ticks as i64),
-                        Granularity::Hour => awheel::time::Duration::hours(*ticks as i64),
-                        Granularity::Day => awheel::time::Duration::days(*ticks as i64),
+                        Granularity::Second => uwheel::Duration::seconds(*ticks as i64),
+                        Granularity::Minute => uwheel::Duration::minutes(*ticks as i64),
+                        Granularity::Hour => uwheel::Duration::hours(*ticks as i64),
+                        Granularity::Day => uwheel::Duration::days(*ticks as i64),
                         Granularity::Week | Granularity::Year => {
                             panic!("Not supported for now")
                         }
@@ -876,18 +867,18 @@ impl eframe::App for TemplateApp {
             ui.label(
                 RichText::new(format!(
                     "Total Wheel Slots: {}",
-                    Haw::<DemoAggregator, Lazy>::TOTAL_WHEEL_SLOTS
+                    Haw::<DemoAggregator>::TOTAL_WHEEL_SLOTS
                 ))
                 .strong(),
             );
             ui.label(
                 RichText::new(format!(
                     "Cycle Length: {}",
-                    Haw::<DemoAggregator, Lazy>::CYCLE_LENGTH
+                    Haw::<DemoAggregator>::CYCLE_LENGTH
                 ))
                 .strong(),
             );
-            ui.label(RichText::new(format!("Aggregate space: {} years", awheel::YEARS)).strong());
+            ui.label(RichText::new(format!("Aggregate space: {} years", uwheel::YEARS)).strong());
 
             ui.separator();
 
@@ -1085,20 +1076,20 @@ impl eframe::App for TemplateApp {
                     .strong(),
                 );
             });
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Last day: ").strong());
-                ui.label(
-                    RichText::new(
-                        plot_wheel
-                            .borrow()
-                            .read()
-                            .interval(1.days())
-                            .unwrap_or(0)
-                            .to_string(),
-                    )
-                    .strong(),
-                );
-            });
+            // ui.horizontal(|ui| {
+            //     ui.label(RichText::new("Last day: ").strong());
+            //     ui.label(
+            //         RichText::new(
+            //             plot_wheel
+            //                 .borrow()
+            //                 .read()
+            //                 .interval(1.days())
+            //                 .unwrap_or(0)
+            //                 .to_string(),
+            //         )
+            //         .strong(),
+            //     );
+            // });
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Landmark Window: ").strong());
                 let landmark = measure(|| plot_wheel.borrow().read().landmark().unwrap_or(0));
