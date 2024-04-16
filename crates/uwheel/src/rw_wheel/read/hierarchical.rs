@@ -189,7 +189,15 @@ pub struct WheelRange {
     pub(crate) end: OffsetDateTime,
 }
 impl WheelRange {
+    /// Creates a WheelRange using a start and end timestamp as unix timestamps in milliseconds
+    fn from_unix_timestamps(start: u64, end: u64) -> Self {
+        Self::new(
+            OffsetDateTime::from_unix_timestamp(start as i64).unwrap(),
+            OffsetDateTime::from_unix_timestamp(end as i64).unwrap(),
+        )
+    }
     /// Creates a new WheelRange given the start and end date
+    #[doc(hidden)]
     pub fn new(start: OffsetDateTime, end: OffsetDateTime) -> Self {
         Self::from((start, end))
     }
@@ -200,6 +208,12 @@ impl From<(OffsetDateTime, OffsetDateTime)> for WheelRange {
             start: tuple.0,
             end: tuple.1,
         }
+    }
+}
+
+impl From<(u64, u64)> for WheelRange {
+    fn from(tuple: (u64, u64)) -> Self {
+        Self::from_unix_timestamps(tuple.0, tuple.1)
     }
 }
 
@@ -623,6 +637,24 @@ where
     pub fn watermark(&self) -> u64 {
         self.watermark
     }
+    /// Returns partial aggregates within the given date range [start, end)
+    ///
+    /// Returns `None` if the range cannot be answered by the wheel
+    #[inline]
+    pub fn range(&self, _range: impl Into<WheelRange>) -> Option<Vec<(u64, A::PartialAggregate)>> {
+        todo!("https://github.com/Max-Meldrum/uwheel/issues/109");
+    }
+
+    /// Returns aggregates within the given date range [start, end)
+    ///
+    /// Returns `None` if the range cannot be answered by the wheel
+    #[inline]
+    pub fn range_and_lower(
+        &self,
+        _range: impl Into<WheelRange>,
+    ) -> Option<Vec<(u64, A::Aggregate)>> {
+        todo!("https://github.com/Max-Meldrum/uwheel/issues/109");
+    }
 
     /// Returns the execution plan for a given combine range query
     #[inline]
@@ -813,9 +845,17 @@ where
         } else if hour > 0 {
             time::Duration::hours(HOURS as i64 - hour as i64)
         } else if day > 0 {
-            // NOTE: fix deadlock issue with certain dates
-            // example: start = 2018-08-31 0:00:00, end = 2018-08-31 0:05:00
-            time::Duration::days(31 - day as i64) // Needs to be checked
+            let days_to_add = if (end - current_start).whole_days() > 0 {
+                let mut date = current_start.date();
+                // iterate until there is no next day for the current month
+                while let Some(next) = date.next_day() {
+                    date = next;
+                }
+                date.day() as i64
+            } else {
+                1
+            };
+            time::Duration::days(days_to_add)
         } else {
             unimplemented!("Weeks and Years not supported yet");
         };
@@ -1274,6 +1314,16 @@ mod tests {
     }
 
     #[test]
+    fn wheel_range_test() {
+        let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
+        let end = datetime!(2023 - 11 - 12 00:00:00 UTC);
+        let _range = WheelRange::from_unix_timestamps(
+            start.unix_timestamp() as u64,
+            end.unix_timestamp() as u64,
+        );
+    }
+
+    #[test]
     fn range_query_sec_test() {
         // 2023-11-09 00:00:00
         let watermark = 1699488000000;
@@ -1453,5 +1503,37 @@ mod tests {
         let plan = haw.create_exec_plan(WheelRange::new(start, end));
         assert!(matches!(plan, ExecutionPlan::InverseLandmarkAggregation(_)));
         assert_eq!(result, Some(241200));
+    }
+
+    #[test]
+    fn month_cross_test() {
+        // 2018-08-31 00:00:00
+        let watermark = 1535673600000;
+
+        let conf = HawConf::default()
+            .with_watermark(watermark)
+            .with_retention_policy(RetentionPolicy::Keep);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(conf);
+
+        let days_as_secs = 3600 * 24;
+        let days = days_as_secs * 3;
+        let deltas: Vec<Option<u64>> = (0..days).map(|_| Some(1)).collect();
+        // advance wheel by 3 days
+        haw.delta_advance(deltas);
+
+        let start = datetime!(2018 - 08 - 31 00:00:00 UTC);
+        let end = datetime!(2018 - 08 - 31 00:05:00 UTC);
+
+        assert_eq!(haw.combine_range((start, end)), Some(300));
+
+        let start = datetime!(2018 - 08 - 31 00:00:00 UTC);
+        let end = datetime!(2018 - 09 - 01 12:00:00 UTC);
+
+        assert_eq!(haw.combine_range((start, end)), Some(129600));
+
+        let start = datetime!(2018 - 08 - 31 00:00:00 UTC);
+        let end = datetime!(2018 - 09 - 02 00:00:00 UTC);
+
+        assert_eq!(haw.combine_range((start, end)), Some(172800));
     }
 }

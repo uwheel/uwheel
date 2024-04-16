@@ -57,11 +57,6 @@ impl Default for Padding {
 }
 
 /// A span of time with nanosecond precision.
-///
-/// Each `Duration` is composed of a whole number of seconds and a fractional part represented in
-/// nanoseconds.
-///
-/// This implementation allows for negative durations, unlike [`core::time::Duration`].
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Duration {
     /// Number of whole seconds.

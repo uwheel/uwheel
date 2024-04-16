@@ -14,8 +14,8 @@ use std::{
     ops::Bound,
 };
 use uwheel::{
-    delta::DeltaState,
     rw_wheel::read::aggregation::combine_or_insert,
+    DeltaState,
     Duration,
     OffsetDateTime,
 };

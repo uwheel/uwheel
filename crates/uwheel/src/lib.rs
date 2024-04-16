@@ -18,19 +18,19 @@ use core::{
     write,
 };
 
+mod delta;
+
+/// Duration of time for µWheel intervals
+pub mod duration;
+
 /// Aggregation interface used by µWheel
 ///
 /// This module also contains a number of pre-defined aggregators (e.g., SUM, ALL, TopK)
 pub mod aggregator;
-/// Wheel deltas that can be used to update or build a wheel
-pub mod delta;
-/// Span of time used for µWheel intervals
-///
-/// Heavily borrowed from the [time](https://docs.rs/time/latest/time/) crate
-pub mod duration;
 /// The core Reader-Writer Wheel
 pub mod rw_wheel;
 
+pub use delta::DeltaState;
 pub use duration::{Duration, NumericalDuration};
 
 #[macro_use]
@@ -40,7 +40,7 @@ mod macros;
 pub use aggregator::Aggregator;
 pub use rw_wheel::{
     read::{
-        hierarchical::{Haw, HawConf},
+        hierarchical::{Haw, HawConf, WheelRange},
         window::WindowBuilder,
         ReaderWheel,
         DAYS,
