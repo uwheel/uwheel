@@ -3,6 +3,8 @@ use super::{
     conf::DataLayout,
 };
 use crate::Aggregator;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use core::ops::RangeBounds;
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -84,6 +86,19 @@ impl<A: Aggregator> Data<A> {
             Data::CompressedArray(arr) => arr.get(index),
         }
     }
+
+    #[inline]
+    pub fn range<R>(&self, range: R) -> Vec<A::PartialAggregate>
+    where
+        R: RangeBounds<usize>,
+    {
+        match self {
+            Data::Array(arr) => arr.range_to_vec(range),
+            Data::PrefixArray(parr) => parr.range_to_vec(range),
+            Data::CompressedArray(carr) => carr.range_to_vec(range),
+        }
+    }
+
     #[inline]
     pub fn aggregate<R>(&self, range: R) -> Option<A::PartialAggregate>
     where

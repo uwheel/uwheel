@@ -13,7 +13,7 @@ pub(crate) mod stats;
 #[cfg(feature = "timer")]
 use crate::rw_wheel::timer::{TimerAction, TimerError};
 
-use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, duration::Duration};
+use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, duration::Duration, WheelRange};
 pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 
 use crate::aggregator::Aggregator;
@@ -195,8 +195,55 @@ where
     pub fn interval_with_ops(&self, dur: Duration) -> (Option<A::PartialAggregate>, usize) {
         self.inner.read().interval_with_stats(dur)
     }
+    /// Combines partial aggregates within the given date range [start, end) into a final partial aggregate
+    ///
+    /// Returns `None` if the range cannot be answered by the wheel
+    ///
+    /// See [`Haw::combine_range`] for more information.
+    #[inline]
+    pub fn combine_range(&self, range: impl Into<WheelRange>) -> Option<A::PartialAggregate> {
+        self.inner.read().combine_range(range)
+    }
+
+    /// Combines aggregates within the given date range [start, end) into a final partial aggregate
+    ///
+    /// Returns `None` if the range cannot be answered by the wheel
+    ///
+    /// See [`Haw::combine_range_and_lower`] for more information.
+    #[inline]
+    pub fn combine_range_and_lower(
+        &self,
+        range: impl Into<WheelRange>,
+    ) -> Option<A::PartialAggregate> {
+        self.inner.read().combine_range(range)
+    }
+
+    /// Returns partial aggregates within the given date range [start, end) using the lowest granularity
+    ///
+    /// Returns `None` if the range cannot be answered by the wheel
+    ///
+    /// See [`Haw::range`] for more information.
+    #[inline]
+    pub fn range(&self, range: impl Into<WheelRange>) -> Option<Vec<(u64, A::PartialAggregate)>> {
+        self.inner.read().range(range)
+    }
+
+    /// Returns aggregates within the given date range [start, end) using the lowest granularity
+    ///
+    /// Returns `None` if the range cannot be answered by the wheel
+    ///
+    /// See [`Haw::range_and_lower`] for more information.
+    #[inline]
+    pub fn range_and_lower(
+        &self,
+        range: impl Into<WheelRange>,
+    ) -> Option<Vec<(u64, A::Aggregate)>> {
+        self.inner.read().range_and_lower(range)
+    }
 
     /// Executes a Landmark Window that combines total partial aggregates across all wheels
+    ///
+    /// See [`Haw::landmark`] for more information.
     #[inline]
     pub fn landmark(&self) -> Option<A::PartialAggregate> {
         self.inner.read().landmark()

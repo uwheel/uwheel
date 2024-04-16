@@ -54,6 +54,7 @@ pub use rw_wheel::{
     Conf,
     RwWheel,
 };
+#[doc(hidden)]
 pub use time::OffsetDateTime;
 
 /// A type containing error variants that may arise when using a wheel

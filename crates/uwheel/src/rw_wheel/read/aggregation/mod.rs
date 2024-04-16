@@ -330,6 +330,20 @@ impl<A: Aggregator> Wheel<A> {
         self.data.len()
     }
 
+    /// Executes a range query on the wheel returning both timestamp and partial aggregates in a Vec
+    ///
+    /// # Panics
+    ///
+    /// Panics if the starting point is greater than the end point or if
+    /// the end point is greater than the length of the wheel.
+    #[inline]
+    pub fn range<R>(&self, range: R) -> Vec<A::PartialAggregate>
+    where
+        R: RangeBounds<usize>,
+    {
+        self.data.range(range)
+    }
+
     /// Executes a wheel aggregation given the [start, end) range and combines it to a final partial aggregate
     ///
     /// # Panics

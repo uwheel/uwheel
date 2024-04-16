@@ -316,6 +316,13 @@ impl<A: Aggregator> PrefixArray<A> {
     pub(crate) fn _iter(&self) -> impl Iterator<Item = &A::PartialAggregate> {
         self.slots.iter()
     }
+    #[inline]
+    pub(crate) fn range_to_vec<R>(&self, range: R) -> Vec<A::PartialAggregate>
+    where
+        R: RangeBounds<usize>,
+    {
+        self.slots.range_to_vec(range)
+    }
 
     #[inline]
     pub(crate) fn range_query<R>(&self, range: R) -> Option<A::PartialAggregate>
@@ -402,7 +409,26 @@ impl<A: Aggregator> CompressedArray<A> {
     }
 
     #[inline]
+    pub(crate) fn range_to_vec<R>(&self, range: R) -> Vec<A::PartialAggregate>
+    where
+        R: RangeBounds<usize>,
+    {
+        let array = self.partial_range_array(&range);
+        array.range_to_vec(range)
+    }
+
+    #[inline]
     pub(crate) fn range_query<R>(&self, range: R) -> Option<A::PartialAggregate>
+    where
+        R: RangeBounds<usize>,
+    {
+        let array = self.partial_range_array(&range);
+        array.range_query(range)
+    }
+
+    // helper method to build an array using the given range
+    #[inline]
+    fn partial_range_array<R>(&self, range: &R) -> MutablePartialArray<A>
     where
         R: RangeBounds<usize>,
     {
@@ -434,7 +460,6 @@ impl<A: Aggregator> CompressedArray<A> {
             let decompressed_chunk = (decompressor)(chunk);
             array.extend_from_slice(&decompressed_chunk);
         }
-        // finally query the partials
-        array.range_query(range)
+        array
     }
 }

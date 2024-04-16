@@ -1,5 +1,8 @@
 use time::OffsetDateTime;
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use super::{conf::WheelConf, Wheel};
 use crate::{
     aggregator::Aggregator,
@@ -32,6 +35,51 @@ impl<A: Aggregator> MaybeWheel<A> {
             // TODO: fix better checks
             wheel.merge(other.as_ref().unwrap());
         }
+    }
+
+    #[inline]
+    pub fn range(
+        &self,
+        start: OffsetDateTime,
+        slots: usize,
+        gran: Granularity,
+    ) -> Option<Vec<(u64, A::PartialAggregate)>> {
+        let watermark_date =
+            |wm: u64| OffsetDateTime::from_unix_timestamp((wm as i64) / 1000).unwrap();
+        self.inner.as_ref().map(|wheel| {
+            let watermark = watermark_date(wheel.watermark());
+            let distance = watermark - start;
+
+            let start_ts = start.unix_timestamp() as u64 * 1000; // to ms
+            use time::Duration;
+
+            let (slot_distance, interval) = match gran {
+                Granularity::Second => (
+                    distance.whole_seconds(),
+                    Duration::SECOND.whole_milliseconds(),
+                ),
+                Granularity::Minute => (
+                    distance.whole_minutes(),
+                    Duration::MINUTE.whole_milliseconds(),
+                ),
+                Granularity::Hour => (distance.whole_hours(), Duration::HOUR.whole_milliseconds()),
+                Granularity::Day => (distance.whole_days(), Duration::DAY.whole_milliseconds()),
+            };
+            let slot_distance = slot_distance as usize;
+            let interval = interval as u64;
+            let start_slot = slot_distance - slots;
+            let end_slot = start_slot + slots;
+
+            wheel
+                .range(start_slot..end_slot)
+                .into_iter()
+                .enumerate()
+                .map(|(index, aggregate)| {
+                    let ts = start_ts + (index as u64 * interval);
+                    (ts, aggregate)
+                })
+                .collect::<_>()
+        })
     }
     #[inline]
     pub fn aggregate(

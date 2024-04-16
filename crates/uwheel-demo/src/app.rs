@@ -228,6 +228,7 @@ pub struct TemplateApp {
 }
 
 impl Default for TemplateApp {
+    #[allow(clippy::redundant_closure)]
     fn default() -> Self {
         let mut conf = HawConf::default();
         conf.seconds.set_drill_down(true);

@@ -183,6 +183,15 @@ pub const WEEKS: usize = 52;
 pub const YEARS: usize = 10;
 
 /// A Wheel time range representing a closed-open interval of [start, end)
+///
+/// # Example
+/// ```
+/// use uwheel::WheelRange;
+///
+/// let start = 1699488000000;
+/// let end = 1699491600000;
+/// let range = WheelRange::from_unix_timestamps(start, end);
+/// ```
 #[derive(Debug, Copy, Hash, PartialEq, Eq, Clone)]
 pub struct WheelRange {
     pub(crate) start: OffsetDateTime,
@@ -190,10 +199,10 @@ pub struct WheelRange {
 }
 impl WheelRange {
     /// Creates a WheelRange using a start and end timestamp as unix timestamps in milliseconds
-    fn from_unix_timestamps(start: u64, end: u64) -> Self {
+    pub fn from_unix_timestamps(start: u64, end: u64) -> Self {
         Self::new(
-            OffsetDateTime::from_unix_timestamp(start as i64).unwrap(),
-            OffsetDateTime::from_unix_timestamp(end as i64).unwrap(),
+            OffsetDateTime::from_unix_timestamp(start as i64 / 1000).unwrap(),
+            OffsetDateTime::from_unix_timestamp(end as i64 / 1000).unwrap(),
         )
     }
     /// Creates a new WheelRange given the start and end date
@@ -447,8 +456,9 @@ where
     pub fn is_full(&self) -> bool {
         self.len() == Self::TOTAL_WHEEL_SLOTS
     }
-    /// Returns the current low watermark as [OffsetDateTime]
-    pub fn now(&self) -> OffsetDateTime {
+    // Returns the current low watermark as [OffsetDateTime]
+    #[inline]
+    fn now(&self) -> OffsetDateTime {
         Self::to_offset_date(self.watermark)
     }
     /// Returns memory used in bytes for all levels
@@ -637,23 +647,51 @@ where
     pub fn watermark(&self) -> u64 {
         self.watermark
     }
-    /// Returns partial aggregates within the given date range [start, end)
+    /// Returns partial aggregates within the given date range [start, end) using the lowest granularity
     ///
     /// Returns `None` if the range cannot be answered by the wheel
     #[inline]
-    pub fn range(&self, _range: impl Into<WheelRange>) -> Option<Vec<(u64, A::PartialAggregate)>> {
-        todo!("https://github.com/Max-Meldrum/uwheel/issues/109");
+    pub fn range(&self, range: impl Into<WheelRange>) -> Option<Vec<(u64, A::PartialAggregate)>> {
+        let range = range.into();
+        let start = range.start;
+        let end = range.end;
+
+        match range.lowest_granularity() {
+            Granularity::Second => {
+                let seconds = (end - start).whole_seconds() as usize;
+                self.seconds_wheel
+                    .range(start, seconds, Granularity::Second)
+            }
+            Granularity::Minute => {
+                let minutes = (end - start).whole_minutes() as usize;
+                self.minutes_wheel
+                    .range(start, minutes, Granularity::Minute)
+            }
+            Granularity::Hour => {
+                let hours = (end - start).whole_hours() as usize;
+                self.hours_wheel.range(start, hours, Granularity::Hour)
+            }
+            Granularity::Day => {
+                let days = (end - start).whole_days() as usize;
+                self.days_wheel.range(start, days, Granularity::Day)
+            }
+        }
     }
 
-    /// Returns aggregates within the given date range [start, end)
+    /// Returns aggregates within the given date range [start, end) using the lowest granularity
     ///
     /// Returns `None` if the range cannot be answered by the wheel
     #[inline]
     pub fn range_and_lower(
         &self,
-        _range: impl Into<WheelRange>,
+        range: impl Into<WheelRange>,
     ) -> Option<Vec<(u64, A::Aggregate)>> {
-        todo!("https://github.com/Max-Meldrum/uwheel/issues/109");
+        self.range(range).map(|partials| {
+            partials
+                .into_iter()
+                .map(|(ts, pa)| (ts, A::lower(pa)))
+                .collect()
+        })
     }
 
     /// Returns the execution plan for a given combine range query
@@ -859,7 +897,6 @@ where
         } else {
             unimplemented!("Weeks and Years not supported yet");
         };
-
         // TODO: time::checked_add is somewhat expensive.
         // let s = current_start.unix_timestamp() * 1000 + next.whole_milliseconds() as i64;
         // let next_aligned = OffsetDateTime::from_unix_timestamp(s / 1000).unwrap();
@@ -1344,11 +1381,25 @@ mod tests {
 
         let agg = haw.combine_range((start, end));
         assert_eq!(agg, Some(10));
+        assert_eq!(
+            haw.range((start, end)),
+            Some(vec![(1699488000000, 10), (1699488001000, 0)])
+        );
 
         let start = datetime!(2023-11-09 00:00:00 UTC);
         let end = datetime!(2023-11-09 00:00:04 UTC);
         let agg = haw.combine_range((start, end));
         assert_eq!(agg, Some(60));
+
+        assert_eq!(
+            haw.range((start, end)),
+            Some(vec![
+                (1699488000000, 10),
+                (1699488001000, 0),
+                (1699488002000, 50),
+                (1699488003000, 0),
+            ])
+        );
     }
 
     #[test]
@@ -1389,11 +1440,20 @@ mod tests {
         let end = datetime!(2023-11-09 01:00 UTC);
 
         assert_eq!(haw.combine_range((start, end)), Some(3600));
+        assert_eq!(haw.range((start, end)), Some(vec![(1699488000000, 3600)]));
 
         let start = datetime!(2023-11-09 00:00 UTC);
         let end = datetime!(2023-11-09 03:00 UTC);
 
         assert_eq!(haw.combine_range((start, end)), Some(10800));
+        assert_eq!(
+            haw.range((start, end)),
+            Some(vec![
+                (1699488000000, 3600),
+                (1699491600000, 3600),
+                (1699495200000, 3600),
+            ])
+        );
     }
 
     #[test]
