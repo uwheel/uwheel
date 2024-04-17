@@ -10,6 +10,8 @@
 
 µWheel is an Embeddable Aggregate Management System for Hybrid Stream and Analytical Processing.
 
+See more about its design [here](DESIGN.md) and try it out directly on the [web](https://maxmeldrum.com/uwheel).
+
 ## Features
 
 - Wheel-based query optimizer
@@ -22,12 +24,6 @@
 - Incremental checkpointing support.
 - Fully mergeable.
 - Compatible with ``#[no_std]`` (requires ``alloc``).
-
-## How it works
-
-µWheel is a single-writer and multiple-reader system designed around [low-watermark](http://www.vldb.org/pvldb/vol14/p3135-begoli.pdf) indexed aggregation wheels.
-
-See more about its design [here](DESIGN.md).
 
 ## Use cases
 
@@ -90,7 +86,7 @@ uwheel = { version = "0.1.0", default-features = false }
 ## Examples
 
 ```rust
-use uwheel::{aggregator::U32SumAggregator, time::NumericalDuration, Entry, RwWheel};
+use uwheel::{aggregator::U32SumAggregator, WheelRange, time::NumericalDuration, Entry, RwWheel};
 
 // Initial start watermark 2023-11-09 00:00:00 (represented as milliseconds)
 let mut watermark = 1699488000000;
@@ -110,6 +106,11 @@ for _ in 0..3600 {
 assert_eq!(wheel.read().interval(15.seconds()), Some(15));
 assert_eq!(wheel.read().interval(1.minutes()), Some(60));
 assert_eq!(wheel.read().interval(1.hours()), Some(3600));
+
+let start = 1699488000000;
+let end = 1699491600000;
+let range = WheelRange::from_unix_timestamps(start, end);
+assert_eq!(wheel.read().as_ref().combine_range(range), Some(3600));
 ```
 
 See more examples [here](examples).
