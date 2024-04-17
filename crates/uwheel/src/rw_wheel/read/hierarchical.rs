@@ -9,7 +9,6 @@ use super::{
         Wheel,
     },
     plan::{ExecutionPlan, WheelAggregation, WheelRanges},
-    window::WindowManager,
 };
 
 use crate::{
@@ -19,6 +18,7 @@ use crate::{
         aggregation::combine_or_insert,
         plan::{CombinedAggregation, WheelAggregations},
     },
+    window::WindowManager,
     Duration,
 };
 
@@ -38,7 +38,7 @@ crate::cfg_timer! {
 use super::aggregation::conf::WheelConf;
 
 /// Type Alias for a Window result
-pub type Window<T> = (u64, T);
+pub type WindowAggregate<T> = (u64, T);
 
 /// Default Second tick represented in milliseconds
 pub const SECOND_TICK_MS: u64 = time::Duration::SECOND.whole_milliseconds() as u64;
@@ -537,7 +537,7 @@ where
         &mut self,
         watermark: u64,
         waw: &mut WriterWheel<A>,
-    ) -> Vec<Window<A::PartialAggregate>> {
+    ) -> Vec<WindowAggregate<A::PartialAggregate>> {
         let diff = watermark.saturating_sub(self.watermark());
         self.advance(Duration::milliseconds(diff as i64), waw)
     }
@@ -560,7 +560,7 @@ where
         &mut self,
         duration: Duration,
         waw: &mut WriterWheel<A>,
-    ) -> Vec<Window<A::PartialAggregate>> {
+    ) -> Vec<WindowAggregate<A::PartialAggregate>> {
         let ticks: usize = duration.whole_seconds() as usize;
         let mut windows = Vec::new();
 
@@ -588,7 +588,7 @@ where
     }
 
     // internal function to handle installed window queries
-    fn handle_window_maybe(&mut self, windows: &mut Vec<Window<A::PartialAggregate>>) {
+    fn handle_window_maybe(&mut self, windows: &mut Vec<WindowAggregate<A::PartialAggregate>>) {
         // TODO: refactor this..
 
         let (pairs_remaining, current_pair_len) =
@@ -611,8 +611,10 @@ where
             let state = &mut manager.state;
             let window = &mut manager.window;
 
+            let pair = pair.unwrap_or(A::IDENTITY);
+
             // insert pair into window aggregator
-            window.push(pair.unwrap_or(A::IDENTITY));
+            window.push(pair);
 
             // Update pair metadata
             state.update_pair_len();
@@ -622,8 +624,10 @@ where
             if self.watermark == state.next_window_end {
                 // insert window result
                 windows.push((self.watermark, window.query()));
-                // clean up
-                window.pop();
+                // clean up pair slices 1 if even, 2 if uneven pair
+                for _i in 0..state.total_pairs() {
+                    window.pop();
+                }
                 // adjust next window end
                 state.next_window_end += state.slide as u64;
             }

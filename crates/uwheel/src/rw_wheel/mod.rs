@@ -24,10 +24,11 @@ pub use read::{aggregation::DrillCut, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEAR
 pub use wheel_ext::WheelExt;
 
 use self::read::{
-    hierarchical::{HawConf, Window},
-    window::WindowBuilder,
+    hierarchical::{HawConf, WindowAggregate},
     ReaderWheel,
 };
+
+use crate::window::Window;
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -108,6 +109,14 @@ where
         Self::with_conf(conf)
     }
     /// Creates a new wheel using the specified configuration
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{RwWheel, Conf, aggregator::sum::U32SumAggregator, HawConf};
+    /// let conf = Conf::default().with_haw_conf(HawConf::default().with_watermark(10000));
+    /// let wheel: RwWheel<U32SumAggregator> = RwWheel::with_conf(conf);
+    /// ```
     pub fn with_conf(conf: Conf) -> Self {
         Self {
             writer: WriterWheel::with_capacity_and_watermark(
@@ -122,7 +131,18 @@ where
     /// Configures a periodic window aggregation with range ``range`` and slide ``slide``
     ///
     /// Results of the window are returned when advancing the wheel [Self::advance_to]
-    pub fn window(&mut self, window: impl Into<WindowBuilder>) {
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{Window, aggregator::sum::U32SumAggregator, RwWheel, NumericalDuration};
+    /// // Define a window query
+    /// let window = Window::default().with_range(10.seconds()).with_slide(3.seconds());
+    /// // Initialize a Reader-Writer Wheel and install the window
+    /// let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
+    /// wheel.window(window);
+    /// ```
+    pub fn window(&mut self, window: impl Into<Window>) {
         self.reader.window(window.into());
     }
 
@@ -153,14 +173,18 @@ where
         self.writer.watermark()
     }
     /// Advance the watermark of the wheel by the given [time::Duration]
+    ///
+    /// May return possible window aggregates if any [RwWheel::window] is installed
     #[inline]
-    pub fn advance(&mut self, duration: Duration) -> Vec<Window<A::PartialAggregate>> {
+    pub fn advance(&mut self, duration: Duration) -> Vec<WindowAggregate<A::PartialAggregate>> {
         let to = self.watermark() + duration.whole_milliseconds() as u64;
         self.advance_to(to)
     }
     /// Advances the time of the wheel aligned by the lowest unit (Second)
+    ///
+    /// May return possible window aggregates if any [RwWheel::window] is installed
     #[inline]
-    pub fn advance_to(&mut self, watermark: u64) -> Vec<Window<A::PartialAggregate>> {
+    pub fn advance_to(&mut self, watermark: u64) -> Vec<WindowAggregate<A::PartialAggregate>> {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.advance);
 

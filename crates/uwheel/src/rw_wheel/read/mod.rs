@@ -6,7 +6,6 @@ pub mod aggregation;
 pub mod hierarchical;
 
 mod plan;
-pub(crate) mod window;
 
 #[cfg(feature = "profiler")]
 pub(crate) mod stats;
@@ -18,10 +17,8 @@ pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 
 use crate::aggregator::Aggregator;
 
-use self::{
-    hierarchical::{HawConf, Window},
-    window::WindowBuilder,
-};
+use self::hierarchical::{HawConf, WindowAggregate};
+use crate::window::Window;
 
 use super::write::WriterWheel;
 
@@ -134,7 +131,7 @@ where
     }
 
     #[doc(hidden)]
-    pub fn window(&mut self, window: WindowBuilder) {
+    pub fn window(&mut self, window: Window) {
         self.inner.write().window(window.range, window.slide);
     }
 
@@ -145,7 +142,7 @@ where
         &self,
         duration: Duration,
         waw: &mut WriterWheel<A>,
-    ) -> Vec<Window<A::PartialAggregate>> {
+    ) -> Vec<WindowAggregate<A::PartialAggregate>> {
         self.inner.write().advance(duration, waw)
     }
 
@@ -155,7 +152,7 @@ where
         &self,
         watermark: u64,
         waw: &mut WriterWheel<A>,
-    ) -> Vec<Window<A::PartialAggregate>> {
+    ) -> Vec<WindowAggregate<A::PartialAggregate>> {
         self.inner.write().advance_to(watermark, waw)
     }
 

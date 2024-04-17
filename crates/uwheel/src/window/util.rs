@@ -15,11 +15,11 @@ impl PairType {
 }
 /// Creates a new [PairType] from a given range and slide
 pub fn create_pair_type(range: usize, slide: usize) -> PairType {
-    let p2 = range % slide;
-    if p2 == 0 {
+    let p1 = range % slide;
+    if p1 == 0 {
         PairType::Even(slide)
     } else {
-        let p1 = slide - p2;
+        let p2 = slide - p1;
         PairType::Uneven(p1, p2)
     }
 }

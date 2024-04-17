@@ -14,16 +14,24 @@ use std::collections::VecDeque;
 
 use self::util::pairs_space;
 
-/// A builder used to define a window specfification
+/// A builder used to define µWheel windows
+///
+/// # Example
+///
+/// ```
+/// use uwheel::{Window, NumericalDuration};
+///
+/// let window = Window::default().with_range(10.seconds()).with_slide(3.seconds());
+/// ```
 #[derive(Copy, Clone)]
-pub struct WindowBuilder {
+pub struct Window {
     /// Defines the window range
     pub range: Duration,
     /// Defines the slide of the window
     pub slide: Duration,
 }
 
-impl Default for WindowBuilder {
+impl Default for Window {
     fn default() -> Self {
         Self {
             range: Duration::seconds(0),
@@ -32,7 +40,7 @@ impl Default for WindowBuilder {
     }
 }
 
-impl WindowBuilder {
+impl Window {
     /// Configures the builder to create a window with the given range
     pub fn with_range(mut self, range: Duration) -> Self {
         self.range = range;
@@ -45,9 +53,9 @@ impl WindowBuilder {
     }
 }
 
-impl From<(Duration, Duration)> for WindowBuilder {
+impl From<(Duration, Duration)> for Window {
     fn from(val: (Duration, Duration)) -> Self {
-        WindowBuilder::default().with_range(val.0).with_slide(val.1)
+        Window::default().with_range(val.0).with_slide(val.1)
     }
 }
 
@@ -226,14 +234,14 @@ impl<A: Aggregator> TwoStacks<A> {
 
 #[cfg(test)]
 mod tests {
-    use super::WindowBuilder;
+    use super::Window;
     use crate::{aggregator::sum::U64SumAggregator, Duration, Entry, NumericalDuration, RwWheel};
 
     #[test]
     fn window_30_sec_range_10_sec_slide_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(1533081600000);
         wheel.window(
-            WindowBuilder::default()
+            Window::default()
                 .with_range(Duration::seconds(30))
                 .with_slide(Duration::seconds(10)),
         );
@@ -289,7 +297,7 @@ mod tests {
     fn window_60_sec_range_10_sec_slide_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(0);
         wheel.window(
-            WindowBuilder::default()
+            Window::default()
                 .with_range(Duration::seconds(60))
                 .with_slide(Duration::seconds(10)),
         );
@@ -335,19 +343,17 @@ mod tests {
     fn window_2_min_range_10_sec_slide_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(0);
         wheel.window(
-            WindowBuilder::default()
+            Window::default()
                 .with_range(Duration::minutes(2))
                 .with_slide(Duration::seconds(10)),
         );
         window_120_sec_range_10_sec_slide(wheel);
     }
     #[test]
-    #[should_panic]
     fn window_10_sec_range_3_sec_slide_test() {
-        // TODO: fixed uneven pairs
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(0);
         wheel.window(
-            WindowBuilder::default()
+            Window::default()
                 .with_range(Duration::seconds(10))
                 .with_slide(Duration::seconds(3)),
         );

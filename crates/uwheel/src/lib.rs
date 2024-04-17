@@ -19,14 +19,14 @@ use core::{
 };
 
 mod delta;
-
-/// Duration of time for µWheel intervals
-pub mod duration;
+mod window;
 
 /// Aggregation interface used by µWheel
 ///
 /// This module also contains a number of pre-defined aggregators (e.g., SUM, ALL, TopK)
 pub mod aggregator;
+/// Duration of time for µWheel intervals
+pub mod duration;
 /// The core Reader-Writer Wheel
 pub mod rw_wheel;
 
@@ -41,7 +41,6 @@ pub use aggregator::Aggregator;
 pub use rw_wheel::{
     read::{
         hierarchical::{Haw, HawConf, WheelRange},
-        window::WindowBuilder,
         ReaderWheel,
         DAYS,
         HOURS,
@@ -56,6 +55,7 @@ pub use rw_wheel::{
 };
 #[doc(hidden)]
 pub use time::OffsetDateTime;
+pub use window::Window;
 
 /// A type containing error variants that may arise when using a wheel
 #[derive(Debug)]
