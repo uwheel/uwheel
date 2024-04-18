@@ -128,14 +128,15 @@ where
             stats: stats::Stats::default(),
         }
     }
-    /// Configures a periodic window aggregation with range ``range`` and slide ``slide``
+    /// Installs a periodic window aggregation query
     ///
-    /// Results of the window are returned when advancing the wheel [Self::advance_to]
+    /// Results of the window are returned when advancing the wheel with [Self::advance_to] or [Self::advance].
     ///
     /// # Example
     ///
     /// ```
     /// use uwheel::{Window, aggregator::sum::U32SumAggregator, RwWheel, NumericalDuration};
+    ///
     /// // Define a window query
     /// let window = Window::default().with_range(10.seconds()).with_slide(3.seconds());
     /// // Initialize a Reader-Writer Wheel and install the window
@@ -147,6 +148,19 @@ where
     }
 
     /// Inserts an entry into the wheel
+    ///
+    /// Entries with timestamps below the current low watermark ([Self::watermark]) are dropped.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{aggregator::sum::U32SumAggregator, RwWheel, Entry};
+    ///
+    /// let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
+    /// let data = 10;
+    /// let timestamp = 1000;
+    /// wheel.insert(Entry::new(data, timestamp));
+    /// ```
     #[inline]
     pub fn insert(&mut self, e: impl Into<Entry<A::Input>>) {
         #[cfg(feature = "profiler")]
@@ -174,15 +188,40 @@ where
     }
     /// Advance the watermark of the wheel by the given [time::Duration]
     ///
-    /// May return possible window aggregates if any [RwWheel::window] is installed
+    /// May return possible window aggregates if any window is installed (see [RwWheel::window]).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{aggregator::sum::U32SumAggregator, RwWheel, NumericalDuration};
+    ///
+    /// let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
+    /// wheel.advance(5.seconds());
+    /// assert_eq!(wheel.watermark(), 5000);
+    /// ```
     #[inline]
     pub fn advance(&mut self, duration: Duration) -> Vec<WindowAggregate<A::PartialAggregate>> {
         let to = self.watermark() + duration.whole_milliseconds() as u64;
         self.advance_to(to)
     }
-    /// Advances the time of the wheel aligned by the lowest unit (Second)
+
+    /// Advances the time of the wheel to the specified watermark.
     ///
-    /// May return possible window aggregates if any [RwWheel::window] is installed
+    /// May return possible window aggregates if any window is installed (see [RwWheel::window]).
+    ///
+    /// # Safety
+    ///
+    /// This function assumes advancement to occur in atomic units (e.g., 5 not 4.5 seconds)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{aggregator::sum::U32SumAggregator, RwWheel, NumericalDuration};
+    ///
+    /// let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
+    /// wheel.advance_to(5000);
+    /// assert_eq!(wheel.watermark(), 5000);
+    /// ```
     #[inline]
     pub fn advance_to(&mut self, watermark: u64) -> Vec<WindowAggregate<A::PartialAggregate>> {
         #[cfg(feature = "profiler")]

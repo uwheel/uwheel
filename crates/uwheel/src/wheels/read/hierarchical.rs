@@ -542,16 +542,48 @@ where
         self.advance(Duration::milliseconds(diff as i64), waw)
     }
 
-    /// Advances the wheel by applying a set of deltas where each delta represents the lowest unit of time
+    /// Advances the wheel by applying a set of partial aggregate deltas where each delta represents the lowest unit of time
     ///
     /// Note that deltas are processed in the order of the iterator. If you have the following deltas
     /// [Some(10),  Some(20)], it will first insert Some(10) into the wheel and then Some(20).
+    ///
+    /// Returns possible window aggregates if there is a window installed.
+    ///
+    /// # Example
+    /// ```
+    /// use uwheel::{Haw, aggregator::sum::U64SumAggregator, NumericalDuration};
+    ///
+    /// let mut haw: Haw<U64SumAggregator> = Haw::default();
+    /// // oldest to newest
+    /// let deltas = vec![Some(10), None, Some(50), None];
+    /// // Visualization:
+    /// // 10
+    /// // 0, 10
+    /// // 50, 0, 10
+    /// // 0, 50, 0, 10
+    /// haw.delta_advance(deltas);
+    /// assert_eq!(haw.interval(1.seconds()), Some(0));
+    /// assert_eq!(haw.interval(2.seconds()), Some(50));
+    /// assert_eq!(haw.interval(3.seconds()), Some(50));
+    /// assert_eq!(haw.interval(4.seconds()), Some(60));
+    /// ```
     #[inline]
-    pub fn delta_advance(&mut self, deltas: impl IntoIterator<Item = Option<A::PartialAggregate>>) {
+    pub fn delta_advance(
+        &mut self,
+        deltas: impl IntoIterator<Item = Option<A::PartialAggregate>>,
+    ) -> Vec<WindowAggregate<A::PartialAggregate>> {
+        let mut windows = Vec::new();
         for delta in deltas {
-            // TODO: does not new deltas and does not return possible windows
             self.tick(delta);
+
+            // Store delta if configured to
+            if self.conf.generate_deltas {
+                self.delta.push(delta);
+            }
+            // maybe handle window if there is any configured
+            self.handle_window_maybe(&mut windows);
         }
+        windows
     }
 
     /// Advance the watermark of the wheel by the given [time::Duration]
@@ -650,6 +682,14 @@ where
     #[inline]
     pub fn watermark(&self) -> u64 {
         self.watermark
+    }
+    #[doc(hidden)]
+    pub fn downsample(
+        &self,
+        _range: impl Into<WheelRange>,
+        _sample_interval: Duration,
+    ) -> Option<Vec<(u64, A::PartialAggregate)>> {
+        todo!("https://github.com/Max-Meldrum/uwheel/issues/87");
     }
     /// Returns partial aggregates within the given date range [start, end) using the lowest granularity
     ///

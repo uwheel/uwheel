@@ -21,13 +21,14 @@ use self::util::pairs_space;
 /// ```
 /// use uwheel::{Window, NumericalDuration};
 ///
+/// // define a sliding window with 10 sec range and 3 sec slide.
 /// let window = Window::default().with_range(10.seconds()).with_slide(3.seconds());
 /// ```
 #[derive(Copy, Clone)]
 pub struct Window {
     /// Defines the window range
     pub range: Duration,
-    /// Defines the slide of the window
+    /// Defines the window slide
     pub slide: Duration,
 }
 
