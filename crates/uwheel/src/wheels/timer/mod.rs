@@ -8,7 +8,7 @@ mod byte_wheel;
 mod quad_wheel;
 pub(crate) mod raw_wheel;
 
-use crate::{cfg_not_sync, cfg_sync, rw_wheel::read::Haw};
+use crate::{cfg_not_sync, cfg_sync, wheels::read::Haw};
 use core::{fmt::Debug, hash::Hash, time::Duration};
 pub(super) use raw_wheel::RawTimerWheel;
 

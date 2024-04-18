@@ -520,7 +520,7 @@ mod tests {
             sum::{U32SumAggregator, U64SumAggregator},
             Compression,
         },
-        rw_wheel::read::hierarchical::HOUR_TICK_MS,
+        wheels::read::hierarchical::HOUR_TICK_MS,
     };
 
     #[derive(Clone, Debug, Default)]

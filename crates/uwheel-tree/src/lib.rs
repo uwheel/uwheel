@@ -1,7 +1,7 @@
 //! uwheel-tree contains the Wheel-Tree index
 
 use core::hash::Hash;
-use uwheel::{aggregator::Aggregator, rw_wheel::read::hierarchical::WheelRange, ReaderWheel};
+use uwheel::{aggregator::Aggregator, wheels::read::hierarchical::WheelRange, ReaderWheel};
 
 pub trait Key: PartialEq + Ord + Hash + Eq + Send + Sync + Clone + 'static {}
 impl<T> Key for T where T: PartialEq + Ord + Hash + Eq + Send + Sync + Clone + 'static {}
@@ -13,12 +13,7 @@ use std::{
     collections::{BinaryHeap, HashMap},
     ops::Bound,
 };
-use uwheel::{
-    rw_wheel::read::aggregation::combine_or_insert,
-    DeltaState,
-    Duration,
-    OffsetDateTime,
-};
+use uwheel::{wheels::read::aggregation::combine_or_insert, DeltaState, Duration, OffsetDateTime};
 
 pub enum TopKQuery {
     TimeFilter(OffsetDateTime, OffsetDateTime),

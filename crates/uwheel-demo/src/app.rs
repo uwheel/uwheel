@@ -15,7 +15,7 @@ use postcard::to_allocvec;
 use time::OffsetDateTime;
 use uwheel::{
     aggregator::sum::U64SumAggregator,
-    rw_wheel::read::{aggregation::conf::RetentionPolicy, hierarchical::HawConf, Haw},
+    wheels::read::{aggregation::conf::RetentionPolicy, hierarchical::HawConf, Haw},
     Conf,
     Entry,
     NumericalDuration,

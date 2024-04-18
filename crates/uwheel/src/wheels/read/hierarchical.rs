@@ -14,7 +14,7 @@ use super::{
 use crate::{
     aggregator::Aggregator,
     delta::DeltaState,
-    rw_wheel::read::{
+    wheels::read::{
         aggregation::combine_or_insert,
         plan::{CombinedAggregation, WheelAggregations},
     },
@@ -33,7 +33,7 @@ use uwheel_stats::profile_scope;
 crate::cfg_timer! {
     #[cfg(not(feature = "std"))]
     use alloc::{boxed::Box, rc::Rc};
-    use crate::rw_wheel::timer::{RawTimerWheel, TimerWheel, TimerError, TimerAction};
+    use crate::wheels::timer::{RawTimerWheel, TimerWheel, TimerError, TimerAction};
 }
 use super::aggregation::conf::WheelConf;
 
@@ -1329,7 +1329,7 @@ mod tests {
     use crate::{
         aggregator::sum::U64SumAggregator,
         duration::NumericalDuration,
-        rw_wheel::read::plan::Aggregation,
+        wheels::read::plan::Aggregation,
     };
     use time::macros::datetime;
 

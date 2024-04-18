@@ -1,7 +1,7 @@
 use clap::Parser;
 use uwheel::{
     aggregator::{sum::U32SumAggregator, Compression},
-    rw_wheel::read::{
+    wheels::read::{
         aggregation::conf::{DataLayout, RetentionPolicy},
         hierarchical::HawConf,
     },

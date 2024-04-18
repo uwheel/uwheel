@@ -27,8 +27,8 @@ mod window;
 pub mod aggregator;
 /// Duration of time for µWheel intervals
 pub mod duration;
-/// The core Reader-Writer Wheel
-pub mod rw_wheel;
+/// Various wheels used by µWheel
+pub mod wheels;
 
 pub use delta::DeltaState;
 pub use duration::{Duration, NumericalDuration};
@@ -38,7 +38,9 @@ pub use duration::{Duration, NumericalDuration};
 mod macros;
 
 pub use aggregator::Aggregator;
-pub use rw_wheel::{
+#[doc(hidden)]
+pub use time::OffsetDateTime;
+pub use wheels::{
     read::{
         hierarchical::{Haw, HawConf, WheelRange},
         ReaderWheel,
@@ -53,8 +55,6 @@ pub use rw_wheel::{
     Conf,
     RwWheel,
 };
-#[doc(hidden)]
-pub use time::OffsetDateTime;
 pub use window::Window;
 
 /// A type containing error variants that may arise when using a wheel

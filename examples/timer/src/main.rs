@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use uwheel::{
     aggregator::sum::U32SumAggregator,
-    rw_wheel::read::Haw,
+    wheels::read::Haw,
     Entry,
     NumericalDuration,
     RwWheel,

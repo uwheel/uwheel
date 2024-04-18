@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use super::{conf::WheelConf, Wheel};
 use crate::{
     aggregator::Aggregator,
-    rw_wheel::read::{
+    wheels::read::{
         hierarchical::{Granularity, WheelRange},
         plan::Aggregation,
     },

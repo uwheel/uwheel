@@ -10,7 +10,7 @@ mod plan;
 #[cfg(feature = "profiler")]
 pub(crate) mod stats;
 #[cfg(feature = "timer")]
-use crate::rw_wheel::timer::{TimerAction, TimerError};
+use crate::wheels::timer::{TimerAction, TimerError};
 
 use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, duration::Duration, WheelRange};
 pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
