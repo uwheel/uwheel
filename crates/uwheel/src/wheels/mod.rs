@@ -556,7 +556,7 @@ mod tests {
                 .read()
                 .as_ref()
                 .seconds_unchecked()
-                .aggregate_and_lower(0..5),
+                .combine_range_and_lower(0..5),
             Some(6u32)
         );
     }

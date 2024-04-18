@@ -1,6 +1,3 @@
-#[cfg(not(feature = "std"))]
-use alloc::{vec, vec::Vec};
-
 /// An enum with different retention policies
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Copy, Default, Clone, Debug)]
@@ -28,18 +25,6 @@ impl RetentionPolicy {
             RetentionPolicy::Keep | RetentionPolicy::KeepWithLimit { .. }
         )
     }
-    /// Serializes the policy to bytes
-    pub fn to_bytes(&self) -> Vec<u8> {
-        match self {
-            RetentionPolicy::Drop => vec![0],
-            RetentionPolicy::Keep => vec![1],
-            RetentionPolicy::KeepWithLimit(limit) => {
-                let mut bytes = vec![2];
-                bytes.extend_from_slice(&(*limit as u32).to_le_bytes());
-                bytes
-            }
-        }
-    }
 }
 
 /// Configurable Compression Policy for wheels
@@ -55,21 +40,6 @@ pub enum CompressionPolicy {
     After(usize),
 }
 
-impl CompressionPolicy {
-    /// Serializes the compression policy to bytes
-    pub fn to_bytes(&self) -> Vec<u8> {
-        match self {
-            CompressionPolicy::Never => vec![0],
-            CompressionPolicy::Always => vec![1],
-            CompressionPolicy::After(limit) => {
-                let mut bytes = vec![2];
-                bytes.extend_from_slice(&(*limit as u32).to_le_bytes());
-                bytes
-            }
-        }
-    }
-}
-
 /// Enum containing different data layouts
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Copy, Clone, Default, Debug)]
@@ -83,7 +53,7 @@ pub enum DataLayout {
     Prefix,
 }
 
-/// Configuration for an Aggregation Wheel
+/// Configuration for an Aggregate Wheel
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Copy, Clone, Debug)]
 pub struct WheelConf {
@@ -115,30 +85,18 @@ impl WheelConf {
             drill_down: false,
         }
     }
-
-    /// Sets the drill down flag
-    pub fn set_drill_down(&mut self, drill_down: bool) {
-        self.drill_down = drill_down;
-    }
     /// Sets the watermark
-    pub fn set_watermark(&mut self, watermark: u64) {
+    pub fn with_watermark(mut self, watermark: u64) -> Self {
         self.watermark = watermark;
+        self
     }
+
     /// Configures the wheel to maintain dril-down slots
     pub fn with_drill_down(mut self, drill_down: bool) -> Self {
         self.drill_down = drill_down;
         self
     }
 
-    /// Sets the retention policy for this wheel
-    pub fn set_retention_policy(&mut self, policy: RetentionPolicy) {
-        self.retention = policy;
-    }
-
-    /// Sets the data layout for this wheel
-    pub fn set_data_layout(&mut self, layout: DataLayout) {
-        self.data_layout = layout;
-    }
     /// Configures the wheel to use the given data layout
     pub fn with_data_layout(mut self, layout: DataLayout) -> Self {
         self.data_layout = layout;
@@ -148,5 +106,23 @@ impl WheelConf {
     pub fn with_retention_policy(mut self, policy: RetentionPolicy) -> Self {
         self.retention = policy;
         self
+    }
+
+    /// Sets the watermark
+    pub fn set_watermark(&mut self, watermark: u64) {
+        self.watermark = watermark;
+    }
+    /// Sets the data layout for this wheel
+    pub fn set_data_layout(&mut self, layout: DataLayout) {
+        self.data_layout = layout;
+    }
+    /// Sets the data layout for this wheel
+    pub fn set_drill_down(&mut self, drill_down: bool) {
+        self.drill_down = drill_down;
+    }
+
+    /// Sets the retention policy for this wheel
+    pub fn set_retention_policy(&mut self, policy: RetentionPolicy) {
+        self.retention = policy;
     }
 }

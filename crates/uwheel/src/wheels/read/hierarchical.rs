@@ -694,6 +694,21 @@ where
     /// Returns partial aggregates within the given date range [start, end) using the lowest granularity
     ///
     /// Returns `None` if the range cannot be answered by the wheel
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{Haw, WheelRange, aggregator::sum::U32SumAggregator};
+    ///
+    /// // Init a HAW with time 0
+    /// let mut haw: Haw<U32SumAggregator> = Haw::default();
+    /// let deltas = vec![Some(10), None, Some(50), None];
+    /// haw.delta_advance(deltas);
+    ///
+    /// assert_eq!(haw.watermark(), 4000);
+    /// let range = WheelRange::from_unix_timestamps(0, 4000);
+    /// assert_eq!(haw.range(range), Some(vec![(0, 10), (1000, 0), (2000, 50), (3000, 0)]));
+    /// ```
     #[inline]
     pub fn range(&self, range: impl Into<WheelRange>) -> Option<Vec<(u64, A::PartialAggregate)>> {
         let range = range.into();
@@ -725,6 +740,8 @@ where
     /// Returns aggregates within the given date range [start, end) using the lowest granularity
     ///
     /// Returns `None` if the range cannot be answered by the wheel
+    ///
+    /// See [Self::range] for an example.
     #[inline]
     pub fn range_and_lower(
         &self,
@@ -739,6 +756,21 @@ where
     }
 
     /// Returns the execution plan for a given combine range query
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{Haw, WheelRange, wheels::read::ExecutionPlan, aggregator::sum::U32SumAggregator};
+    ///
+    /// // Init a HAW with time 0
+    /// let mut haw: Haw<U32SumAggregator> = Haw::default();
+    /// let deltas = vec![Some(10), None, Some(50), None];
+    /// haw.delta_advance(deltas);
+    ///
+    /// let range = WheelRange::from_unix_timestamps(0, 4000);
+    /// let exec_plan = haw.explain_combine_range(range).unwrap();
+    /// assert_eq!(exec_plan, ExecutionPlan::LandmarkAggregation);
+    /// ```
     #[inline]
     pub fn explain_combine_range(&self, range: impl Into<WheelRange>) -> Option<ExecutionPlan> {
         Some(self.create_exec_plan(range.into()))
@@ -747,6 +779,8 @@ where
     /// Combines partial aggregates within the given date range and lowers it to a final aggregate
     ///
     /// Returns `None` if the range cannot be answered by the wheel
+    ///
+    /// See [Self::combine_range] for an example.
     #[inline]
     pub fn combine_range_and_lower(&self, range: impl Into<WheelRange>) -> Option<A::Aggregate> {
         self.combine_range(range).map(A::lower)
@@ -755,6 +789,21 @@ where
     /// Combines partial aggregates within the given date range [start, end) into a final partial aggregate
     ///
     /// Returns `None` if the range cannot be answered by the wheel
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{Haw, WheelRange, aggregator::sum::U32SumAggregator};
+    ///
+    /// // Init a HAW with time 0
+    /// let mut haw: Haw<U32SumAggregator> = Haw::default();
+    /// let deltas = vec![Some(10), None, Some(50), None];
+    /// haw.delta_advance(deltas);
+    ///
+    /// assert_eq!(haw.watermark(), 4000);
+    /// let range = WheelRange::from_unix_timestamps(0, 4000);
+    /// assert_eq!(haw.combine_range(range), Some(60));
+    /// ```
     #[inline]
     pub fn combine_range(&self, range: impl Into<WheelRange>) -> Option<A::PartialAggregate> {
         self.combine_range_inner(range).0
@@ -827,6 +876,7 @@ where
             return best_plan;
         }
 
+        // check if aggregator is invertible
         if A::invertible() {
             let mut aggregations = WheelAggregations::default();
 
@@ -1091,27 +1141,44 @@ where
             Granularity::Second => {
                 let seconds = (end - start).whole_seconds() as usize;
                 self.seconds_wheel
-                    .aggregate(start, seconds, Granularity::Second)
+                    .combine_range(start, seconds, Granularity::Second)
             }
             Granularity::Minute => {
                 let minutes = (end - start).whole_minutes() as usize;
                 self.minutes_wheel
-                    .aggregate(start, minutes, Granularity::Minute)
+                    .combine_range(start, minutes, Granularity::Minute)
             }
             Granularity::Hour => {
                 let hours = (end - start).whole_hours() as usize;
-                self.hours_wheel.aggregate(start, hours, Granularity::Hour)
+                self.hours_wheel
+                    .combine_range(start, hours, Granularity::Hour)
             }
             Granularity::Day => {
                 let days = (end - start).whole_days() as usize;
-                self.days_wheel.aggregate(start, days, Granularity::Day)
+                self.days_wheel.combine_range(start, days, Granularity::Day)
             }
         }
     }
 
-    /// Returns the partial aggregate in the given time interval
+    /// Returns the partial aggregate in the given time interval [(watermark - `duration`), watermark)
     ///
     /// Internally the [Self::combine_range] function is used to produce the result
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{Haw, NumericalDuration, aggregator::sum::U32SumAggregator};
+    ///
+    /// // Init a HAW with time 0
+    /// let mut haw: Haw<U32SumAggregator> = Haw::default();
+    /// let deltas = vec![Some(10), None, Some(50), None];
+    /// haw.delta_advance(deltas);
+    ///
+    /// assert_eq!(haw.interval(1.seconds()), Some(0));
+    /// assert_eq!(haw.interval(2.seconds()), Some(50));
+    /// assert_eq!(haw.interval(3.seconds()), Some(50));
+    /// assert_eq!(haw.interval(4.seconds()), Some(60));  
+    /// ```
     pub fn interval(&self, dur: Duration) -> Option<A::PartialAggregate> {
         self.interval_with_stats(dur).0
     }
@@ -1119,6 +1186,8 @@ where
     /// Returns the partial aggregate in the given time interval and lowers the result
     ///
     /// Internally the [Self::combine_range] function is used to produce the result
+    ///
+    /// See [Self::interval] for example.
     pub fn interval_and_lower(&self, dur: Duration) -> Option<A::Aggregate> {
         self.interval(dur).map(|partial| A::lower(partial))
     }
@@ -1181,9 +1250,22 @@ where
             .flatten();
         (agg, combines)
     }
-    /// Schedules a timer to fire once the given time has been reached
+    /// Schedules a timer to fire once the HAW has reached the specified time.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{Haw, NumericalDuration, aggregator::sum::U32SumAggregator};
+    ///
+    /// // Init a HAW with time 0
+    /// let mut haw: Haw<U32SumAggregator> = Haw::default();
+    /// let _ = haw.schedule_once(5000, move |haw: &Haw<_>| {
+    ///    println!("{:?}", haw.interval(5.seconds()));
+    /// });
+    ///
+    /// ```
     #[cfg(feature = "timer")]
-    pub(crate) fn schedule_once(
+    pub fn schedule_once(
         &self,
         time: u64,
         f: impl Fn(&Haw<A>) + 'static,
@@ -1193,8 +1275,21 @@ where
             .schedule_at(time, TimerAction::Oneshot(Box::new(f)))
     }
     /// Schedules a timer to fire repeatedly
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{Haw, NumericalDuration, aggregator::sum::U32SumAggregator};
+    ///
+    /// // Init a HAW with time 0
+    /// let mut haw: Haw<U32SumAggregator> = Haw::default();
+    /// let _ = haw.schedule_repeat(5000, 5.seconds(), move |haw: &Haw<_>| {
+    ///    println!("{:?}", haw.interval(5.seconds()));
+    /// });
+    ///
+    /// ```
     #[cfg(feature = "timer")]
-    pub(crate) fn schedule_repeat(
+    pub fn schedule_repeat(
         &self,
         at: u64,
         interval: Duration,
@@ -1507,6 +1602,7 @@ mod tests {
         let conf = HawConf::default()
             .with_watermark(watermark)
             .with_retention_policy(RetentionPolicy::Keep);
+
         let mut haw: Haw<U64SumAggregator> = Haw::new(conf);
 
         let days_as_secs = 3600 * 24;

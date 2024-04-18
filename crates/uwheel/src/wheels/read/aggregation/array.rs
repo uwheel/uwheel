@@ -201,7 +201,7 @@ impl<A: Aggregator> MutablePartialArray<A> {
     pub fn iter(&self) -> impl Iterator<Item = &A::PartialAggregate> {
         self.inner.iter()
     }
-    /// Returns combined partial aggregate based on a given range
+    /// Returns partial aggregate based on a given range
     #[inline]
     pub fn range_to_vec<R>(&self, range: R) -> Vec<A::PartialAggregate>
     where
@@ -214,9 +214,14 @@ impl<A: Aggregator> MutablePartialArray<A> {
             .collect()
     }
 
-    /// Returns combined partial aggregate based on a given range
+    /// Combines partial aggregates within the given range into a new partial aggregate
+    ///
+    /// # Panics
+    ///
+    /// Panics if the starting point is greater than the end point or if
+    /// the end point is greater than the length of array
     #[inline]
-    pub fn range_query<R>(&self, range: R) -> Option<A::PartialAggregate>
+    pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
     {
@@ -225,7 +230,7 @@ impl<A: Aggregator> MutablePartialArray<A> {
 
     /// Returns the combined partial aggregate within the given range that match the filter predicate
     #[inline]
-    pub fn range_query_with_filter<R>(
+    pub fn combine_range_with_filter<R>(
         &self,
         range: R,
         filter: impl Fn(&A::PartialAggregate) -> bool,
@@ -325,7 +330,7 @@ impl<A: Aggregator> PrefixArray<A> {
     }
 
     #[inline]
-    pub(crate) fn range_query<R>(&self, range: R) -> Option<A::PartialAggregate>
+    pub(crate) fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
     {
@@ -418,12 +423,12 @@ impl<A: Aggregator> CompressedArray<A> {
     }
 
     #[inline]
-    pub(crate) fn range_query<R>(&self, range: R) -> Option<A::PartialAggregate>
+    pub(crate) fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
     {
         let array = self.partial_range_array(&range);
-        array.range_query(range)
+        array.combine_range(range)
     }
 
     // helper method to build an array using the given range

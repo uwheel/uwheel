@@ -214,7 +214,7 @@ impl<A: Aggregator> Wheel<A> {
         if subtrahend > self.data.len() {
             (None, 0)
         } else {
-            (self.data.aggregate(0..subtrahend), subtrahend)
+            (self.data.combine_range(0..subtrahend), subtrahend)
         }
     }
 
@@ -351,11 +351,11 @@ impl<A: Aggregator> Wheel<A> {
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the wheel.
     #[inline]
-    pub fn aggregate<R>(&self, range: R) -> Option<A::PartialAggregate>
+    pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
     {
-        self.data.aggregate(range)
+        self.data.combine_range(range)
     }
 
     /// Combines partial aggregates from the specified range and lowers it to a final aggregate value
@@ -364,11 +364,11 @@ impl<A: Aggregator> Wheel<A> {
     ///
     /// Panics if the starting point is greater than the end point or if
     /// the end point is greater than the length of the wheel.
-    pub fn aggregate_and_lower<R>(&self, range: R) -> Option<A::Aggregate>
+    pub fn combine_range_and_lower<R>(&self, range: R) -> Option<A::Aggregate>
     where
         R: RangeBounds<usize>,
     {
-        self.aggregate(range).map(A::lower)
+        self.combine_range(range).map(A::lower)
     }
 
     /// Shift the tail and clear any old entry
@@ -595,8 +595,8 @@ mod tests {
         }
 
         // Verify that a prefix-sum range query returns the same result as a regular scan.
-        let prefix_result = prefix_wheel.aggregate(0..4);
-        let result = wheel.aggregate(0..4);
+        let prefix_result = prefix_wheel.combine_range(0..4);
+        let result = wheel.combine_range(0..4);
         assert_eq!(prefix_result, result);
     }
 
@@ -618,15 +618,21 @@ mod tests {
             compressed_wheel.tick();
         }
 
-        let compressed_result = compressed_wheel.aggregate(0..4);
-        let result = wheel.aggregate(0..4);
+        let compressed_result = compressed_wheel.combine_range(0..4);
+        let result = wheel.combine_range(0..4);
         assert_eq!(compressed_result, result);
 
-        assert_eq!(compressed_wheel.aggregate(0..4), wheel.aggregate(0..4));
-        assert_eq!(compressed_wheel.aggregate(55..75), wheel.aggregate(55..75));
         assert_eq!(
-            compressed_wheel.aggregate(60..120),
-            wheel.aggregate(60..120)
+            compressed_wheel.combine_range(0..4),
+            wheel.combine_range(0..4)
+        );
+        assert_eq!(
+            compressed_wheel.combine_range(55..75),
+            wheel.combine_range(55..75)
+        );
+        assert_eq!(
+            compressed_wheel.combine_range(60..120),
+            wheel.combine_range(60..120)
         );
 
         // add half of the chunk_size to check whether it still works as intended
@@ -638,8 +644,14 @@ mod tests {
             compressed_wheel.tick();
         }
 
-        assert_eq!(compressed_wheel.aggregate(55..75), wheel.aggregate(55..75));
-        assert_eq!(compressed_wheel.aggregate(60..85), wheel.aggregate(60..85));
+        assert_eq!(
+            compressed_wheel.combine_range(55..75),
+            wheel.combine_range(55..75)
+        );
+        assert_eq!(
+            compressed_wheel.combine_range(60..85),
+            wheel.combine_range(60..85)
+        );
     }
 
     #[test]
@@ -651,9 +663,9 @@ mod tests {
         array.push_front(30);
 
         assert_eq!(array.len(), 3);
-        assert_eq!(array.range_query(..), Some(60));
-        assert_eq!(array.range_query(0..2), Some(50));
-        assert_eq!(array.range_query_with_filter(.., |v| *v > 10), Some(50));
+        assert_eq!(array.combine_range(..), Some(60));
+        assert_eq!(array.combine_range(0..2), Some(50));
+        assert_eq!(array.combine_range_with_filter(.., |v| *v > 10), Some(50));
 
         assert_eq!(array.get(0), Some(&30));
         assert_eq!(array.get(1), Some(&20));
@@ -662,8 +674,8 @@ mod tests {
         array.pop_back();
 
         assert_eq!(array.len(), 2);
-        assert_eq!(array.range_query(..), Some(50));
-        assert_eq!(array.range_query(0..2), Some(50));
+        assert_eq!(array.combine_range(..), Some(50));
+        assert_eq!(array.combine_range(0..2), Some(50));
     }
 
     #[test]

@@ -100,14 +100,14 @@ impl<A: Aggregator> Data<A> {
     }
 
     #[inline]
-    pub fn aggregate<R>(&self, range: R) -> Option<A::PartialAggregate>
+    pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
     {
         match self {
-            Data::Array(arr) => arr.range_query(range),
-            Data::PrefixArray(parr) => parr.range_query(range),
-            Data::CompressedArray(arr) => arr.range_query(range),
+            Data::Array(arr) => arr.combine_range(range),
+            Data::PrefixArray(parr) => parr.combine_range(range),
+            Data::CompressedArray(arr) => arr.combine_range(range),
         }
     }
 }

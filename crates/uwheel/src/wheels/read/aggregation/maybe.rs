@@ -82,7 +82,7 @@ impl<A: Aggregator> MaybeWheel<A> {
         })
     }
     #[inline]
-    pub fn aggregate(
+    pub fn combine_range(
         &self,
         start: OffsetDateTime,
         slots: usize,
@@ -101,7 +101,7 @@ impl<A: Aggregator> MaybeWheel<A> {
             } as usize;
             let start_slot = slot_distance - slots;
             let end_slot = start_slot + slots;
-            wheel.aggregate(start_slot..end_slot)
+            wheel.combine_range(start_slot..end_slot)
         })
     }
     #[doc(hidden)]

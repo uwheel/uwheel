@@ -14,6 +14,7 @@ use crate::wheels::timer::{TimerAction, TimerError};
 
 use crate::{cfg_not_sync, cfg_sync, delta::DeltaState, duration::Duration, WheelRange};
 pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
+pub use plan::ExecutionPlan;
 
 use crate::aggregator::Aggregator;
 
