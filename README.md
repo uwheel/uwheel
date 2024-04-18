@@ -2,6 +2,7 @@
   <img width="300" height="300" src="assets/logo.png">
 </p>
 
+![ci](https://github.com/Max-Meldrum/uwheel/actions/workflows/rust.yml/badge.svg)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
 [![Apache](https://img.shields.io/badge/license-Apache-blue.svg)](https://github.com/Max-Meldrum/uwheel/blob/main/LICENSE-APACHE)
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Max-Meldrum/uwheel/blob/main/LICENSE-MIT)
@@ -15,12 +16,11 @@ See more about its design [here](DESIGN.md) and try it out directly on the [web]
 ## Features
 
 - Wheel-based query optimizer
-- Vectorized (SIMD) query execution.
+- Vectorized query execution.
 - Out-of-order support using ``low watermarking``.
-- Supports user-defined aggregators.
+- User-defined aggregation.
 - High-throughput stream ingestion.
 - Low space footprint.
-- Zero-copy deserialization.
 - Incremental checkpointing support.
 - Fully mergeable.
 - Compatible with ``#[no_std]`` (requires ``alloc``).
@@ -63,9 +63,9 @@ See a user-defined aggregator example [here](examples/aggregator/).
     - Enables support to speed up aggregation functions with SIMD operations
 - `sync` (_implicitly enables `std`_)
     - Enables a sync version of ``ReaderWheel`` that can be shared and queried across threads
-- `stats` (_implicitly enables `std`_)
+- `profiler` (_implicitly enables `std`_)
     - Enables recording of latencies for various operations
-- `serde` (_implicitly enables `ZeroVec` for zero-copy deserialization_)
+- `serde`
     - Enables serde support
 - `timer`
     - Enables scheduling user-defined functions
@@ -86,7 +86,7 @@ uwheel = { version = "0.1.0", default-features = false }
 ## Examples
 
 ```rust
-use uwheel::{aggregator::U32SumAggregator, WheelRange, time::NumericalDuration, Entry, RwWheel};
+use uwheel::{aggregator::sum::U32SumAggregator, WheelRange, NumericalDuration, Entry, RwWheel};
 
 // Initial start watermark 2023-11-09 00:00:00 (represented as milliseconds)
 let mut watermark = 1699488000000;
@@ -101,16 +101,19 @@ for _ in 0..3600 {
     watermark += 1000;
     wheel.advance_to(watermark);
 }
+// The low watermark is now 2023-11-09 01:00:00
 
 // query the wheel using different intervals
 assert_eq!(wheel.read().interval(15.seconds()), Some(15));
 assert_eq!(wheel.read().interval(1.minutes()), Some(60));
-assert_eq!(wheel.read().interval(1.hours()), Some(3600));
 
+// Combine range of 2023-11-09 00:00:00 and 2023-11-09 01:00:00
 let start = 1699488000000;
 let end = 1699491600000;
 let range = WheelRange::from_unix_timestamps(start, end);
-assert_eq!(wheel.read().as_ref().combine_range(range), Some(3600));
+assert_eq!(wheel.read().combine_range(range), Some(3600));
+// The following runs the the same combine range query as above.
+assert_eq!(wheel.read().interval(1.hours()), Some(3600));
 ```
 
 See more examples [here](examples).
