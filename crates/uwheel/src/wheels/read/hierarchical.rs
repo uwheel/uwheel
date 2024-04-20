@@ -263,7 +263,7 @@ impl WheelRange {
     }
 }
 
-#[derive(Debug, Copy, PartialEq, Clone)]
+#[derive(Debug, Copy, PartialEq, Eq, Clone)]
 #[repr(usize)]
 pub(crate) enum Granularity {
     Second,
@@ -773,7 +773,7 @@ where
     /// ```
     #[inline]
     pub fn explain_combine_range(&self, range: impl Into<WheelRange>) -> Option<ExecutionPlan> {
-        Some(self.create_exec_plan(range.into()))
+        self.create_exec_plan(range.into())
     }
 
     /// Combines partial aggregates within the given date range and lowers it to a final aggregate
@@ -789,6 +789,10 @@ where
     /// Combines partial aggregates within the given date range [start, end) into a final partial aggregate
     ///
     /// Returns `None` if the range cannot be answered by the wheel
+    ///
+    /// # Query Optimizer
+    ///
+    /// HAW use a query optimizer internally to reduce execution time using a hybrid cost and heuristics based approach.
     ///
     /// # Example
     ///
@@ -834,29 +838,44 @@ where
 
         assert!(end > start, "End date needs to be larger than start date");
 
-        // create the best possible execution plan
-        let exec = self.create_exec_plan(range);
-
-        match exec {
-            ExecutionPlan::WheelAggregation(wheel_agg) => {
-                (self.wheel_aggregation(wheel_agg.range), wheel_agg.cost())
+        // create the best possible execution plan and run it
+        match self.create_exec_plan(range) {
+            Some(ExecutionPlan::WheelAggregation(wheel_agg)) => {
+                (self.wheel_aggregation(wheel_agg), wheel_agg.cost())
             }
-            ExecutionPlan::CombinedAggregation(combined) => self.combined_aggregation(combined),
-            ExecutionPlan::LandmarkAggregation => self.analyze_landmark(),
-            ExecutionPlan::InverseLandmarkAggregation(wheel_aggs) => {
+            Some(ExecutionPlan::CombinedAggregation(combined)) => {
+                self.combined_aggregation(combined)
+            }
+            Some(ExecutionPlan::LandmarkAggregation) => self.analyze_landmark(),
+            Some(ExecutionPlan::InverseLandmarkAggregation(wheel_aggs)) => {
                 let (result, cost) = self.inverse_landmark_aggregation(wheel_aggs);
                 (Some(result), cost)
             }
+            None => (None, 0), // No execution plan possible
         }
     }
-
     /// Returns the best possible execution plan for a given wheel range
+    ///
+    /// Returns `None` if no plan can be established.
     #[inline]
-    fn create_exec_plan(&self, range: WheelRange) -> ExecutionPlan {
+    fn create_exec_plan(&self, range: WheelRange) -> Option<ExecutionPlan> {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.exec_plan);
 
-        let mut best_plan = ExecutionPlan::WheelAggregation(self.wheel_aggregation_plan(range));
+        let mut best_plan: Option<ExecutionPlan> = None;
+
+        // helper fn for maybe updating to a new optimal plan or inserting if there is none.
+        let maybe_update_plan_or_insert =
+            |plan: ExecutionPlan, current: &mut Option<ExecutionPlan>| {
+                *current = match current.take() {
+                    Some(p) => Some(cmp::min(p, plan)),
+                    None => Some(plan),
+                }
+            };
+
+        if let Some(plan) = self.wheel_aggregation_plan(range) {
+            best_plan = Some(ExecutionPlan::WheelAggregation(plan));
+        }
 
         let wheel_start = self
             .watermark()
@@ -867,41 +886,59 @@ where
 
         // Landmark optimization: landmark covers the whole range
         if start_ms <= wheel_start && end_ms >= self.watermark() {
-            best_plan = ExecutionPlan::LandmarkAggregation;
+            best_plan = Some(ExecutionPlan::LandmarkAggregation);
         }
 
-        // Early return if plan supports single-wheel prefix scan or if landmark aggregation is possible (both O(1) complexity)
-        // Or if the range duration is lower than the lowest granularity, then we cannot execute a combined aggreation
-        if best_plan.is_prefix_or_landmark() || range.duration().whole_seconds() < SECONDS as i64 {
-            return best_plan;
+        if let Some(plan) = &best_plan {
+            // Early return if plan supports single-wheel prefix scan or if landmark aggregation is possible (both O(1) complexity)
+            // Or if the range duration is lower than the lowest granularity, then we cannot execute a combined aggreation
+            if plan.is_prefix_or_landmark() || range.duration().whole_seconds() < SECONDS as i64 {
+                return best_plan;
+            }
         }
 
         // check if aggregator is invertible
         if A::invertible() {
             let mut aggregations = WheelAggregations::default();
 
-            // always include: [wheel_start, start]
-            aggregations.push(self.wheel_aggregation_plan(WheelRange::new(
+            // always include: [wheel_start, start)
+            let p1 = self.wheel_aggregation_plan(WheelRange::new(
                 Self::to_offset_date(wheel_start),
                 range.start,
-            )));
+            ));
 
-            // if range.end != current watermark also include [end, watermark_now]
-            if end_ms < self.watermark() {
-                aggregations.push(self.wheel_aggregation_plan(WheelRange::new(
-                    range.end,
-                    Self::to_offset_date(self.watermark()),
-                )));
+            // NOTE: works but refactor
+            if let Some(p1_plan) = p1 {
+                let mut valid = true;
+                aggregations.push(p1_plan);
+
+                // if range.end != current watermark also include [end, watermark_now]
+                if end_ms < self.watermark() {
+                    let p2 = self.wheel_aggregation_plan(WheelRange::new(
+                        range.end,
+                        Self::to_offset_date(self.watermark()),
+                    ));
+                    if let Some(p2_plan) = p2 {
+                        aggregations.push(p2_plan);
+                    } else {
+                        valid = false;
+                    }
+                }
+
+                // only try to update plan if its deemed valid
+                // that is, no out of bound aggregation.
+                if valid {
+                    maybe_update_plan_or_insert(
+                        ExecutionPlan::InverseLandmarkAggregation(aggregations),
+                        &mut best_plan,
+                    );
+                }
             }
-
-            let inverse_plan = ExecutionPlan::InverseLandmarkAggregation(aggregations);
-
-            best_plan = cmp::min(best_plan, inverse_plan);
         }
 
         // Check whether it is worth to create a combined plan as it comes with some overhead
         let combined_aggregation = {
-            let scan_estimation = best_plan.cost();
+            let scan_estimation = best_plan.as_ref().map(|p| p.cost()).unwrap_or(0);
 
             if self.conf.optimizer.use_hints && A::simd_support() {
                 scan_estimation > self.conf.optimizer.heuristics.simd_threshold
@@ -913,29 +950,48 @@ where
         // if the range can be split into multiple non-overlapping ranges
         if combined_aggregation {
             // NOTE: could create multiple combinations of combined aggregations to check
-            let combined_plan = ExecutionPlan::CombinedAggregation(
-                self.combined_aggregation_plan(Self::split_wheel_ranges(range)),
-            );
-            best_plan = cmp::min(best_plan, combined_plan);
+            if let Some(combined_plan) =
+                self.combined_aggregation_plan(Self::split_wheel_ranges(range))
+            {
+                maybe_update_plan_or_insert(
+                    ExecutionPlan::CombinedAggregation(combined_plan),
+                    &mut best_plan,
+                );
+            }
         }
 
         best_plan
     }
 
     /// Given a [start, end) interval, returns the cost (number of ⊕ operations) for a given wheel aggregation
+    ///
+    /// Returns `None` if the wheel aggregation cannot be executed because of uninitialized wheel or out of bounds aggregation
     #[inline]
-    fn wheel_aggregation_plan(&self, range: WheelRange) -> WheelAggregation {
-        let plan = match range.lowest_granularity() {
-            Granularity::Second => self
-                .seconds_wheel
-                .aggregate_plan(&range, Granularity::Second),
-            Granularity::Minute => self
-                .minutes_wheel
-                .aggregate_plan(&range, Granularity::Minute),
-            Granularity::Hour => self.hours_wheel.aggregate_plan(&range, Granularity::Hour),
-            Granularity::Day => self.days_wheel.aggregate_plan(&range, Granularity::Day),
-        };
-        WheelAggregation::new(range, plan)
+    fn wheel_aggregation_plan(&self, range: WheelRange) -> Option<WheelAggregation> {
+        let start = range.start;
+        let end = range.end;
+
+        match range.lowest_granularity() {
+            Granularity::Second => {
+                let seconds = (end - start).whole_seconds() as usize;
+                self.seconds_wheel
+                    .plan(start, seconds, range, Granularity::Second)
+            }
+            Granularity::Minute => {
+                let minutes = (end - start).whole_minutes() as usize;
+                self.minutes_wheel
+                    .plan(start, minutes, range, Granularity::Minute)
+            }
+            Granularity::Hour => {
+                let hours = (end - start).whole_hours() as usize;
+                self.hours_wheel
+                    .plan(start, hours, range, Granularity::Hour)
+            }
+            Granularity::Day => {
+                let days = (end - start).whole_days() as usize;
+                self.days_wheel.plan(start, days, range, Granularity::Day)
+            }
+        }
     }
 
     /// Logically splits the wheel range into multiple non-overlapping ranges to execute using Combined Aggregation
@@ -1026,17 +1082,18 @@ where
     /// Takes a set of wheel ranges and creates a CombinedAggregation plan
     #[doc(hidden)]
     #[inline]
-    pub fn combined_aggregation_plan(&self, ranges: WheelRanges) -> CombinedAggregation {
+    pub fn combined_aggregation_plan(&self, ranges: WheelRanges) -> Option<CombinedAggregation> {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.combined_aggregation_plan);
 
-        let mut aggregations =
-            ranges
-                .into_iter()
-                .fold(WheelAggregations::default(), |mut acc, range| {
-                    acc.push(self.wheel_aggregation_plan(range));
-                    acc
-                });
+        let mut aggregations = WheelAggregations::default();
+
+        for range in ranges.into_iter() {
+            match self.wheel_aggregation_plan(range) {
+                Some(plan) => aggregations.push(plan),
+                None => return None, // early return if a single aggregation cannot be executed
+            }
+        }
 
         // function that returns a score of the wheel range which is used during sorting
         let granularity_score = |start: &OffsetDateTime, end: &OffsetDateTime| {
@@ -1065,7 +1122,7 @@ where
             a_score.cmp(&b_score)
         });
 
-        CombinedAggregation::from(aggregations)
+        Some(CombinedAggregation::from(aggregations))
     }
 
     // Performs a inverse landmark aggregation
@@ -1080,15 +1137,16 @@ where
         let (landmark, lcost) = self.analyze_landmark();
         let combine_inverse = A::combine_inverse().unwrap(); // assumed to be safe as it has been verified by the plan generation
 
-        wheel_aggregations
-            .iter()
-            .fold((landmark.unwrap_or(A::IDENTITY), lcost), |mut acc, plan| {
+        wheel_aggregations.into_iter().fold(
+            (landmark.unwrap_or(A::IDENTITY), lcost),
+            |mut acc, plan| {
                 let cost = plan.cost();
-                let agg = self.wheel_aggregation(plan.range).unwrap_or(A::IDENTITY);
+                let agg = self.wheel_aggregation(plan).unwrap_or(A::IDENTITY);
                 acc.0 = combine_inverse(acc.0, agg);
                 acc.1 += cost;
                 acc
-            })
+            },
+        )
     }
 
     /// Performs a given Combined Aggregation and returns the partial aggregate and the cost of the operation
@@ -1105,7 +1163,7 @@ where
             .aggregations
             .into_iter()
             .fold(None, |mut acc, wheel_agg| {
-                match self.wheel_aggregation(wheel_agg.range) {
+                match self.wheel_aggregation(wheel_agg) {
                     Some(agg) => {
                         combine_or_insert::<A>(&mut acc, agg);
                         acc
@@ -1115,48 +1173,23 @@ where
             });
         (agg, cost)
     }
-
     /// Combines partial aggregates within [start, end) using the lowest time granularity wheel
     ///
     /// Note that start date is inclusive while end date is exclusive.
     /// For instance, the range [16:00:50, 16:01:00) refers to the 10 remaining seconds of the minute
     ///
     /// Returns `None` if the range cannot be answered by the wheel
-    #[inline]
-    pub fn wheel_aggregation(&self, range: impl Into<WheelRange>) -> Option<A::PartialAggregate> {
+    fn wheel_aggregation(&self, agg: WheelAggregation) -> Option<A::PartialAggregate> {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.wheel_aggregation);
 
-        let range = range.into();
-        let start = range.start;
-        let end = range.end;
-        // NOTE: naivé version, still needs checks and can do more optimizations
-        assert!(
-            end >= start,
-            "End date needs to be equal or larger than start date"
-        );
-        let gran = range.lowest_granularity();
-
-        match gran {
-            Granularity::Second => {
-                let seconds = (end - start).whole_seconds() as usize;
-                self.seconds_wheel
-                    .combine_range(start, seconds, Granularity::Second)
-            }
-            Granularity::Minute => {
-                let minutes = (end - start).whole_minutes() as usize;
-                self.minutes_wheel
-                    .combine_range(start, minutes, Granularity::Minute)
-            }
-            Granularity::Hour => {
-                let hours = (end - start).whole_hours() as usize;
-                self.hours_wheel
-                    .combine_range(start, hours, Granularity::Hour)
-            }
-            Granularity::Day => {
-                let days = (end - start).whole_days() as usize;
-                self.days_wheel.combine_range(start, days, Granularity::Day)
-            }
+        let (start, end) = agg.slots;
+        let slot_range = start..end;
+        match agg.granularity {
+            Granularity::Second => self.seconds_wheel.combine_range(slot_range),
+            Granularity::Minute => self.minutes_wheel.combine_range(slot_range),
+            Granularity::Hour => self.hours_wheel.combine_range(slot_range),
+            Granularity::Day => self.days_wheel.combine_range(slot_range),
         }
     }
 
@@ -1498,6 +1531,25 @@ mod tests {
             end.unix_timestamp() as u64,
         );
     }
+    #[test]
+    fn out_of_bounds_aggregation() {
+        // 2023-11-09 00:00:00
+        let watermark = 1699488000000;
+        let conf = HawConf::default().with_watermark(watermark);
+
+        let mut haw: Haw<U64SumAggregator> = Haw::new(conf);
+
+        let days_as_secs = 3600 * 24;
+        let days = days_as_secs * 3;
+        let deltas: Vec<Option<u64>> = (0..days).map(|_| Some(1)).collect();
+        // advance wheel by 3 days
+        haw.delta_advance(deltas);
+
+        let start = datetime!(2023 - 11 - 09 15:50:50 UTC);
+        let end = datetime!(2023 - 11 - 11 12:30:45 UTC);
+        // as we do not retain slots for any granularity this call must produce `None`
+        assert_eq!(haw.combine_range((start, end)), None);
+    }
 
     #[test]
     fn range_query_sec_test() {
@@ -1625,7 +1677,7 @@ mod tests {
         let end = datetime!(2023 - 11 - 11 12:30:45 UTC);
 
         // verify that both wheel aggregation using seconds and combine range using multiple wheel aggregations end up the same
-        assert_eq!(haw.wheel_aggregation((start, end)), Some(160795));
+        // assert_eq!(haw.wheel_aggregation((start, end)), Some(160795));
         assert_eq!(haw.combine_range((start, end)), Some(160795));
 
         let plan = haw
@@ -1645,6 +1697,8 @@ mod tests {
                 end: datetime!(2023 - 11 - 09 15:51:00 UTC),
             },
             plan: Aggregation::Scan(10),
+            slots: (202140, 202150),
+            granularity: Granularity::Second,
         });
 
         expected.push(WheelAggregation {
@@ -1653,6 +1707,8 @@ mod tests {
                 end: datetime!(2023 - 11 - 11 12:30:45 UTC),
             },
             plan: Aggregation::Scan(45),
+            slots: (41355, 41400),
+            granularity: Granularity::Second,
         });
 
         expected.push(WheelAggregation {
@@ -1661,6 +1717,8 @@ mod tests {
                 end: datetime!(2023 - 11 - 09 16:00:00 UTC),
             },
             plan: Aggregation::Scan(9),
+            slots: (3360, 3369),
+            granularity: Granularity::Minute,
         });
 
         expected.push(WheelAggregation {
@@ -1669,6 +1727,8 @@ mod tests {
                 end: datetime!(2023 - 11 - 11 12:30:00 UTC),
             },
             plan: Aggregation::Scan(30),
+            slots: (690, 720),
+            granularity: Granularity::Minute,
         });
 
         expected.push(WheelAggregation {
@@ -1677,6 +1737,8 @@ mod tests {
                 end: datetime!(2023 - 11 - 10 00:00:00 UTC),
             },
             plan: Aggregation::Scan(8),
+            slots: (48, 56),
+            granularity: Granularity::Hour,
         });
         expected.push(WheelAggregation {
             range: WheelRange {
@@ -1684,6 +1746,8 @@ mod tests {
                 end: datetime!(2023 - 11 - 11 12:00:00 UTC),
             },
             plan: Aggregation::Scan(12),
+            slots: (12, 24),
+            granularity: Granularity::Hour,
         });
         expected.push(WheelAggregation {
             range: WheelRange {
@@ -1691,6 +1755,8 @@ mod tests {
                 end: datetime!(2023 - 11 - 11 00:00:00 UTC),
             },
             plan: Aggregation::Scan(1),
+            slots: (1, 2),
+            granularity: Granularity::Day,
         });
 
         assert_eq!(combined_plan.aggregations, expected);
@@ -1701,7 +1767,10 @@ mod tests {
         // Runs a Inverse Landmark Execution
         let result = haw.combine_range(WheelRange::new(start, end));
         let plan = haw.create_exec_plan(WheelRange::new(start, end));
-        assert!(matches!(plan, ExecutionPlan::InverseLandmarkAggregation(_)));
+        assert!(matches!(
+            plan,
+            Some(ExecutionPlan::InverseLandmarkAggregation(_))
+        ));
         assert_eq!(result, Some(241200));
     }
 

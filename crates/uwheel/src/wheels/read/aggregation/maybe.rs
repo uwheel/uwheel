@@ -1,3 +1,5 @@
+use core::ops::RangeBounds;
+
 use time::OffsetDateTime;
 
 #[cfg(not(feature = "std"))]
@@ -8,7 +10,7 @@ use crate::{
     aggregator::Aggregator,
     wheels::read::{
         hierarchical::{Granularity, WheelRange},
-        plan::Aggregation,
+        plan::{Aggregation, WheelAggregation},
     },
 };
 
@@ -82,28 +84,15 @@ impl<A: Aggregator> MaybeWheel<A> {
         })
     }
     #[inline]
-    pub fn combine_range(
-        &self,
-        start: OffsetDateTime,
-        slots: usize,
-        gran: Granularity,
-    ) -> Option<A::PartialAggregate> {
-        let watermark_date =
-            |wm: u64| OffsetDateTime::from_unix_timestamp((wm as i64) / 1000).unwrap();
-        self.inner.as_ref().and_then(|wheel| {
-            let watermark = watermark_date(wheel.watermark());
-            let distance = watermark - start;
-            let slot_distance = match gran {
-                Granularity::Second => distance.whole_seconds(),
-                Granularity::Minute => distance.whole_minutes(),
-                Granularity::Hour => distance.whole_hours(),
-                Granularity::Day => distance.whole_days(),
-            } as usize;
-            let start_slot = slot_distance - slots;
-            let end_slot = start_slot + slots;
-            wheel.combine_range(start_slot..end_slot)
-        })
+    pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
+    where
+        R: RangeBounds<usize>,
+    {
+        self.inner
+            .as_ref()
+            .and_then(|wheel| wheel.combine_range(range))
     }
+
     #[doc(hidden)]
     #[allow(dead_code)]
     #[inline]
@@ -118,6 +107,48 @@ impl<A: Aggregator> MaybeWheel<A> {
         } else {
             None
         }
+    }
+
+    pub fn plan(
+        &self,
+        start: OffsetDateTime,
+        slots: usize,
+        range: WheelRange,
+        gran: Granularity,
+    ) -> Option<WheelAggregation> {
+        self.calculate_slots(start, slots, gran)
+            .map(|(start, end)| {
+                let agg = self.aggregate_plan(&range, gran);
+                WheelAggregation::new(range, agg, (start, end), gran)
+            })
+    }
+    /// Returns `None` if wheel is not initialized or if the range of slots is out of bounds.
+    pub fn calculate_slots(
+        &self,
+        start: OffsetDateTime,
+        slots: usize,
+        gran: Granularity,
+    ) -> Option<(usize, usize)> {
+        let watermark_date =
+            |wm: u64| OffsetDateTime::from_unix_timestamp((wm as i64) / 1000).unwrap();
+        self.inner.as_ref().and_then(|wheel| {
+            let watermark = watermark_date(wheel.watermark());
+            let distance = watermark - start;
+            let slot_distance = match gran {
+                Granularity::Second => distance.whole_seconds(),
+                Granularity::Minute => distance.whole_minutes(),
+                Granularity::Hour => distance.whole_hours(),
+                Granularity::Day => distance.whole_days(),
+            } as usize;
+            let start_slot = slot_distance - slots;
+            let end_slot = start_slot + slots;
+            // SAFETY: bounds check whether the calculated start and end slots are valid
+            if wheel.len() < end_slot {
+                None
+            } else {
+                Some((start_slot, end_slot))
+            }
+        })
     }
 
     /// Returns estimated cost for performing the given aggregate on this wheel

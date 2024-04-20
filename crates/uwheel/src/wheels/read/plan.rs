@@ -1,6 +1,6 @@
 use core::cmp::Ordering;
 
-use super::hierarchical::WheelRange;
+use super::hierarchical::{Granularity, WheelRange};
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -67,11 +67,23 @@ impl PartialOrd for ExecutionPlan {
 pub struct WheelAggregation {
     pub(crate) range: WheelRange,
     pub(crate) plan: Aggregation,
+    pub(crate) slots: (usize, usize),
+    pub(crate) granularity: Granularity,
 }
 
 impl WheelAggregation {
-    pub(crate) fn new(range: WheelRange, plan: Aggregation) -> Self {
-        Self { range, plan }
+    pub(crate) fn new(
+        range: WheelRange,
+        plan: Aggregation,
+        slots: (usize, usize),
+        granularity: Granularity,
+    ) -> Self {
+        Self {
+            range,
+            plan,
+            slots,
+            granularity,
+        }
     }
     pub fn cost(&self) -> usize {
         self.plan.cost()
