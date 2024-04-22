@@ -45,10 +45,6 @@ where
     type PartialAggregate = TopNState<Key, N, A>;
     type Aggregate = TopNState<Key, N, A>;
 
-    type CombineSimd = fn(&[Self::PartialAggregate]) -> Self::PartialAggregate;
-    type CombineInverse =
-        fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate;
-
     #[inline]
     fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
         let mut map = TopNMap::default();

@@ -3,9 +3,6 @@ use core::fmt::Debug;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-#[cfg(not(feature = "std"))]
-use alloc::boxed::Box;
-
 #[cfg(feature = "serde")]
 use zerovec::ule::AsULE;
 
@@ -29,45 +26,92 @@ pub mod sum;
 /// Top-N Aggregation using a nested Aggregator which has a PartialAggregate that implements `Ord`
 pub mod top_n;
 
-/// Aggregation interface that library users must implement to use uwheel
+/// Type alias for a Combine Simd function
+pub type CombineSimdFn<P> = fn(&[P]) -> P;
+/// Type alias for an Inverse Combine function.
+pub type InverseFn<P> = fn(P, P) -> P;
+
+/// Aggregation interface that library users must implement to use µWheel
+///
+/// µWheel provides a bunch of pre-defined aggregator implementations including:
+/// - [sum]
+/// - [min]
+/// - [max]
+/// - [avg]
+/// - [all]
+///
+/// # Example
+///
+/// Here is a simple example showing how to create a SUM aggregator using u32.
+/// ```
+/// use uwheel::Aggregator;
+///
+/// #[derive(Default, Debug, Clone)]
+/// struct MySumAggregator;
+///
+/// impl Aggregator for MySumAggregator {
+///     const IDENTITY: Self::PartialAggregate = 0u32;
+///     type Input = u32;
+///     type MutablePartialAggregate = u32;
+///     type Aggregate = u32;
+///     type PartialAggregate = u32;
+///
+///     fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
+///        input.into()
+///     }
+///
+///     fn combine_mutable(a: &mut Self::MutablePartialAggregate, input: Self::Input) {
+///        *a += input;
+///     }
+///
+///     fn freeze(a: Self::MutablePartialAggregate) -> Self::PartialAggregate {
+///        a.into()
+///     }
+///
+///     fn combine(a: Self::PartialAggregate, b: Self::PartialAggregate) -> Self::PartialAggregate {
+///        a + b
+///     }
+///
+///     fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
+///        a
+///     }
+/// }
+/// ```
 pub trait Aggregator: Default + Debug + Clone + 'static {
-    /// Combine Simd Function
-    type CombineSimd: Fn(&[Self::PartialAggregate]) -> Self::PartialAggregate;
-
-    /// A combine inverse function
-    type CombineInverse: Fn(
-        Self::PartialAggregate,
-        Self::PartialAggregate,
-    ) -> Self::PartialAggregate;
-
-    /// Identity value for the Aggregator's Partial Aggregate
+    /// Identity value for [Self::PartialAggregate].
+    ///
+    /// For example, for SUM types the identity value should be set to 0.
     const IDENTITY: Self::PartialAggregate;
 
-    /// Input type that can be inserted into [Self::MutablePartialAggregate]
+    /// Aggregator Input type that can be converted or applied to a [Self::MutablePartialAggregate].
     type Input: InputBounds;
 
-    /// Mutable Partial Aggregate type
+    /// Mutable Partial Aggregate type that can be mutated above µWheel's low watermark.
     type MutablePartialAggregate: MutablePartialAggregateType;
 
-    /// Partial Aggregate type
+    /// Immutable Partial Aggregate type that defines aggregates below µWheel's low watermark.
     type PartialAggregate: PartialAggregateType;
 
-    /// Final Aggregate type
+    /// Final Aggregate type that can be lowered from a [Self::PartialAggregate].
+    ///
+    /// In many cases the [Self::PartialAggregate] type will be the same as [Self::Aggregate].
+    /// An instance where it is not is an AVG function where the partial aggregate consists of a (sum, count)
+    /// tuple and the final aggregate "average" is calculated through sum/count.
     type Aggregate: Debug + Send;
 
-    /// Lifts input into a MutablePartialAggregate
+    /// Lifts [Self::Input] into a [Self::MutablePartialAggregate]
     fn lift(input: Self::Input) -> Self::MutablePartialAggregate;
 
-    /// Combine an input into a mutable partial aggregate
+    /// Combines [Self::Input] to an existing `&mut Self::MutablePartialAggregate`.
     fn combine_mutable(a: &mut Self::MutablePartialAggregate, input: Self::Input);
 
-    /// Freeze a mutable partial aggregate into an immutable one
+    /// Freezes a [Self::MutablePartialAggregate] into a [Self::PartialAggregate].
     fn freeze(a: Self::MutablePartialAggregate) -> Self::PartialAggregate;
 
-    /// Combine two partial aggregates and produce new output
+    /// Combine two partial aggregates and produces a new [Self::PartialAggregate].
     fn combine(a: Self::PartialAggregate, b: Self::PartialAggregate) -> Self::PartialAggregate;
 
-    /// Convert a partial aggregate to a final result
+    /// Lowers a [Self::PartialAggregate] into a final [Self::Aggregate].
     fn lower(a: Self::PartialAggregate) -> Self::Aggregate;
 
     /// Combines a slice of partial aggregates into a new partial
@@ -133,7 +177,21 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     /// Returns a function that inverse combines two partial aggregates
     ///
     /// Is set to `None` by default
-    fn combine_inverse() -> Option<Self::CombineInverse> {
+    fn combine_inverse() -> Option<InverseFn<Self::PartialAggregate>> {
+        None
+    }
+
+    /// Returns a function that combines a slice of partial aggregates using explicit SIMD instructions.
+    ///
+    /// Is set to `None` by default
+    fn combine_simd() -> Option<CombineSimdFn<Self::PartialAggregate>> {
+        None
+    }
+
+    /// Optional compression support for partial aggregates
+    ///
+    /// Is set to `None` by default
+    fn compression() -> Option<Compression<Self::PartialAggregate>> {
         None
     }
 
@@ -143,12 +201,6 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
         Self::combine_inverse().is_some()
     }
 
-    /// Returns a function that combines aggregates using explicit SIMD instructions
-    ///
-    /// Is set to `None` by default
-    fn combine_simd() -> Option<Self::CombineSimd> {
-        None
-    }
     /// Returns ``true`` if the aggregator supports SIMD
     #[doc(hidden)]
     fn simd_support() -> bool {
@@ -158,13 +210,6 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     #[doc(hidden)]
     fn compression_support() -> bool {
         Self::compression().is_some()
-    }
-
-    /// Optional compression support for partial aggregates
-    ///
-    /// Is set to `None` by default
-    fn compression() -> Option<Compression<Self::PartialAggregate>> {
-        None
     }
 }
 
@@ -186,33 +231,18 @@ impl<T> Compression<T> {
 }
 
 /// Alias for a Compression function
-pub type Compressor<T> = Box<dyn Fn(&[T]) -> Vec<u8>>;
+pub type Compressor<T> = fn(&[T]) -> Vec<u8>;
 /// Alias for a Decompression function
-pub type Decompressor<T> = Box<dyn Fn(&[u8]) -> Vec<T>>;
+pub type Decompressor<T> = fn(&[u8]) -> Vec<T>;
 
-#[cfg(not(feature = "serde"))]
 /// Bounds for Aggregator Input
 pub trait InputBounds: Debug + Clone + Copy + Send {}
-#[cfg(feature = "serde")]
-/// Bounds for Aggregator Input
-pub trait InputBounds:
-    Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a> + 'static
-{
-}
-
-#[cfg(not(feature = "serde"))]
 impl<T> InputBounds for T where T: Debug + Clone + Copy + Send {}
 
-#[cfg(feature = "serde")]
-impl<T> InputBounds for T where
-    T: Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a> + 'static
-{
-}
-
-/// A mutable aggregate type
+/// A mutable partial aggregate type
 #[cfg(not(feature = "serde"))]
 pub trait MutablePartialAggregateType: Clone {}
-/// A mutable aggregate type
+/// A mutable parital aggregate type
 #[cfg(feature = "serde")]
 pub trait MutablePartialAggregateType:
     Clone + serde::Serialize + for<'a> serde::Deserialize<'a>
@@ -255,7 +285,7 @@ impl<T> PartialAggregateBounds for T where
 {
 }
 
-/// An immutable aggregate type
+/// An immutable partial aggregate type
 pub trait PartialAggregateType: PartialAggregateBounds {}
 
 macro_rules! primitive_partial {

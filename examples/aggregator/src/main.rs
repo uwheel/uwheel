@@ -119,10 +119,6 @@ impl Aggregate {
 // NOTE: in this case both the mutable and immutable aggregate types are the same
 impl Aggregator for CustomAggregator {
     const IDENTITY: Self::PartialAggregate = PartialAggregate::identity();
-    type CombineSimd = fn(&[Self::PartialAggregate]) -> Self::PartialAggregate;
-
-    type CombineInverse =
-        fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate;
 
     type Input = RawData;
     type PartialAggregate = PartialAggregate;

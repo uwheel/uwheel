@@ -19,8 +19,6 @@ macro_rules! min_impl {
 
         impl Aggregator for $struct {
             const IDENTITY: Self::PartialAggregate = <$type>::MAX;
-            type CombineSimd = fn(&[$pa]) -> $pa;
-            type CombineInverse = fn($pa, $pa) -> $pa;
 
             type Input = $type;
             type MutablePartialAggregate = $pa;
@@ -54,7 +52,7 @@ macro_rules! min_impl {
 
             #[cfg(feature = "simd")]
             #[inline]
-            fn combine_simd() -> Option<Self::CombineSimd> {
+            fn combine_simd() -> Option<fn(&[Self::PartialAggregate]) -> Self::PartialAggregate> {
                 Some(|slice: &[$pa]| Self::simd_min(slice))
             }
         }

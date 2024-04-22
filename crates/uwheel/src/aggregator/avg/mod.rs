@@ -13,9 +13,6 @@ macro_rules! avg_impl {
             type Aggregate = $type;
             type PartialAggregate = $pa;
 
-            type CombineSimd = fn(&[$pa]) -> $pa;
-            type CombineInverse = fn($pa, $pa) -> $pa;
-
             fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
                 (input, 1 as $type)
             }
@@ -45,7 +42,7 @@ macro_rules! avg_impl {
                 a.0 / a.1
             }
             #[inline]
-            fn combine_inverse() -> Option<Self::CombineInverse> {
+            fn combine_inverse() -> Option<fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate> {
                 Some(|a, b| {
                     let (a_sum, a_count) = a;
                     let (b_sum, b_count) = b;

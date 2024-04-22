@@ -18,8 +18,6 @@ macro_rules! sum_impl {
         pub struct $struct;
 
         impl Aggregator for $struct {
-            type CombineSimd = fn(&[$pa]) -> $pa;
-            type CombineInverse = fn($pa, $pa) -> $pa;
             const IDENTITY: Self::PartialAggregate = 0 as $pa;
 
             type Input = $type;
@@ -75,13 +73,13 @@ macro_rules! sum_impl {
             }
 
             #[inline]
-            fn combine_inverse() -> Option<Self::CombineInverse> {
+            fn combine_inverse() -> Option<fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate> {
                 Some(|a, b| if a > b { a - b } else { 0 as $pa })
             }
 
             #[cfg(feature = "simd")]
             #[inline]
-            fn combine_simd() -> Option<Self::CombineSimd> {
+            fn combine_simd() -> Option<fn(&[Self::PartialAggregate]) -> Self::PartialAggregate> {
                 Some(|slice: &[$pa]| Self::simd_sum(slice))
             }
         }

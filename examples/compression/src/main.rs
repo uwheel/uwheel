@@ -15,10 +15,6 @@ pub struct PcoSumAggregator;
 
 impl Aggregator for PcoSumAggregator {
     const IDENTITY: Self::PartialAggregate = 0;
-    type CombineSimd = fn(&[Self::PartialAggregate]) -> Self::PartialAggregate;
-
-    type CombineInverse =
-        fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate;
 
     type Input = u32;
     type PartialAggregate = u32;
@@ -43,12 +39,10 @@ impl Aggregator for PcoSumAggregator {
     }
 
     fn compression() -> Option<Compression<Self::PartialAggregate>> {
-        let compressor = Box::new(|slice: &[u32]| {
-            pco::standalone::auto_compress(slice, pco::DEFAULT_COMPRESSION_LEVEL)
-        });
-        let decompressor = Box::new(|slice: &[u8]| {
-            pco::standalone::auto_decompress(slice).expect("failed to decompress")
-        });
+        let compressor =
+            |slice: &[u32]| pco::standalone::auto_compress(slice, pco::DEFAULT_COMPRESSION_LEVEL);
+        let decompressor =
+            |slice: &[u8]| pco::standalone::auto_decompress(slice).expect("failed to decompress");
         Some(Compression::new(compressor, decompressor))
     }
 }
