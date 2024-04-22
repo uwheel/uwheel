@@ -9,17 +9,18 @@
 
 # µWheel
 
-µWheel is an Embeddable Aggregate Management System for Hybrid Stream and Analytical Processing.
+µWheel is an Embeddable Aggregate Management System for Streams and Queries.
 
 See more about its design [here](DESIGN.md) and try it out directly on the [web](https://maxmeldrum.com/uwheel).
 
 ## Features
 
-- Wheel-based query optimizer
-- Vectorized query execution.
+- Streaming window aggregation
+- Built-in warehousing capabilities
+- Wheel-based query optimizer + vectorized execution.
 - Out-of-order support using ``low watermarking``.
-- User-defined aggregation.
 - High-throughput stream ingestion.
+- User-defined aggregation.
 - Low space footprint.
 - Incremental checkpointing support.
 - Fully mergeable.
@@ -96,7 +97,7 @@ let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(watermark);
 // Fill the wheel 3600 worth of seconds
 for _ in 0..3600 {
     // Insert entry into the wheel
-    wheel.write().insert(Entry::new(1u32, watermark)).unwrap();
+    wheel.insert(Entry::new(1u32, watermark));
     // bump the watermark by 1 second and also advanced the wheel
     watermark += 1000;
     wheel.advance_to(watermark);
@@ -110,7 +111,7 @@ assert_eq!(wheel.read().interval(1.minutes()), Some(60));
 // Combine range of 2023-11-09 00:00:00 and 2023-11-09 01:00:00
 let start = 1699488000000;
 let end = 1699491600000;
-let range = WheelRange::from_unix_timestamps(start, end);
+let range = WheelRange::new_unchecked(start, end);
 assert_eq!(wheel.read().combine_range(range), Some(3600));
 // The following runs the the same combine range query as above.
 assert_eq!(wheel.read().interval(1.hours()), Some(3600));

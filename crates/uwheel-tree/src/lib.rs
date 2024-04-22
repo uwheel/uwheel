@@ -108,9 +108,9 @@ where
             (Bound::Unbounded, Bound::Unbounded) => self
                 .star
                 .as_ref()
-                .combine_range(WheelRange::new(start, end)),
+                .combine_range(WheelRange::from(start, end)),
             _ => self.inner.range(range).fold(None, |mut acc, (_, wheel)| {
-                match wheel.as_ref().combine_range(WheelRange::new(start, end)) {
+                match wheel.as_ref().combine_range(WheelRange::from(start, end)) {
                     Some(agg) => {
                         combine_or_insert::<A>(&mut acc, agg);
                         acc
@@ -136,9 +136,9 @@ where
             (Bound::Unbounded, Bound::Unbounded) => self
                 .star
                 .as_ref()
-                .combine_range(WheelRange::new(start, end)),
+                .combine_range(WheelRange::from(start, end)),
             _ => self.inner.range(range).fold(None, |mut acc, (_, wheel)| {
-                match wheel.as_ref().combine_range(WheelRange::new(start, end)) {
+                match wheel.as_ref().combine_range(WheelRange::from(start, end)) {
                     Some(agg) => {
                         combine_or_insert::<A>(&mut acc, agg);
                         acc
@@ -183,7 +183,7 @@ where
         for (key, wheel) in self.inner.range(..) {
             let agg = match query {
                 TopKQuery::TimeFilter(start, end) => {
-                    wheel.as_ref().combine_range(WheelRange::new(start, end))
+                    wheel.as_ref().combine_range(WheelRange::from(start, end))
                 }
                 TopKQuery::Landmark => wheel.as_ref().landmark(),
             };

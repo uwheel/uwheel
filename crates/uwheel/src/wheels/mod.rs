@@ -16,12 +16,13 @@ mod stats;
 #[allow(dead_code)]
 mod timer;
 
-use crate::{aggregator::Aggregator, duration::Duration, Entry, Error};
+use crate::{aggregator::Aggregator, duration::Duration, Entry};
 use core::fmt::Debug;
-use write::{WriterWheel, DEFAULT_WRITE_AHEAD_SLOTS};
+use write::DEFAULT_WRITE_AHEAD_SLOTS;
 
 pub use read::{aggregation::DrillCut, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 pub use wheel_ext::WheelExt;
+pub use write::WriterWheel;
 
 use self::read::{
     hierarchical::{HawConf, WindowAggregate},
@@ -149,6 +150,8 @@ where
 
     /// Inserts an entry into the wheel
     ///
+    /// # Safety
+    ///
     /// Entries with timestamps below the current low watermark ([Self::watermark]) are dropped.
     ///
     /// # Example
@@ -165,9 +168,8 @@ where
     pub fn insert(&mut self, e: impl Into<Entry<A::Input>>) {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.insert);
-        if let Err(Error::Late { .. }) = self.writer.insert(e) {
-            // For now do nothing but should be returned to the user..
-        }
+
+        self.writer.insert(e);
     }
 
     /// Returns a reference to the writer wheel

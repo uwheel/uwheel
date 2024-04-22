@@ -1,3 +1,4 @@
+//! uwheel-stats is a sub-crate of uwheel which contains profiling utility.
 use core::cell::RefCell;
 use minstant::Instant;
 use sketches_ddsketch::{Config, DDSketch};

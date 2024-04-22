@@ -1,4 +1,4 @@
-//! µWheel is an embeddable aggregate management system for hybrid stream and analytical processing.
+//! µWheel is an embeddable aggregate management system for streams and queries.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(feature = "simd", feature(portable_simd))]
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -11,12 +11,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-use core::{
-    fmt,
-    fmt::{Debug, Display},
-    matches,
-    write,
-};
+use core::{fmt, fmt::Debug, write};
 
 mod delta;
 mod window;
@@ -57,52 +52,7 @@ pub use wheels::{
 };
 pub use window::Window;
 
-/// A type containing error variants that may arise when using a wheel
-#[derive(Debug)]
-pub enum Error<T: Debug> {
-    /// The timestamp of the entry is below the watermark and is rejected
-    Late {
-        /// Owned entry to be returned to the caller
-        entry: Entry<T>,
-        /// The current watermark
-        watermark: u64,
-    },
-    /// The timestamp of the entry is too far ahead of the watermark
-    Overflow {
-        /// Owned entry to be returned to the caller
-        entry: Entry<T>,
-        /// Timestamp signaling the maximum write ahead
-        max_write_ahead_ts: u64,
-    },
-}
-impl<T: Debug> Display for Error<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::Late { entry, watermark } => {
-                write!(f, "late entry {entry} current watermark is {watermark}")
-            }
-            Error::Overflow {
-                entry,
-                max_write_ahead_ts,
-            } => {
-                write!(f, "entry {entry} does not fit within wheel, expected timestamp below {max_write_ahead_ts}")
-            }
-        }
-    }
-}
-
-impl<T: Debug> Error<T> {
-    /// Returns `true` if the error represents [Error::Late]
-    pub fn is_late(&self) -> bool {
-        matches!(self, Error::Late { .. })
-    }
-    /// Returns `true` if the error represents [Error::Overflow]
-    pub fn is_overflow(&self) -> bool {
-        matches!(self, Error::Overflow { .. })
-    }
-}
-
-/// Entry that can be inserted into the Wheel
+/// Entry that can be inserted into µWheel
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Copy, Clone)]

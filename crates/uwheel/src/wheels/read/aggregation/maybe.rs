@@ -109,6 +109,7 @@ impl<A: Aggregator> MaybeWheel<A> {
         }
     }
 
+    // Creates a Wheel Aggregation plan
     pub fn plan(
         &self,
         start: OffsetDateTime,

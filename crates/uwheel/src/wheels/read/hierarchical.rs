@@ -1,4 +1,7 @@
-use core::cmp;
+use core::{
+    cmp,
+    fmt::{self, Display},
+};
 use time::OffsetDateTime;
 
 use super::{
@@ -182,6 +185,33 @@ pub const WEEKS: usize = 52;
 /// Default capacity of year slots
 pub const YEARS: usize = 10;
 
+/// A type containing error variants that
+#[derive(Debug, Copy, Clone)]
+pub enum RangeError {
+    /// Range start is an invalid unix timestamp
+    InvalidStart {
+        /// Invalid start unix timestamp
+        start_ms: u64,
+    },
+    /// Range end is an invalid unix timestamp
+    InvalidEnd {
+        /// Invalid end unix timestamp
+        end_ms: u64,
+    },
+}
+impl Display for RangeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RangeError::InvalidStart { start_ms } => {
+                write!(f, "{start_ms} is not a valid unix timestamp")
+            }
+            RangeError::InvalidEnd { end_ms } => {
+                write!(f, "{end_ms} is not a valid unix timestamp")
+            }
+        }
+    }
+}
+
 /// A Wheel time range representing a closed-open interval of [start, end)
 ///
 /// # Example
@@ -190,7 +220,7 @@ pub const YEARS: usize = 10;
 ///
 /// let start = 1699488000000;
 /// let end = 1699491600000;
-/// let range = WheelRange::from_unix_timestamps(start, end);
+/// assert!(WheelRange::new(start, end).is_ok());
 /// ```
 #[derive(Debug, Copy, Hash, PartialEq, Eq, Clone)]
 pub struct WheelRange {
@@ -199,30 +229,27 @@ pub struct WheelRange {
 }
 impl WheelRange {
     /// Creates a WheelRange using a start and end timestamp as unix timestamps in milliseconds
-    pub fn from_unix_timestamps(start: u64, end: u64) -> Self {
-        Self::new(
-            OffsetDateTime::from_unix_timestamp(start as i64 / 1000).unwrap(),
-            OffsetDateTime::from_unix_timestamp(end as i64 / 1000).unwrap(),
-        )
-    }
-    /// Creates a new WheelRange given the start and end date
-    #[doc(hidden)]
-    pub fn new(start: OffsetDateTime, end: OffsetDateTime) -> Self {
-        Self::from((start, end))
-    }
-}
-impl From<(OffsetDateTime, OffsetDateTime)> for WheelRange {
-    fn from(tuple: (OffsetDateTime, OffsetDateTime)) -> Self {
-        WheelRange {
-            start: tuple.0,
-            end: tuple.1,
-        }
-    }
-}
+    pub fn new(start_ms: u64, end_ms: u64) -> Result<Self, RangeError> {
+        // NOTE: internally we have to convert it to seconds for `OffsetDateTime`
+        let start = OffsetDateTime::from_unix_timestamp(start_ms as i64 / 1000)
+            .map_err(|_| RangeError::InvalidStart { start_ms })?;
 
-impl From<(u64, u64)> for WheelRange {
-    fn from(tuple: (u64, u64)) -> Self {
-        Self::from_unix_timestamps(tuple.0, tuple.1)
+        let end = OffsetDateTime::from_unix_timestamp(end_ms as i64 / 1000)
+            .map_err(|_| RangeError::InvalidEnd { end_ms })?;
+
+        Ok(Self { start, end })
+    }
+    /// Creates an unchecked WheelRange using start and end timestamps as unix timestamps in milliseconds
+    ///
+    /// # Panics
+    ///
+    /// This function panics if given an invalid unix timestamp (See [Self::new] for a safe version)
+    pub fn new_unchecked(start_ms: u64, end_ms: u64) -> Self {
+        Self::new(start_ms, end_ms).unwrap()
+    }
+    #[doc(hidden)]
+    pub fn from(start: OffsetDateTime, end: OffsetDateTime) -> Self {
+        Self { start, end }
     }
 }
 
@@ -637,7 +664,10 @@ where
         if pairs_remaining == 0 {
             let from = Self::to_offset_date(self.watermark - current_pair_len as u64);
             let to = Self::to_offset_date(self.watermark);
-            let pair = self.combine_range(WheelRange::new(from, to));
+            let pair = self.combine_range(WheelRange {
+                start: from,
+                end: to,
+            });
 
             let manager = self.window_manager.as_mut().unwrap();
             let state = &mut manager.state;
@@ -706,7 +736,7 @@ where
     /// haw.delta_advance(deltas);
     ///
     /// assert_eq!(haw.watermark(), 4000);
-    /// let range = WheelRange::from_unix_timestamps(0, 4000);
+    /// let range = WheelRange::new_unchecked(0, 4000);
     /// assert_eq!(haw.range(range), Some(vec![(0, 10), (1000, 0), (2000, 50), (3000, 0)]));
     /// ```
     #[inline]
@@ -767,7 +797,7 @@ where
     /// let deltas = vec![Some(10), None, Some(50), None];
     /// haw.delta_advance(deltas);
     ///
-    /// let range = WheelRange::from_unix_timestamps(0, 4000);
+    /// let range = WheelRange::new_unchecked(0, 4000);
     /// let exec_plan = haw.explain_combine_range(range).unwrap();
     /// assert_eq!(exec_plan, ExecutionPlan::LandmarkAggregation);
     /// ```
@@ -805,7 +835,7 @@ where
     /// haw.delta_advance(deltas);
     ///
     /// assert_eq!(haw.watermark(), 4000);
-    /// let range = WheelRange::from_unix_timestamps(0, 4000);
+    /// let range = WheelRange::new_unchecked(0, 4000);
     /// assert_eq!(haw.combine_range(range), Some(60));
     /// ```
     #[inline]
@@ -902,10 +932,10 @@ where
             let mut aggregations = WheelAggregations::default();
 
             // always include: [wheel_start, start)
-            let p1 = self.wheel_aggregation_plan(WheelRange::new(
-                Self::to_offset_date(wheel_start),
-                range.start,
-            ));
+            let p1 = self.wheel_aggregation_plan(WheelRange {
+                start: Self::to_offset_date(wheel_start),
+                end: range.start,
+            });
 
             // NOTE: works but refactor
             if let Some(p1_plan) = p1 {
@@ -914,10 +944,10 @@ where
 
                 // if range.end != current watermark also include [end, watermark_now]
                 if end_ms < self.watermark() {
-                    let p2 = self.wheel_aggregation_plan(WheelRange::new(
-                        range.end,
-                        Self::to_offset_date(self.watermark()),
-                    ));
+                    let p2 = self.wheel_aggregation_plan(WheelRange {
+                        start: range.end,
+                        end: Self::to_offset_date(self.watermark()),
+                    });
                     if let Some(p2_plan) = p2 {
                         aggregations.push(p2_plan);
                     } else {
@@ -1233,7 +1263,10 @@ where
 
         let to = self.now();
         let from = to - time::Duration::seconds(dur.whole_seconds());
-        self.analyze_combine_range(WheelRange::new(from, to))
+        self.analyze_combine_range(WheelRange {
+            start: from,
+            end: to,
+        })
     }
 
     /// Executes a Landmark Window that combines total partial aggregates across all wheels
@@ -1526,9 +1559,8 @@ mod tests {
     fn wheel_range_test() {
         let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
         let end = datetime!(2023 - 11 - 12 00:00:00 UTC);
-        let _range = WheelRange::from_unix_timestamps(
-            start.unix_timestamp() as u64,
-            end.unix_timestamp() as u64,
+        assert!(
+            WheelRange::new(start.unix_timestamp() as u64, end.unix_timestamp() as u64).is_ok()
         );
     }
     #[test]
@@ -1548,7 +1580,7 @@ mod tests {
         let start = datetime!(2023 - 11 - 09 15:50:50 UTC);
         let end = datetime!(2023 - 11 - 11 12:30:45 UTC);
         // as we do not retain slots for any granularity this call must produce `None`
-        assert_eq!(haw.combine_range((start, end)), None);
+        assert_eq!(haw.combine_range(WheelRange { start, end }), None);
     }
 
     #[test]
@@ -1570,20 +1602,20 @@ mod tests {
         let start = datetime!(2023-11-09 00:00:00 UTC);
         let end = datetime!(2023-11-09 00:00:02 UTC);
 
-        let agg = haw.combine_range((start, end));
+        let agg = haw.combine_range(WheelRange { start, end });
         assert_eq!(agg, Some(10));
         assert_eq!(
-            haw.range((start, end)),
+            haw.range(WheelRange { start, end }),
             Some(vec![(1699488000000, 10), (1699488001000, 0)])
         );
 
         let start = datetime!(2023-11-09 00:00:00 UTC);
         let end = datetime!(2023-11-09 00:00:04 UTC);
-        let agg = haw.combine_range((start, end));
+        let agg = haw.combine_range(WheelRange { start, end });
         assert_eq!(agg, Some(60));
 
         assert_eq!(
-            haw.range((start, end)),
+            haw.range(WheelRange { start, end }),
             Some(vec![
                 (1699488000000, 10),
                 (1699488001000, 0),
@@ -1609,7 +1641,7 @@ mod tests {
         let start = datetime!(2023-11-09 00:00 UTC);
         let end = datetime!(2023-11-09 00:03 UTC);
 
-        let agg = haw.combine_range((start, end));
+        let agg = haw.combine_range(WheelRange { start, end });
         // 1 for each second rolled-up over 3 minutes > 180
         assert_eq!(agg, Some(180));
     }
@@ -1630,15 +1662,18 @@ mod tests {
         let start = datetime!(2023-11-09 00:00 UTC);
         let end = datetime!(2023-11-09 01:00 UTC);
 
-        assert_eq!(haw.combine_range((start, end)), Some(3600));
-        assert_eq!(haw.range((start, end)), Some(vec![(1699488000000, 3600)]));
+        assert_eq!(haw.combine_range(WheelRange { start, end }), Some(3600));
+        assert_eq!(
+            haw.range(WheelRange { start, end }),
+            Some(vec![(1699488000000, 3600)])
+        );
 
         let start = datetime!(2023-11-09 00:00 UTC);
         let end = datetime!(2023-11-09 03:00 UTC);
 
-        assert_eq!(haw.combine_range((start, end)), Some(10800));
+        assert_eq!(haw.combine_range(WheelRange { start, end }), Some(10800));
         assert_eq!(
-            haw.range((start, end)),
+            haw.range(WheelRange { start, end }),
             Some(vec![
                 (1699488000000, 3600),
                 (1699491600000, 3600),
@@ -1666,22 +1701,25 @@ mod tests {
         let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
         let end = datetime!(2023 - 11 - 10 00:00:00 UTC);
 
-        assert_eq!(haw.combine_range((start, end)), Some(3600 * 24));
+        assert_eq!(
+            haw.combine_range(WheelRange { start, end }),
+            Some(3600 * 24)
+        );
 
         let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
         let end = datetime!(2023 - 11 - 12 00:00:00 UTC);
 
-        assert_eq!(haw.combine_range((start, end)), Some(259200));
+        assert_eq!(haw.combine_range(WheelRange { start, end }), Some(259200));
 
         let start = datetime!(2023 - 11 - 09 15:50:50 UTC);
         let end = datetime!(2023 - 11 - 11 12:30:45 UTC);
 
         // verify that both wheel aggregation using seconds and combine range using multiple wheel aggregations end up the same
         // assert_eq!(haw.wheel_aggregation((start, end)), Some(160795));
-        assert_eq!(haw.combine_range((start, end)), Some(160795));
+        assert_eq!(haw.combine_range(WheelRange { start, end }), Some(160795));
 
         let plan = haw
-            .explain_combine_range(WheelRange::new(start, end))
+            .explain_combine_range(WheelRange { start, end })
             .unwrap();
         dbg!(&plan);
         let combined_plan = match plan {
@@ -1765,8 +1803,8 @@ mod tests {
         let end = datetime!(2023 - 11 - 12 00:00:00 UTC);
 
         // Runs a Inverse Landmark Execution
-        let result = haw.combine_range(WheelRange::new(start, end));
-        let plan = haw.create_exec_plan(WheelRange::new(start, end));
+        let result = haw.combine_range(WheelRange { start, end });
+        let plan = haw.create_exec_plan(WheelRange { start, end });
         assert!(matches!(
             plan,
             Some(ExecutionPlan::InverseLandmarkAggregation(_))
@@ -1793,16 +1831,16 @@ mod tests {
         let start = datetime!(2018 - 08 - 31 00:00:00 UTC);
         let end = datetime!(2018 - 08 - 31 00:05:00 UTC);
 
-        assert_eq!(haw.combine_range((start, end)), Some(300));
+        assert_eq!(haw.combine_range(WheelRange { start, end }), Some(300));
 
         let start = datetime!(2018 - 08 - 31 00:00:00 UTC);
         let end = datetime!(2018 - 09 - 01 12:00:00 UTC);
 
-        assert_eq!(haw.combine_range((start, end)), Some(129600));
+        assert_eq!(haw.combine_range(WheelRange { start, end }), Some(129600));
 
         let start = datetime!(2018 - 08 - 31 00:00:00 UTC);
         let end = datetime!(2018 - 09 - 02 00:00:00 UTC);
 
-        assert_eq!(haw.combine_range((start, end)), Some(172800));
+        assert_eq!(haw.combine_range(WheelRange { start, end }), Some(172800));
     }
 }

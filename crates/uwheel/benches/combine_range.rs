@@ -25,7 +25,8 @@ fn combine_range<A: Aggregator<PartialAggregate = u64>>(bencher: &mut Bencher) {
     let watermark = haw.watermark();
     bencher.iter(|| {
         let (start, end) = generate_seconds_range(START_WATERMARK, watermark);
-        let range = WheelRange::from(into_offset_date_time_start_end(start, end));
+        let (start_date, end_date) = into_offset_date_time_start_end(start, end);
+        let range = WheelRange::from(start_date, end_date);
         black_box(haw.combine_range(range))
     });
 
@@ -39,7 +40,8 @@ fn combined_aggregation_plan<A: Aggregator<PartialAggregate = u64>>(bencher: &mu
     let watermark = haw.watermark();
     bencher.iter(|| {
         let (start, end) = generate_seconds_range(START_WATERMARK, watermark);
-        let range = WheelRange::from(into_offset_date_time_start_end(start, end));
+        let (start_date, end_date) = into_offset_date_time_start_end(start, end);
+        let range = WheelRange::from(start_date, end_date);
         let ranges = Haw::<A>::split_wheel_ranges(range);
         haw.combined_aggregation_plan(ranges)
     });

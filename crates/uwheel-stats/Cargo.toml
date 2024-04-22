@@ -14,10 +14,7 @@ serde = ["dep:serde", "sketches-ddsketch/use_serde"]
 sketches-ddsketch.workspace = true
 minstant.workspace = true
 
-serde = { workspace = true, optional = true, features = [
-    "derive",
-    "rc",
-] }
+serde = { workspace = true, optional = true, features = ["derive", "rc"] }
 
 [dev-dependencies]
 criterion.workspace = true

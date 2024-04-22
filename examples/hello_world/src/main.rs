@@ -23,7 +23,7 @@ fn main() {
     // combine range of 2023-11-09 00:00:00 and 2023-11-09 01:00:00
     let start = 1699488000000;
     let end = 1699491600000;
-    let range = WheelRange::from_unix_timestamps(start, end);
+    let range = WheelRange::new_unchecked(start, end);
     assert_eq!(wheel.read().combine_range(range), Some(3600));
     // The following runs the the same combine range query as above.
     assert_eq!(wheel.read().interval(1.hours()), Some(3600));

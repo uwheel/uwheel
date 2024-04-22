@@ -1,6 +1,6 @@
 use core::{mem, time::Duration as CoreDuration};
 
-use crate::{aggregator::Aggregator, duration::Duration, Entry, Error};
+use crate::{aggregator::Aggregator, duration::Duration, Entry};
 
 use super::{timer::RawTimerWheel, wheel_ext::WheelExt};
 
@@ -11,17 +11,29 @@ pub const DEFAULT_WRITE_AHEAD_SLOTS: usize = 64;
 use alloc::{boxed::Box, vec::Vec};
 
 /// A writer wheel optimized for single-threaded ingestion of aggregates.
+///
+/// Note that you do not have to interact manually with this wheel if you are using the
+/// Reader-Writer Wheel.
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone)]
 pub struct WriterWheel<A: Aggregator> {
+    /// Current low watermark
     watermark: u64,
+    /// Defines the number actual slots used for the write-ahead wheel
+    ///
+    /// This value may be different than capacity if capacity is not a power of two.
     num_slots: usize,
+    /// Defines the capacity of the write-ahead wheel
     capacity: usize,
     #[cfg_attr(feature = "serde", serde(skip))]
+    /// A Hierarchical Timing Wheel for managing future entries that do not fit within the write-ahead wheel
     overflow: RawTimerWheel<Entry<A::Input>>,
+    /// Pre-allocated memory for mutable write-ahead aggregation
     slots: Box<[Option<A::MutablePartialAggregate>]>,
+    /// The current tail of the write-ahead section
     tail: usize,
+    /// The current head of the write-ahead section
     head: usize,
 }
 impl<A: Aggregator> Default for WriterWheel<A> {
@@ -51,17 +63,37 @@ impl<A: Aggregator> WriterWheel<A> {
             tail: 0,
         }
     }
-    /// Returns the current watermark
+    /// Returns the current low watermark
     pub fn watermark(&self) -> u64 {
         self.watermark
     }
 
+    /// Ticks the `WriterWheel` and returns a possible mutable partial aggregate
+    ///
+    /// Note that you don't need to use this function directly if you are using the `Reader-Writer Wheel`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{Entry, aggregator::sum::U32SumAggregator, wheels::WriterWheel};
+    ///
+    /// // Creates a wheel with time 0 and default write-ahead capacity
+    /// let mut wheel: WriterWheel<U32SumAggregator> = WriterWheel::default();
+    /// // Insert two entries at time 0
+    /// wheel.insert(Entry::new(10, 0));
+    /// wheel.insert(Entry::new(20, 0));
+    /// // verify that the ticked result returns 20 + 10 and that time has advanced
+    /// assert_eq!(wheel.tick(), Some(30));
+    /// assert_eq!(wheel.watermark(), 1000);
+    /// ```
     #[inline]
-    pub(super) fn tick(&mut self) -> Option<A::MutablePartialAggregate> {
-        self.watermark += Duration::seconds(1i64).whole_milliseconds() as u64;
+    pub fn tick(&mut self) -> Option<A::MutablePartialAggregate> {
+        // bump the watermark by 1 second as millis
+        self.watermark += Duration::SECOND.whole_milliseconds() as u64;
 
+        // advance the overflow wheel and check there are entries to aggregate
         for entry in self.overflow.advance_to(self.watermark) {
-            self.insert(entry).unwrap(); // this is assumed to be safe if it was scheduled correctly
+            self.insert(entry); // this is assumed to be safe if it was scheduled correctly
         }
 
         // bump head
@@ -74,6 +106,7 @@ impl<A: Aggregator> WriterWheel<A> {
     }
 
     /// Check whether this wheel can write ahead by ´addend` slots
+    #[inline]
     pub(crate) fn can_write_ahead(&self, addend: u64) -> bool {
         (addend as usize) < self.write_ahead_len()
     }
@@ -109,34 +142,38 @@ impl<A: Aggregator> WriterWheel<A> {
             None => *slot = Some(A::lift(entry)),
         }
     }
-    /// Inserts entry into the wheel
+    /// Inserts an entry into the wheel
     ///
-    /// # Success
-    /// - If given a timestamp above the watermark and that fits within the write-ahead slots
+    /// Note that you don't need to use this function directly if you are using the `Reader-Writer Wheel`.
     ///
-    /// # Failure
-    /// - If given a timestamp below the current watermark, a Late error will be returned
-    /// - If given a timestamp too far above the watermark, an Overflow error will be returned
+    /// # Safety
+    /// - The entry will be dropped if its timestamp is below the current watermark.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{Entry, aggregator::sum::U32SumAggregator, wheels::WriterWheel};
+    ///
+    /// // Creates a wheel with time 0 and default write-ahead capacity
+    /// let mut wheel: WriterWheel<U32SumAggregator> = WriterWheel::default();
+    /// // Insert an entry at time 0
+    /// wheel.insert(Entry::new(10, 0));
+    /// ```
     #[inline]
-    pub fn insert(&mut self, e: impl Into<Entry<A::Input>>) -> Result<(), Error<A::Input>> {
+    pub fn insert(&mut self, e: impl Into<Entry<A::Input>>) {
         let entry = e.into();
         let watermark = self.watermark;
 
-        // If timestamp is below the watermark, then reject it.
-        if entry.timestamp < watermark {
-            Err(Error::Late { entry, watermark })
-        } else {
+        if entry.timestamp >= watermark {
             let diff = entry.timestamp - self.watermark;
             let seconds = CoreDuration::from_millis(diff).as_secs();
             if self.can_write_ahead(seconds) {
                 self.write_ahead(seconds, entry.data);
-                Ok(())
             } else {
                 // Overflows: schedule it to be aggregated later on
                 // TODO: batch as many entries at possible into the same overflow slot
                 let schedule_ts = watermark + seconds * 1000; // convert back to milliseconds
                 self.overflow.schedule_at(schedule_ts, entry).unwrap();
-                Ok(())
             }
         }
     }
@@ -172,19 +209,21 @@ mod tests {
         let mut wheel: WriterWheel<U64SumAggregator> =
             WriterWheel::with_capacity_and_watermark(16, 0);
 
-        assert!(wheel.insert(Entry::new(1, 0)).is_ok());
-        assert!(wheel.insert(Entry::new(10, 1000)).is_ok());
-        assert!(wheel.insert(Entry::new(20, 2000)).is_ok());
-        assert!(wheel.insert(Entry::new(10, 15000)).is_ok());
+        wheel.insert(Entry::new(1, 0));
+        wheel.insert(Entry::new(10, 1000));
+        wheel.insert(Entry::new(20, 2000));
+        wheel.insert(Entry::new(10, 15000));
 
         assert_eq!(wheel.tick(), Some(1));
         assert_eq!(wheel.head, 1);
         assert_eq!(wheel.tail, 1);
 
-        assert!(wheel.insert(Entry::new(10, 0)).unwrap_err().is_late());
-
+        // late event which should be dropped
+        wheel.insert(Entry::new(10, 0));
+        // verify by checking
         assert_eq!(wheel.at(0), Some(&10));
-        assert!(wheel.insert(Entry::new(5, 1000)).is_ok());
+
+        wheel.insert(Entry::new(5, 1000));
         assert_eq!(wheel.at(0), Some(&15));
 
         assert_eq!(wheel.tick(), Some(15));
@@ -199,7 +238,7 @@ mod tests {
             assert_eq!(wheel.tick(), None);
         }
 
-        assert!(wheel.insert(Entry::new(2, 16000)).is_ok());
+        wheel.insert(Entry::new(2, 16000));
         assert_eq!(wheel.tick(), Some(10));
         assert_eq!(wheel.head, 0);
         assert_eq!(wheel.tail, 0);
