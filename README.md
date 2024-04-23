@@ -26,10 +26,22 @@ See more about its design [here](DESIGN.md) and try it out directly on the [web]
 - Fully mergeable.
 - Compatible with ``#[no_std]`` (requires ``alloc``).
 
-## Use cases
+## When should I use µWheel?
+
+µWheel unifies the aggregate management for online streaming and offline analytical queries in a single system.
+µWheel is not a general purpose solution but a specialized system tailored for a pre-defined aggregation function.
+
+µWheel is an execellent choice when:
+
+- You know the aggregation function apriori.
+- You need high-throughput ingestion of out-of-order streams.
+- You need support for streaming window queries (e.g., Sliding/Tumbling).
+- You need support for exploratory analysis of historical data.
+- You need a lightweight and highly embeddable solution.
+
+**Example use cases:**
 
 - A mini stream processor ([see example](examples/window))
-- A tiny but powerful materialized view for streaming databases.
 - A compact and mergeable system for analytics at the edge ([see example](examples/aggregator)).
 
 ## Pre-defined Aggregators
@@ -125,6 +137,11 @@ See more examples [here](examples).
 
 Give µWheel a try directly on the [web](https://maxmeldrum.com/uwheel) or build the demo application [locally](crates/uwheel-demo/) 
 
+## Acknowledgements
+
+- µWheel borrows scripts from the [egui](https://github.com/emilk/egui) crate.
+- µWheel uses a modified Duration from the [time](https://github.com/time-rs/time) crate.
+- µWheel soft forks a [Hierarchical Timing Wheel](https://github.com/Bathtor/rust-hash-wheel-timer) made by @Bathtor.
 
 ## License
 

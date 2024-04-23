@@ -2,15 +2,24 @@
 
 This doc describes the design of µWheel.
 
+# Motivation
+
+Both streaming aggregation and temporal ad-hoc queries share the fundamental requirement of the materialization of aggregates over time.
+Streaming window aggregation queries typically operate within timeframes measured in seconds or minutes, whereas offline historical queries demand aggregates calculated across time spans extending to hours, days, or even whole months.
+Many streaming systems today support the former but are forced to offload data to specialized OLAP systems (e.g., Clickhouse, Apache Pinot) to support more advanced ad-hoc queries.
+
+µWheel unifies the aggregate management of both worklaods into a single system.
+
 # Overview
 
 µWheel is an event-driven aggregate management system for the ingestion, indexing, and querying of stream aggregates.
 
-The design of µWheel is centered around [low-watermarking](http://www.vldb.org/pvldb/vol14/p3135-begoli.pdf), a concept found in modern streaming systems (e.g., Apache Flink, RisingWave).
-µWheel uses the Low watermark to seperate the write and read paths, but also to index aggregate wheels which gives us 1) fast writes and lookups; 2) implicit timestamps.
+The design of µWheel is centered around [low-watermarking](http://www.vldb.org/pvldb/vol14/p3135-begoli.pdf), a concept found in modern streaming systems (e.g., Apache Flink, RisingWave, Arroyo).
+Wheels in µWheel are low-watermark indexed which enables fast writes and lookups. Additionally, it lets us avoid storing explicit timestamps since they are implicit in the wheels.
 
-Writes are handled by a [Writer Wheel](#Writer-Wheel) which is optimized for single-threaded ingestion of out-of-order aggregates.
-Reads are managed by a hierarchically indexed [Reader Wheel](#Reader-Wheel) that employs a wheel-based query optimizer whose cost function
+A low watermark `w` indicates that all records with timestamps `t` where `t <= w` have been ingested.
+µWheel exploits this property and seperates the write and read paths. Writes (timestamps above `w`) are handled by a [Writer Wheel](#Writer-Wheel) which is optimized for single-threaded ingestion of out-of-order aggregates.
+Reads (queries with `time < w`) are managed by a hierarchically indexed [Reader Wheel](#Reader-Wheel) that employs a wheel-based query optimizer whose cost function
 minimizes the number of aggregate operations for a query.
 
 µWheel adopts a [Lazy Synchronization](#Advancing-Time) aggregation approach. Aggregates are only shifted over from the `WriterWheel` to the `ReaderWheel`
@@ -30,19 +39,17 @@ once the internal low watermark has been advanced.
     * Combines ⊙ the input data into a mutable aggregate
 * ``freeze(mutable) -> PartialAggregate``
     * Freezes the mutable aggregate into an immutable one
-* ``combine(a, a) -> a``
+* ``combine(a, a) -> PartialAggregate``
     * Combines ⊕ two partial aggregates into a new one
 * ``lower(a) -> Aggregate``
     * Lowers a partial aggregate to a final aggregate (e.g., sum/count -> avg)
 
 Down below are some additonal optional functions that users may implement:
 
-* ``combine_simd(slice)``
+* ``combine_simd(slice) -> PartialAggregate``
     * Combines a slice of partial aggregates using explicit SIMD instructions
-* ``combine_inverse(a, b)``
+* ``combine_inverse(a, b) -> PartialAggregate``
     * Deducts a partial aggregate from another
-* ``prefix_query(l, r)``
-    * Defines how a prefix-sum range query is executed (if supported).
 * ``compression()``
     * Defines how partial aggregates can be compressed and decompressed.
 
