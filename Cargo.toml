@@ -4,8 +4,10 @@ members = ["crates/*", "examples/*"]
 exclude = ["benchmarks/*"]
 
 [workspace.package]
+version = "0.1.0"
 authors = ["Max Meldrum <max@meldrum.se>"]
 edition = "2021"
+repository = "https://github.com/uwheel/uwheel"
 categories = ["aggregation", "embeddable", "streaming", "no-std"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"

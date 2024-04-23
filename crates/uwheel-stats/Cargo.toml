@@ -1,11 +1,12 @@
 [package]
 name = "uwheel-stats"
-version = "0.1.0"
+version.workspace = true
 authors.workspace = true
 edition.workspace = true
 categories.workspace = true
 license.workspace = true
-readme.workspace = true
+repository.workspace = true
+description = "profiling utility for uwheel"
 
 [features]
 serde = ["dep:serde", "sketches-ddsketch/use_serde"]
