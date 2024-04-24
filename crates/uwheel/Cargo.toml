@@ -6,6 +6,8 @@ authors.workspace = true
 edition.workspace = true
 license.workspace = true
 readme.workspace = true
+repository.workspace = true
+description = "Embeddable Aggregate Management System for Streams and Queries"
 
 [package.metadata.docs.rs]
 all-features = true
