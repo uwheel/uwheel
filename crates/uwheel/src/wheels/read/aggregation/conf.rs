@@ -48,8 +48,16 @@ pub enum DataLayout {
     #[default]
     Normal,
     /// Configures the data to use compression and compresses at the given chunk size
+    ///
+    /// # Safety
+    ///
+    /// The aggregator must implement `compression` otherwise a panic will occur during wheel initialization.
     Compressed(usize),
     /// A prefix-sum data layout that requires double the space of the normal layout
+    ///
+    /// # Safety
+    ///
+    /// The aggregator must implement `combine_inverse` otherwise a panic will occur during wheel initialization.
     Prefix,
 }
 

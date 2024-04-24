@@ -20,7 +20,7 @@ use crate::{aggregator::Aggregator, duration::Duration, Entry};
 use core::fmt::Debug;
 use write::DEFAULT_WRITE_AHEAD_SLOTS;
 
-pub use read::{aggregation::DrillCut, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
+pub use read::{DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 pub use wheel_ext::WheelExt;
 pub use write::WriterWheel;
 
@@ -40,33 +40,31 @@ use uwheel_stats::profile_scope;
 /// A Reader-Writer aggregation wheel with decoupled read and write paths.
 ///
 /// # How it works
+/// The design of µWheel is centered around [low-watermarking](http://www.vldb.org/pvldb/vol14/p3135-begoli.pdf), a concept found in modern streaming systems (e.g., Apache Flink, RisingWave, Arroyo).
+/// Wheels in µWheel are low-watermark indexed which enables fast writes and lookups. Additionally, it lets us avoid storing explicit timestamps since they are implicit in the wheels.
 ///
-/// ## Indexing
+/// A low watermark `w` indicates that all records with timestamps `t` where `t <= w` have been ingested.
+/// µWheel exploits this property and seperates the write and read paths. Writes (timestamps above `w`) are handled by a Writer Wheel which is optimized for single-threaded ingestion of out-of-order aggregates.
+/// Reads (queries with `time < w`) are managed by a hierarchically indexed Reader Wheel that employs a wheel-based query optimizer whose cost function
+/// minimizes the number of aggregate operations for a query.
 ///
-/// The wheel adopts a low watermark clock which is used for indexing. The watermark
-/// is used to the decouple write and read paths.
+/// µWheel adopts a Lazy Synchronization aggregation approach. Aggregates are only shifted over from the `WriterWheel` to the `ReaderWheel`
+/// once the internal low watermark has been advanced.
 ///
-/// ## Writes
+/// ## Queries
 ///
-/// Writes are handled by a [WriterWheel] which manages aggregates above the current watermark.
-///
-/// ## Reads
-///
-/// Reads are handled by a [ReaderWheel] which hierarchically organizes aggregates across multiple time dimensions.
-/// The reader wheel internally consists of a Hierarchical Aggregate Wheel that is equipped with a wheel-based query optimizer.
-///
-/// ## Aggregate Synchronization
-///
-/// Aggregates are lazily "synchronized" between the writer and reader wheels once the low watermark has been advanced.
-/// The synchronization only occurs once the user decides to advance time either through [Self::advance] or [Self::advance_to].
+/// [RwWheel] supports both streaming window aggregation queries and temporal adhoc queries over arbitrary time ranges.
+/// A window may be installed through [RwWheel::window] and queries can be executed through its ReaderWheel which is accessible through [RwWheel::read].
 ///
 /// ## Example
 ///
+/// Here is an example showing the use of a U32 SUM aggregator
 ///
 /// ```
 /// use uwheel::{aggregator::sum::U32SumAggregator, NumericalDuration, Entry, RwWheel};
 ///
 /// let time = 0;
+/// // initialize the wheel with a low watermark
 /// let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(time);
 /// // Insert an entry into the wheel
 /// wheel.insert(Entry::new(100, time));
@@ -348,11 +346,30 @@ impl Conf {
     /// Configure the number of write-ahead slots
     ///
     /// The default value is [DEFAULT_WRITE_AHEAD_SLOTS]
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::Conf;
+    ///
+    /// // Configure a write-ahead capacity of 128 (seconds)
+    /// let rw_conf = Conf::default().with_write_ahead(128);
+    /// ```
     pub fn with_write_ahead(mut self, capacity: usize) -> Self {
         self.writer_conf.write_ahead_capacity = capacity;
         self
     }
     /// Configures the reader wheel to use the given [HawConf]
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{HawConf, Conf, RetentionPolicy};
+    ///
+    /// // Configure all wheels in the HAW to maintain data
+    /// let haw_conf = HawConf::default().with_retention_policy(RetentionPolicy::Keep);
+    /// let rw_conf = Conf::default().with_haw_conf(haw_conf);
+    /// ```
     pub fn with_haw_conf(mut self, conf: HawConf) -> Self {
         self.reader_conf.haw_conf = conf;
         self

@@ -1,6 +1,5 @@
 use core::ops::RangeBounds;
-
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -42,46 +41,33 @@ impl<A: Aggregator> MaybeWheel<A> {
     #[inline]
     pub fn range(
         &self,
-        start: OffsetDateTime,
+        start_date: OffsetDateTime,
         slots: usize,
         gran: Granularity,
     ) -> Option<Vec<(u64, A::PartialAggregate)>> {
-        let watermark_date =
-            |wm: u64| OffsetDateTime::from_unix_timestamp((wm as i64) / 1000).unwrap();
-        self.inner.as_ref().map(|wheel| {
-            let watermark = watermark_date(wheel.watermark());
-            let distance = watermark - start;
+        self.calculate_slots(start_date, slots, gran)
+            .and_then(|(start, end)| {
+                self.inner.as_ref().map(|wheel| {
+                    let start_ts = start_date.unix_timestamp() as u64 * 1000; // to ms
 
-            let start_ts = start.unix_timestamp() as u64 * 1000; // to ms
-            use time::Duration;
+                    let interval = match gran {
+                        Granularity::Second => Duration::SECOND.whole_milliseconds(),
+                        Granularity::Minute => Duration::MINUTE.whole_milliseconds(),
+                        Granularity::Hour => Duration::HOUR.whole_milliseconds(),
+                        Granularity::Day => Duration::DAY.whole_milliseconds(),
+                    } as u64;
 
-            let (slot_distance, interval) = match gran {
-                Granularity::Second => (
-                    distance.whole_seconds(),
-                    Duration::SECOND.whole_milliseconds(),
-                ),
-                Granularity::Minute => (
-                    distance.whole_minutes(),
-                    Duration::MINUTE.whole_milliseconds(),
-                ),
-                Granularity::Hour => (distance.whole_hours(), Duration::HOUR.whole_milliseconds()),
-                Granularity::Day => (distance.whole_days(), Duration::DAY.whole_milliseconds()),
-            };
-            let slot_distance = slot_distance as usize;
-            let interval = interval as u64;
-            let start_slot = slot_distance - slots;
-            let end_slot = start_slot + slots;
-
-            wheel
-                .range(start_slot..end_slot)
-                .into_iter()
-                .enumerate()
-                .map(|(index, aggregate)| {
-                    let ts = start_ts + (index as u64 * interval);
-                    (ts, aggregate)
+                    wheel
+                        .range(start..end)
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, aggregate)| {
+                            let ts = start_ts + (index as u64 * interval);
+                            (ts, aggregate)
+                        })
+                        .collect::<_>()
                 })
-                .collect::<_>()
-        })
+            })
     }
     #[inline]
     pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>

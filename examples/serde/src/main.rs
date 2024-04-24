@@ -2,11 +2,10 @@ use postcard::to_allocvec;
 use std::time::Instant;
 use uwheel::{
     aggregator::sum::U32SumAggregator,
-    wheels::RwWheel,
+    wheels::{read::ReaderWheel, RwWheel},
     Duration,
     Entry,
     NumericalDuration,
-    ReaderWheel,
     SECONDS,
 };
 

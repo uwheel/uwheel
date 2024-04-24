@@ -1,7 +1,10 @@
 //! uwheel-tree contains the Wheel-Tree index
 
 use core::hash::Hash;
-use uwheel::{aggregator::Aggregator, wheels::read::hierarchical::WheelRange, ReaderWheel};
+use uwheel::{
+    aggregator::Aggregator,
+    wheels::read::{hierarchical::WheelRange, ReaderWheel},
+};
 
 pub trait Key: PartialEq + Ord + Hash + Eq + Send + Sync + Clone + 'static {}
 impl<T> Key for T where T: PartialEq + Ord + Hash + Eq + Send + Sync + Clone + 'static {}

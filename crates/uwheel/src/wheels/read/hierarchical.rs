@@ -335,6 +335,8 @@ impl Optimizer {
 
 /// Hierarchical Aggregate Wheel
 ///
+/// This data structure can be used in standalone fashion and may be updated through [Haw::delta_advance].
+///
 /// # How it works
 ///
 /// Similarly to Hierarchical Wheel Timers, HAW exploits the hierarchical nature of time and utilise several aggregation wheels,

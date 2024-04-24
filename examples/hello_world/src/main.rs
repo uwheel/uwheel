@@ -1,4 +1,11 @@
-use uwheel::{aggregator::sum::U32SumAggregator, Entry, NumericalDuration, RwWheel, WheelRange};
+use uwheel::{
+    aggregator::sum::U32SumAggregator,
+    Entry,
+    NumericalDuration,
+    RwWheel,
+    WheelRange,
+    Window,
+};
 
 fn main() {
     // Initial start watermark 2023-11-09 00:00:00 (represented as milliseconds)
@@ -6,24 +13,33 @@ fn main() {
     // Create a Reader-Writer Wheel with U32 Sum Aggregation using the default configuration
     let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(watermark);
 
-    // Fill the wheel 3600 worth of seconds
+    // Install a Sliding Window Aggregation Query (results are produced when we advance the wheel).
+    wheel.window(
+        Window::default()
+            .with_range(30.minutes())
+            .with_slide(10.minutes()),
+    );
+
+    // Simulate ingestion and fill the wheel with 1 hour of aggregates (3600 seconds).
     for _ in 0..3600 {
-        // Insert entry into the wheel
+        // Insert entry with data 1 to the wheel
         wheel.insert(Entry::new(1u32, watermark));
         // bump the watermark by 1 second and also advanced the wheel
         watermark += 1000;
-        wheel.advance_to(watermark);
+
+        // Print the result if any window is triggered
+        for (ts, window) in wheel.advance_to(watermark) {
+            println!("Window fired at {} with result {}", ts, window);
+        }
     }
-    // The low watermark is now 2023-11-09 01:00:00
+    // Explore historical data - The low watermark is now 2023-11-09 01:00:00
 
     // query the wheel using different intervals
     assert_eq!(wheel.read().interval(15.seconds()), Some(15));
     assert_eq!(wheel.read().interval(1.minutes()), Some(60));
 
     // combine range of 2023-11-09 00:00:00 and 2023-11-09 01:00:00
-    let start = 1699488000000;
-    let end = 1699491600000;
-    let range = WheelRange::new_unchecked(start, end);
+    let range = WheelRange::new_unchecked(1699488000000, 1699491600000);
     assert_eq!(wheel.read().combine_range(range), Some(3600));
     // The following runs the the same combine range query as above.
     assert_eq!(wheel.read().interval(1.hours()), Some(3600));

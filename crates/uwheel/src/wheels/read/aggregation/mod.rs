@@ -57,16 +57,6 @@ pub fn combine_or_insert<A: Aggregator>(
     }
 }
 
-/// Defines a drill-down cut
-pub struct DrillCut<R>
-where
-    R: RangeBounds<usize>,
-{
-    /// slot ``subtrahend`` from head
-    pub slot: usize,
-    /// Range of partial aggregates within the drill down slots
-    pub range: R,
-}
 // NOTE: move to slice::range function once it is stable
 #[inline]
 fn into_range(range: &impl RangeBounds<usize>, len: usize) -> Range<usize> {
@@ -113,10 +103,12 @@ impl<A: Aggregator> WheelSlot<A> {
     }
 }
 
-/// Fixed-size wheel where each slot contains a possible partial aggregate
+/// An Aggregate wheel maintaining partial aggregates for a specific time dimension
 ///
-/// The wheel maintains partial aggregates per slot, but also updates a `total` aggregate for each tick in the wheel.
+/// The wheel maintains partial aggregates per slot, but also updates a `total` partial aggregate for each tick in the wheel.
 /// The total aggregate is returned once a full rotation occurs. This way the same wheel structure can be used between different hierarchical levels (e.g., seconds, minutes, hours, days)
+///
+/// A wheel may be configured with custom data retention polices and data layouts through [WheelConf].
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
@@ -136,6 +128,7 @@ pub struct Wheel<A: Aggregator> {
     retention: RetentionPolicy,
     /// flag indicating whether this wheel is configured with drill-down
     drill_down: bool,
+    /// Wheel slots maintained in a particular data layout
     data: Data<A>,
     /// Higher-order aggregates indexed by event time
     drill_down_slots: MutablePartialArray<A>,
