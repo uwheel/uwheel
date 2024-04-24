@@ -1,7 +1,6 @@
 [workspace]
 resolver = "1"                       # resolver 1 needed for uwheel-demo to work on web
 members = ["crates/*", "examples/*"]
-exclude = ["benchmarks/*"]
 
 [workspace.package]
 version = "0.1.0"
