@@ -186,7 +186,7 @@ where
     pub fn watermark(&self) -> u64 {
         self.writer.watermark()
     }
-    /// Advance the watermark of the wheel by the given [time::Duration]
+    /// Advance the watermark of the wheel by the given [Duration]
     ///
     /// May return possible window aggregates if any window is installed (see [RwWheel::window]).
     ///

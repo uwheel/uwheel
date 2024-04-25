@@ -100,7 +100,7 @@ uwheel = { version = "0.1.0", default-features = false }
 
 ## Examples
 
-The following code is from the [hello_world](examples/hello_world) example.
+The following code is from the [hello world](examples/hello_world) example.
 
 ```rust
 use uwheel::{aggregator::sum::U32SumAggregator, WheelRange, NumericalDuration, Entry, RwWheel};

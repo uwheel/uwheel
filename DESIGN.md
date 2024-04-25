@@ -8,11 +8,12 @@ Both streaming aggregation and temporal ad-hoc queries share the fundamental req
 Streaming window aggregation queries typically operate within timeframes measured in seconds or minutes, whereas offline historical queries demand aggregates calculated across time spans extending to hours, days, or even whole months.
 Many streaming systems today support the former but are forced to offload data to specialized OLAP systems (e.g., Clickhouse, Apache Pinot) to support more advanced ad-hoc queries.
 
-µWheel unifies the aggregate management of both worklaods into a single system.
+µWheel unifies the aggregate management of both workloads into a single system.
 
 # Overview
 
-µWheel is an event-driven aggregate management system for the ingestion, indexing, and querying of stream aggregates.
+µWheel is an event-driven aggregate management system for the ingestion, indexing, and querying of stream aggregates. µWheel
+has built-in support for pre-materialization of aggregates across multiple event-time dimensions.
 
 The design of µWheel is centered around [low-watermarking](http://www.vldb.org/pvldb/vol14/p3135-begoli.pdf), a concept found in modern streaming systems (e.g., Apache Flink, RisingWave, Arroyo).
 Wheels in µWheel are low-watermark indexed which enables fast writes and lookups. Additionally, it lets us avoid storing explicit timestamps since they are implicit in the wheels.
@@ -43,6 +44,11 @@ once the internal low watermark has been advanced.
     * Combines ⊕ two partial aggregates into a new one
 * ``lower(a) -> Aggregate``
     * Lowers a partial aggregate to a final aggregate (e.g., sum/count -> avg)
+
+Why two different combine functions, mutable and immutable? µWheel treats aggregation above the low watermark
+differently than below it. Mutable Partial aggregate state above the low watermark can take any form whereas immutable partial aggregates
+are of fixed size. For instance, in a Top-N aggregator the mutable state may be a `HashMap<Key, Aggregate>` whereas the immutable state
+is a Top-N array of that time unit `[Option<(Key, PartialAggregate)>; N]`.
 
 Down below are some additonal optional functions that users may implement:
 
@@ -113,6 +119,9 @@ An aggregate wheel supports three possible data layouts that are configurable pe
     * Combines the range ``start: watermark() - duration, end: watermark()``
 * ``range(start, end) -> Vec<(TimeStamp, Aggregate)>``
     * Returns aggregates and their timestamps in the given time range.
+* ``landmark() -> Aggregate``
+    * Executes a Landmark Window to get a aggregate result across the full hierarchical wheel.
+    * Runs in O(1) since it combines the total rotation aggregate of each wheel (dimension).
 
 ### Query Optimizer
 
@@ -126,9 +135,24 @@ The image below illustrates a flow chart of the query optimizer which aims to se
   <img src="assets/query_optimizer_flow_chart.svg">
 </p>
 
+## Streaming Window Aggregation
+
+µWheel uses the Pairs stream slicing technique internally and if a window is installed it continously build pairs.
+Pairs are managed internally by a circular-based window aggregator that implements the following functions:
+
+- ``push(p: Pair)`` Pushes a pair into the back.
+- ``compute()`` Computes the current window.
+- ``pop()`` Removes the oldest pair from the front.
+
+Window results are generated when [time is advanced](#Advancing-Time) in µWheel.
+
 ## Advancing Time
 
 Aggregate Synchronization in µWheel refers to the advancement of time, a process which shifts aggregates from the writer wheel to the reader. 
 µWheel only performs synchronization lazily once its low watermark is advanced. This design choice has a twofold purpose. 
 First, it enables µWheel to avoid costly index maintenance (e.g., tree rebalance) in the hot path of writes. 
 Secondly, it creates a clear seperation between writes and reads, enabling concurrent ingestion and querying.
+
+Internally, the advancement of time causes wheels in µWheel to `tick`. This includes both ticking the [WriterWheel](#Writer-Wheel) and the [ReaderWheel](#Reader-Wheel).
+For the ReaderWheel, a tick may at best cause a single tick in the lowest granularity wheel (seconds). However, in worst case a tick may cause a full roll-up rotation across all wheels
+in the Hierarchical Aggregate Wheel.

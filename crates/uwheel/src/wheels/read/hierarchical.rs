@@ -615,7 +615,7 @@ where
         windows
     }
 
-    /// Advance the watermark of the wheel by the given [time::Duration]
+    /// Advance the watermark of the wheel by the given [Duration]
     #[inline(always)]
     pub fn advance(
         &mut self,
@@ -1271,21 +1271,38 @@ where
         })
     }
 
-    /// Executes a Landmark Window that combines total partial aggregates across all wheels
+    /// Executes a Landmark Window that combines total partial aggregates across all wheels into a full-wheel result
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{Haw, NumericalDuration, aggregator::sum::U32SumAggregator};
+    ///
+    /// // Init a HAW with time 0
+    /// let mut haw: Haw<U32SumAggregator> = Haw::default();
+    /// // Advance HAW with 1800 (total 30min) deltas with value 1
+    /// let deltas = (0..1800).map(Some).collect::<Vec<_>>();
+    /// haw.delta_advance(deltas);
+    ///
+    /// // get the full result between time [0, watermark).
+    /// assert_eq!(haw.landmark(), Some(1619100));
+    /// ```
     #[inline]
     pub fn landmark(&self) -> Option<A::PartialAggregate> {
         self.analyze_landmark().0
     }
 
     /// Executes a Landmark Window that combines total partial aggregates across all wheels and lowers the result
+    ///
+    /// See [Self::landmark] for an example.
     #[inline]
     pub fn landmark_and_lower(&self) -> Option<A::Aggregate> {
         self.landmark().map(|partial| A::lower(partial))
     }
 
-    /// Executes a Landmark Window that combines total partial aggregates across all wheels and returns the cost
+    /// Executes a Landmark Window that combines total partial aggregates across all wheels and returns the aggregate cost
     #[inline]
-    pub fn analyze_landmark(&self) -> (Option<A::PartialAggregate>, usize) {
+    pub(crate) fn analyze_landmark(&self) -> (Option<A::PartialAggregate>, usize) {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.landmark);
 
