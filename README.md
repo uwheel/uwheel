@@ -144,11 +144,6 @@ assert_eq!(wheel.read().interval(1.hours()), Some(3600));
 
 See more examples [here](examples).
 
-## Demo
-
-<img src="crates/uwheel-demo/assets/uwheel_demo.gif">
-
-Give µWheel a try directly on the [web](https://maxmeldrum.com/uwheel) or build the demo application [locally](crates/uwheel-demo/) 
 
 ## Acknowledgements
 
