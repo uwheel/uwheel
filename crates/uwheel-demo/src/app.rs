@@ -744,7 +744,7 @@ impl eframe::App for TemplateApp {
             puffin::profile_scope!("side_panel");
 
             ui.horizontal(|ui| {
-                ui.heading("💻 uwheel demo");
+                ui.heading("💻 µWheel demo");
                 egui::widgets::global_dark_light_mode_buttons(ui);
                 egui::warn_if_debug_build(ui);
             });

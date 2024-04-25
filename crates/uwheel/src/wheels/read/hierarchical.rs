@@ -522,7 +522,7 @@ where
 
     #[inline]
     const fn to_ms(ts: u64) -> u64 {
-        ts * 1000
+        ts.saturating_mul(1000)
     }
     #[inline]
     fn to_offset_date(ts: u64) -> OffsetDateTime {

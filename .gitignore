@@ -1,6 +1,6 @@
 /target
 /Cargo.lock
-crates/awheel-demo/dist
+crates/uwheel-demo/dist
 benchmarks/results
 benchmarks/data
 dist/
