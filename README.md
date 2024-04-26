@@ -13,6 +13,8 @@
 
 µWheel is an Embeddable Aggregate Management System for Streams and Queries.
 
+A full research paper detailing µWheel has been accepted to DEBS (Distributed and Event-based Systems) 2024 and will be available soon.
+
 See more about its design [here](DESIGN.md) and try it out directly on the [web](https://maxmeldrum.com/uwheel).
 
 ## Features
@@ -25,7 +27,6 @@ See more about its design [here](DESIGN.md) and try it out directly on the [web]
 - User-defined aggregation.
 - Low space footprint.
 - Incremental checkpointing support.
-- Fully mergeable.
 - Compatible with ``#[no_std]`` (requires ``alloc``).
 
 ## When should I use µWheel?

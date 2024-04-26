@@ -1,10 +1,7 @@
 /target
 /Cargo.lock
 crates/uwheel-demo/dist
-benchmarks/results
-benchmarks/data
 dist/
-benchmarks/plots
-duckdb_ingestion*
-.ipynb_checkpoints/
 .DS_STORE
+web_demo/uwheel_demo_bg.wasm
+web_demo/uwheel_demo.js

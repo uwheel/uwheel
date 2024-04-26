@@ -15,7 +15,6 @@ use alloc::{boxed::Box, vec::Vec};
 /// Note that you do not have to interact manually with this wheel if you are using the
 /// Reader-Writer Wheel.
 #[repr(C)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone)]
 pub struct WriterWheel<A: Aggregator> {
     /// Current low watermark
@@ -26,7 +25,6 @@ pub struct WriterWheel<A: Aggregator> {
     num_slots: usize,
     /// Defines the capacity of the write-ahead wheel
     capacity: usize,
-    #[cfg_attr(feature = "serde", serde(skip))]
     /// A Hierarchical Timing Wheel for managing future entries that do not fit within the write-ahead wheel
     overflow: RawTimerWheel<Entry<A::Input>>,
     /// Pre-allocated memory for mutable write-ahead aggregation

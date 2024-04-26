@@ -1519,6 +1519,10 @@ where
     /// Merges two wheels
     ///
     /// Note that the time in `other` may be advanced and thus change state
+    ///
+    /// # Panics
+    ///
+    /// The function currently panics if another data layout than Array is used.
     pub(crate) fn merge(&mut self, other: &mut Self) {
         let other_watermark = other.watermark();
 

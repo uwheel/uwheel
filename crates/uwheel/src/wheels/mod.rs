@@ -75,7 +75,6 @@ use uwheel_stats::profile_scope;
 /// // query the last second of aggregates
 /// assert_eq!(wheel.read().interval(1.seconds()), Some(100));
 /// ```
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct RwWheel<A>
 where
     A: Aggregator,
