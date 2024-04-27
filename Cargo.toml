@@ -1,5 +1,5 @@
 [workspace]
-resolver = "1"                       # resolver 1 needed for uwheel-demo to work on web
+resolver = "2"
 members = ["crates/*", "examples/*"]
 
 [workspace.package]
@@ -20,16 +20,16 @@ uwheel-tree = { path = "crates/uwheel-tree", version = "0.1.0" }
 uwheel-stats = { path = "crates/uwheel-stats", version = "0.1.0" }
 
 parking_lot = "0.12"
-hashbrown = "0.13"
+hashbrown = "0.14.3"
 sketches-ddsketch = "0.2"
 minstant = "0.1"
 multiversion = { version = "0.7.3", default-features = false }
-fastrand = "1.8.0"
+fastrand = "2.0.2"
 rand = "0.8.5"
 prettytable-rs = "0.10.0"
 hdrhistogram = "7"
 zerovec = "0.10.1"
-clap = { version = "3.2", features = ["derive"] }
+clap = { version = "4.5.4", features = ["derive"] }
 criterion = "0.4"
 duckdb = { version = "0.10.0", features = ["bundled"] }
 serde = { version = "1.0", default-features = false }

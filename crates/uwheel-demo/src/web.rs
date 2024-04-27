@@ -30,7 +30,10 @@ impl WebHandle {
             .start(
                 canvas_id,
                 eframe::WebOptions::default(),
-                Box::new(|cc| Box::new(TemplateApp::new(cc))),
+                Box::new(|cc| {
+                    egui_extras::install_image_loaders(&cc.egui_ctx);
+                    Box::new(TemplateApp::new(cc))
+                }),
             )
             .await
     }
