@@ -890,7 +890,7 @@ where
     ///
     /// Returns `None` if no plan can be established.
     #[inline]
-    fn create_exec_plan(&self, range: WheelRange) -> Option<ExecutionPlan> {
+    fn create_exec_plan(&self, mut range: WheelRange) -> Option<ExecutionPlan> {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.exec_plan);
 
@@ -905,13 +905,16 @@ where
                 }
             };
 
-        if let Some(plan) = self.wheel_aggregation_plan(range) {
-            best_plan = Some(ExecutionPlan::WheelAggregation(plan));
-        }
-
         let wheel_start = self
             .watermark()
             .saturating_sub(self.current_time_in_cycle().whole_milliseconds() as u64);
+
+        // SAFETY: ensure start range is not lower than the start of the wheel time
+        range.start = cmp::max(range.start, Self::to_offset_date(wheel_start));
+
+        if let Some(plan) = self.wheel_aggregation_plan(range) {
+            best_plan = Some(ExecutionPlan::WheelAggregation(plan));
+        }
 
         let end_ms = Self::to_ms(range.end.unix_timestamp() as u64);
         let start_ms = Self::to_ms(range.start.unix_timestamp() as u64);
@@ -1264,7 +1267,8 @@ where
         profile_scope!(&self.stats.interval);
 
         let to = self.now();
-        let from = to - time::Duration::seconds(dur.whole_seconds());
+        let from = to.saturating_sub(time::Duration::seconds(dur.whole_seconds()));
+
         self.analyze_combine_range(WheelRange {
             start: from,
             end: to,
