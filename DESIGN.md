@@ -2,6 +2,9 @@
 
 This doc describes the design of µWheel.
 
+The figures used in doc are borrowed from the paper "µWheel: Aggregate Management for Streams and Queries", which has been
+accepted for publication in the proceedings of ACM, DEBS 2024. (Licensed under CC-BY 4.0)
+
 # Motivation
 
 Both streaming aggregation and temporal ad-hoc queries share the fundamental requirement of the materialization of aggregates over time.
