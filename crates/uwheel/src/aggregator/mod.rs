@@ -3,9 +3,6 @@ use core::fmt::Debug;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-#[cfg(feature = "serde")]
-use zerovec::ule::AsULE;
-
 /// An All Aggregator enabling the following functions (MAX, MIN, SUM, COUNT, AVG).
 #[cfg(feature = "all")]
 pub mod all;
@@ -265,7 +262,7 @@ pub trait PartialAggregateBounds: Default + Debug + Clone + Copy + Send {}
 /// Trait bounds for a partial aggregate type
 #[cfg(feature = "serde")]
 pub trait PartialAggregateBounds:
-    Default + Debug + Clone + Copy + Send + AsULE + serde::Serialize + for<'a> serde::Deserialize<'a>
+    Default + Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
 {
 }
 
@@ -274,14 +271,7 @@ impl<T> PartialAggregateBounds for T where T: Default + Debug + Clone + Copy + S
 
 #[cfg(feature = "serde")]
 impl<T> PartialAggregateBounds for T where
-    T: Default
-        + Debug
-        + Clone
-        + Copy
-        + Send
-        + AsULE
-        + serde::Serialize
-        + for<'a> serde::Deserialize<'a>
+    T: Default + Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
 {
 }
 

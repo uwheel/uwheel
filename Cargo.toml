@@ -28,7 +28,6 @@ fastrand = "2.0.2"
 rand = "0.8.5"
 prettytable-rs = "0.10.0"
 hdrhistogram = "7"
-zerovec = "0.10.1"
 clap = { version = "4.5.4", features = ["derive"] }
 criterion = "0.4"
 duckdb = { version = "0.10.0", features = ["bundled"] }

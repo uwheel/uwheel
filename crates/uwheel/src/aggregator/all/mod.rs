@@ -3,7 +3,6 @@ use crate::{aggregator::PartialAggregateType, Aggregator};
 use core::cmp::Ordering;
 
 /// Aggregate State for the [AllAggregator]
-#[cfg_attr(feature = "serde", zerovec::make_ule(AggStateULE))]
 #[derive(Default, Debug, Clone, Copy)]
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]

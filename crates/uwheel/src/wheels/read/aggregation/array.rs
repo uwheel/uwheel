@@ -1,5 +1,5 @@
 use super::{combine_or_insert, into_range};
-use crate::{cfg_serde, Aggregator};
+use crate::Aggregator;
 use core::ops::{Bound, Range, RangeBounds};
 
 #[cfg(not(feature = "std"))]
@@ -10,118 +10,6 @@ use std::collections::VecDeque;
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-
-/// An array of partial aggregates referenced from an underlying byte slice
-pub struct PartialArray<'a, A: Aggregator> {
-    arr: &'a [A::PartialAggregate],
-}
-
-impl<'a, A: Aggregator> AsRef<[A::PartialAggregate]> for PartialArray<'a, A> {
-    fn as_ref(&self) -> &[A::PartialAggregate] {
-        self.arr
-    }
-}
-
-impl<'a, A: Aggregator> PartialArray<'a, A> {
-    /// Returns the true if the array is empty
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-    /// Returns the length of the array
-    pub fn len(&self) -> usize {
-        self.arr.len()
-    }
-    /// Combines partial aggregates within the given range into a new partial aggregate
-    ///
-    /// # Panics
-    ///
-    /// Panics if the starting point is greater than the end point or if
-    /// the end point is greater than the length of array
-    #[inline]
-    pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
-    where
-        R: RangeBounds<usize>,
-    {
-        A::combine_slice(&self.arr[into_range(&range, self.arr.len())])
-    }
-
-    /// Combines partial aggregates within the given range into and lowers it to a final aggregate
-    ///
-    /// # Panics
-    ///
-    /// Panics if the starting point is greater than the end point or if
-    /// the end point is greater than the length of the array
-    #[inline]
-    pub fn combine_range_and_lower<R>(&self, range: R) -> Option<A::Aggregate>
-    where
-        R: RangeBounds<usize>,
-    {
-        self.combine_range(range).map(A::lower)
-    }
-
-    /// Returns the combined partial aggregate within the given range that match the filter predicate
-    ///
-    /// # Panics
-    ///
-    /// Panics if the starting point is greater than the end point or if
-    /// the end point is greater than the length of the array
-    #[inline]
-    pub fn combine_range_with_filter<R>(
-        &self,
-        range: R,
-        filter: impl Fn(&A::PartialAggregate) -> bool,
-    ) -> Option<A::PartialAggregate>
-    where
-        R: RangeBounds<usize>,
-    {
-        let Range { start, end } = into_range(&range, self.arr.len());
-        let slots = end - start;
-
-        // Locate which slots we are to combine together
-        let relevant_range = self.arr.iter().skip(start).take(slots);
-
-        let mut accumulator: Option<A::PartialAggregate> = None;
-
-        for partial in relevant_range {
-            if filter(partial) {
-                combine_or_insert::<A>(&mut accumulator, *partial);
-            }
-        }
-
-        accumulator
-    }
-}
-
-cfg_serde! {
-    use serde::{Serialize, Deserialize};
-    use zerovec::{ule::AsULE, ZeroVec};
-
-    /// A read-only partial array that supports zero-copy deserialization
-    #[derive(Default, Clone, Debug, Serialize, Deserialize)]
-    #[serde(bound = "A: Default")]
-    pub struct PartialArrayz<'a, A: Aggregator> {
-        #[serde(borrow)]
-        inner: ZeroVec<'a, A::PartialAggregate>,
-    }
-
-
-    impl<'a, A: Aggregator> PartialArrayz<'a, A> {
-        /// Combines partial aggregates from the array
-        #[inline]
-        pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
-        where
-            R: RangeBounds<usize>,
-        {
-            Some(
-                self.inner.as_ule_slice()[into_range(&range, self.inner.len())]
-                    .iter()
-                    .copied()
-                    .map(<<A as Aggregator>::PartialAggregate as AsULE>::from_unaligned)
-                    .fold(A::IDENTITY, A::combine),
-            )
-        }
-    }
-}
 
 /// An event-time indexed array containing partial aggregates
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
