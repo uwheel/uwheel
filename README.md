@@ -2,12 +2,12 @@
   <img width="300" height="300" src="assets/logo.png">
 </p>
 
-![ci](https://github.com/Max-Meldrum/uwheel/actions/workflows/rust.yml/badge.svg)
+![ci](https://github.com/uwheel/uwheel/actions/workflows/rust.yml/badge.svg)
 [![Cargo](https://img.shields.io/badge/crates.io-v0.1.0-orange)](https://crates.io/crates/uwheel)
 [![Documentation](https://docs.rs/uwheel/badge.svg)](https://docs.rs/uwheel)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
-[![Apache](https://img.shields.io/badge/license-Apache-blue.svg)](https://github.com/Max-Meldrum/uwheel/blob/main/LICENSE-APACHE)
-[![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Max-Meldrum/uwheel/blob/main/LICENSE-MIT)
+[![Apache](https://img.shields.io/badge/license-Apache-blue.svg)](https://github.com/uwheel/uwheel/blob/main/LICENSE-APACHE)
+[![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/uwheel/uwheel/blob/main/LICENSE-MIT)
 
 # µWheel
 
@@ -15,7 +15,7 @@
 
 A full research paper detailing µWheel has been accepted to DEBS (Distributed and Event-based Systems) 2024 and will be available soon.
 
-See more about its design [here](DESIGN.md) and try it out directly on the [web](https://maxmeldrum.com/uwheel).
+See more about its design [here](DESIGN.md) and try it out directly on the [web](https://uwheel.github.io).
 
 ## Features
 
