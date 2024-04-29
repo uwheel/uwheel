@@ -45,6 +45,7 @@ See more about its design [here](DESIGN.md) and try it out directly on the [web]
 **Example use cases:**
 
 - A mini stream processor ([see example](examples/window))
+- A real-time OLAP index (e.g., Top-N) ([see example](examples/top-n))
 - A compact and mergeable system for analytics at the edge ([see example](examples/aggregator)).
 
 ## Pre-defined Aggregators
