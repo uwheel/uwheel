@@ -1113,7 +1113,7 @@ impl About {
 
         ui.label("This demo showcases how µWheel works. The panel on the left side lets you insert data and advance the time of the system. \
             The central panel shows how wheel slots are rolled up over time. The y-axis represents SUM aggregate data that you insert \
-            and the x-axis represents low-watermark indexed wheel slots. The panel on the right is for plotting and playing around with serialization/compression.".to_string()
+            and the x-axis represents low-watermark indexed wheel slots. The panel on the right is for queries and playing around with serialization/compression.".to_string()
         );
 
         ui.add_space(12.0); // ui.separator();
