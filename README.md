@@ -15,7 +15,7 @@
 
 A full research paper detailing µWheel has been accepted to DEBS (Distributed and Event-based Systems) 2024 and will be available soon.
 
-See more about its design [here](DESIGN.md) and try it out directly on the [web](https://uwheel.github.io).
+See more about its design [here](DESIGN.md) and try it out directly on the [web](https://uwheel.github.io/uwheel/).
 
 ## Features
 
