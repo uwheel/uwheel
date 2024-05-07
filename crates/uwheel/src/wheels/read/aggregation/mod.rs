@@ -19,10 +19,10 @@ use uwheel_stats::profile_scope;
 #[cfg(feature = "profiler")]
 pub(crate) mod stats;
 
-/// Array implementations for Partial Aggregates
-pub mod array;
 /// Configuration for [Wheel]
 pub mod conf;
+/// Deque implementations for Partial Aggregates
+pub mod deque;
 /// Iterator implementations for [Wheel]
 pub mod iter;
 /// A maybe initialized [Wheel]
@@ -33,7 +33,7 @@ mod data;
 #[cfg(feature = "profiler")]
 use stats::Stats;
 
-use array::MutablePartialArray;
+use deque::MutablePartialDeque;
 
 use self::{
     conf::{DataLayout, RetentionPolicy, WheelConf},
@@ -131,7 +131,7 @@ pub struct Wheel<A: Aggregator> {
     /// Wheel slots maintained in a particular data layout
     data: Data<A>,
     /// Higher-order aggregates indexed by event time
-    drill_down_slots: MutablePartialArray<A>,
+    drill_down_slots: MutablePartialDeque<A>,
     /// Keeps track whether we have done a full rotation (rotation_count == num_slots)
     rotation_count: usize,
     #[cfg(test)]
@@ -148,17 +148,17 @@ impl<A: Aggregator> Wheel<A> {
 
         // Configure data layout
         let data = match conf.data_layout {
-            DataLayout::Normal => Data::create_array_with_capacity(num_slots),
+            DataLayout::Normal => Data::create_deque_with_capacity(num_slots),
             DataLayout::Prefix => {
                 assert!(
                     A::invertible(),
                     "Cannot configure prefix-sum without invertible agg function"
                 );
-                Data::create_prefix_array()
+                Data::create_prefix_deque()
             }
             DataLayout::Compressed(chunk_size) => {
                 assert!(A::compression_support(), "Compressed data layout requires the aggregator to implement compressor + decompressor");
-                Data::create_compressed_array(chunk_size)
+                Data::create_compressed_deque(chunk_size)
             }
         };
 
@@ -166,7 +166,7 @@ impl<A: Aggregator> Wheel<A> {
             capacity,
             num_slots,
             data,
-            drill_down_slots: MutablePartialArray::default(),
+            drill_down_slots: MutablePartialDeque::default(),
             total: None,
             watermark: conf.watermark,
             tick_size_ms: conf.tick_size_ms,
@@ -281,27 +281,27 @@ impl<A: Aggregator> Wheel<A> {
         })
     }
 
-    /// Returns ``true`` if the underlying data is a PrefixArray
+    /// Returns ``true`` if the underlying data is a PrefixDeque
     #[inline]
     pub fn is_prefix(&self) -> bool {
-        matches!(self.data, Data::PrefixArray(_))
+        matches!(self.data, Data::PrefixDeque(_))
     }
 
     #[doc(hidden)]
-    pub fn to_prefix_array(&mut self) {
+    pub fn to_prefix(&mut self) {
         assert!(A::invertible());
-        if let Data::Array(array) = &self.data {
-            let mut prefix_data = Data::array_to_prefix(array);
+        if let Data::Deque(deque) = &self.data {
+            let mut prefix_data = Data::deque_to_prefix(deque);
             core::mem::swap(&mut self.data, &mut prefix_data);
         }
     }
 
     #[doc(hidden)]
-    pub fn to_array(&mut self) {
+    pub fn to_deque(&mut self) {
         assert!(A::invertible());
-        if let Data::PrefixArray(prefix_array) = &self.data {
-            let mut array_data = Data::prefix_to_array(prefix_array);
-            core::mem::swap(&mut self.data, &mut array_data);
+        if let Data::PrefixDeque(prefix_deque) = &self.data {
+            let mut deque_data = Data::prefix_to_deque(prefix_deque);
+            core::mem::swap(&mut self.data, &mut deque_data);
         }
     }
 
@@ -437,7 +437,7 @@ impl<A: Aggregator> Wheel<A> {
     }
 
     /// Returns a reference to roll-up slots
-    pub fn slots(&self) -> &MutablePartialArray<A> {
+    pub fn slots(&self) -> &MutablePartialDeque<A> {
         unimplemented!();
     }
 
@@ -590,7 +590,7 @@ mod tests {
     }
 
     #[test]
-    fn compressed_array_test() {
+    fn compressed_deque_test() {
         let compressed_conf = WheelConf::new(HOUR_TICK_MS, 24)
             .with_retention_policy(RetentionPolicy::Keep)
             .with_data_layout(DataLayout::Compressed(60));
@@ -620,8 +620,8 @@ mod tests {
             wheel.combine_range(55..75)
         );
         assert_eq!(
-            compressed_wheel.combine_range(60..120),
-            wheel.combine_range(60..120)
+            wheel.combine_range(60..120),
+            compressed_wheel.combine_range(60..120)
         );
 
         // add half of the chunk_size to check whether it still works as intended
@@ -644,27 +644,27 @@ mod tests {
     }
 
     #[test]
-    fn mutable_partial_array_test() {
-        let mut array = MutablePartialArray::<U64SumAggregator>::default();
+    fn mutable_partial_deque_test() {
+        let mut deque = MutablePartialDeque::<U64SumAggregator>::default();
 
-        array.push_front(10);
-        array.push_front(20);
-        array.push_front(30);
+        deque.push_front(10);
+        deque.push_front(20);
+        deque.push_front(30);
 
-        assert_eq!(array.len(), 3);
-        assert_eq!(array.combine_range(..), Some(60));
-        assert_eq!(array.combine_range(0..2), Some(50));
-        assert_eq!(array.combine_range_with_filter(.., |v| *v > 10), Some(50));
+        assert_eq!(deque.len(), 3);
+        assert_eq!(deque.combine_range(..), Some(60));
+        assert_eq!(deque.combine_range(0..2), Some(50));
+        assert_eq!(deque.combine_range_with_filter(.., |v| *v > 10), Some(50));
 
-        assert_eq!(array.get(0), Some(&30));
-        assert_eq!(array.get(1), Some(&20));
-        assert_eq!(array.get(2), Some(&10));
+        assert_eq!(deque.get(0), Some(&30));
+        assert_eq!(deque.get(1), Some(&20));
+        assert_eq!(deque.get(2), Some(&10));
 
-        array.pop_back();
+        deque.pop_back();
 
-        assert_eq!(array.len(), 2);
-        assert_eq!(array.combine_range(..), Some(50));
-        assert_eq!(array.combine_range(0..2), Some(50));
+        assert_eq!(deque.len(), 2);
+        assert_eq!(deque.combine_range(..), Some(50));
+        assert_eq!(deque.combine_range(0..2), Some(50));
     }
 
     #[test]

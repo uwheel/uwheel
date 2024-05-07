@@ -1,6 +1,6 @@
 use super::{
-    array::{CompressedArray, MutablePartialArray, PrefixArray},
     conf::DataLayout,
+    deque::{CompressedDeque, MutablePartialDeque, PrefixDeque},
 };
 use crate::Aggregator;
 #[cfg(not(feature = "std"))]
@@ -11,39 +11,39 @@ use core::ops::RangeBounds;
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone, Debug)]
 pub enum Data<A: Aggregator> {
-    Array(MutablePartialArray<A>),
-    PrefixArray(PrefixArray<A>),
-    CompressedArray(CompressedArray<A>),
+    Deque(MutablePartialDeque<A>),
+    PrefixDeque(PrefixDeque<A>),
+    CompressedDeque(CompressedDeque<A>),
 }
 
 impl<A: Aggregator> Data<A> {
     pub(crate) fn layout(&self) -> DataLayout {
         match self {
-            Data::Array(_) => DataLayout::Normal,
-            Data::PrefixArray(_) => DataLayout::Prefix,
-            Data::CompressedArray(c) => DataLayout::Compressed(c.chunk_size),
+            Data::Deque(_) => DataLayout::Normal,
+            Data::PrefixDeque(_) => DataLayout::Prefix,
+            Data::CompressedDeque(c) => DataLayout::Compressed(c.chunk_size),
         }
     }
-    pub fn array_to_prefix(array: &MutablePartialArray<A>) -> Self {
-        Self::PrefixArray(PrefixArray::_from_array(array))
+    pub fn deque_to_prefix(deque: &MutablePartialDeque<A>) -> Self {
+        Self::PrefixDeque(PrefixDeque::_from_deque(deque))
     }
-    pub fn prefix_to_array(array: &PrefixArray<A>) -> Self {
-        Self::Array(MutablePartialArray::from_slice(array.slots_slice()))
+    pub fn prefix_to_deque(deque: &PrefixDeque<A>) -> Self {
+        Self::Deque(MutablePartialDeque::from_slice(deque.slots_slice()))
     }
-    pub fn create_prefix_array() -> Self {
-        Self::PrefixArray(PrefixArray::default())
+    pub fn create_prefix_deque() -> Self {
+        Self::PrefixDeque(PrefixDeque::default())
     }
-    pub fn create_compressed_array(chunk_size: usize) -> Self {
-        Self::CompressedArray(CompressedArray::new(chunk_size))
+    pub fn create_compressed_deque(chunk_size: usize) -> Self {
+        Self::CompressedDeque(CompressedDeque::new(chunk_size))
     }
-    pub fn create_array_with_capacity(capacity: usize) -> Self {
-        Self::Array(MutablePartialArray::with_capacity(capacity))
+    pub fn create_deque_with_capacity(capacity: usize) -> Self {
+        Self::Deque(MutablePartialDeque::with_capacity(capacity))
     }
     pub fn size_bytes(&self) -> usize {
         match self {
-            Data::Array(arr) => arr.size_bytes(),
-            Data::PrefixArray(arr) => arr.size_bytes(),
-            Data::CompressedArray(arr) => arr.size_bytes(),
+            Data::Deque(arr) => arr.size_bytes(),
+            Data::PrefixDeque(arr) => arr.size_bytes(),
+            Data::CompressedDeque(arr) => arr.size_bytes(),
         }
     }
     pub fn is_empty(&self) -> bool {
@@ -51,39 +51,39 @@ impl<A: Aggregator> Data<A> {
     }
     pub fn len(&self) -> usize {
         match self {
-            Data::Array(arr) => arr.len(),
-            Data::PrefixArray(parr) => parr.len(),
-            Data::CompressedArray(arr) => arr.len(),
+            Data::Deque(arr) => arr.len(),
+            Data::PrefixDeque(parr) => parr.len(),
+            Data::CompressedDeque(arr) => arr.len(),
         }
     }
     #[inline]
     pub fn push_front(&mut self, agg: A::PartialAggregate) {
         match self {
-            Data::Array(arr) => arr.push_front(agg),
-            Data::PrefixArray(parr) => parr.push_front(agg),
-            Data::CompressedArray(arr) => arr.push_front(agg),
+            Data::Deque(arr) => arr.push_front(agg),
+            Data::PrefixDeque(parr) => parr.push_front(agg),
+            Data::CompressedDeque(arr) => arr.push_front(agg),
         }
     }
     pub fn pop_back(&mut self) {
         match self {
-            Data::Array(arr) => arr.pop_back(),
-            Data::PrefixArray(parr) => parr.pop_back(),
-            Data::CompressedArray(arr) => arr.pop_back(),
+            Data::Deque(arr) => arr.pop_back(),
+            Data::PrefixDeque(parr) => parr.pop_back(),
+            Data::CompressedDeque(arr) => arr.pop_back(),
         }
     }
 
     pub fn merge(&mut self, other: &Self) {
         match (self, other) {
-            (Data::Array(arr), Data::Array(arr_other)) => arr.merge(arr_other),
-            _ => unimplemented!("Only Array Merging supported as of now"),
+            (Data::Deque(arr), Data::Deque(arr_other)) => arr.merge(arr_other),
+            _ => unimplemented!("Only Deque Merging supported as of now"),
         }
     }
 
     pub fn get(&self, index: usize) -> Option<&A::PartialAggregate> {
         match self {
-            Data::Array(arr) => arr.get(index),
-            Data::PrefixArray(parr) => parr.get(index),
-            Data::CompressedArray(arr) => arr.get(index),
+            Data::Deque(arr) => arr.get(index),
+            Data::PrefixDeque(parr) => parr.get(index),
+            Data::CompressedDeque(arr) => arr.get(index),
         }
     }
 
@@ -93,9 +93,9 @@ impl<A: Aggregator> Data<A> {
         R: RangeBounds<usize>,
     {
         match self {
-            Data::Array(arr) => arr.range_to_vec(range),
-            Data::PrefixArray(parr) => parr.range_to_vec(range),
-            Data::CompressedArray(carr) => carr.range_to_vec(range),
+            Data::Deque(arr) => arr.range(range),
+            Data::PrefixDeque(parr) => parr.range(range),
+            Data::CompressedDeque(carr) => carr.range(range),
         }
     }
 
@@ -105,9 +105,9 @@ impl<A: Aggregator> Data<A> {
         R: RangeBounds<usize>,
     {
         match self {
-            Data::Array(arr) => arr.combine_range(range),
-            Data::PrefixArray(parr) => parr.combine_range(range),
-            Data::CompressedArray(arr) => arr.combine_range(range),
+            Data::Deque(arr) => arr.combine_range(range),
+            Data::PrefixDeque(parr) => parr.combine_range(range),
+            Data::CompressedDeque(arr) => arr.combine_range(range),
         }
     }
 }

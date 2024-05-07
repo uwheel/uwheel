@@ -532,19 +532,19 @@ where
     // for benching purposes right now
     #[doc(hidden)]
     pub fn convert_all_to_prefix(&mut self) {
-        self.seconds_wheel.as_mut().unwrap().to_prefix_array();
-        self.minutes_wheel.as_mut().unwrap().to_prefix_array();
-        self.hours_wheel.as_mut().unwrap().to_prefix_array();
-        self.days_wheel.as_mut().unwrap().to_prefix_array();
+        self.seconds_wheel.as_mut().unwrap().to_prefix();
+        self.minutes_wheel.as_mut().unwrap().to_prefix();
+        self.hours_wheel.as_mut().unwrap().to_prefix();
+        self.days_wheel.as_mut().unwrap().to_prefix();
     }
 
     // for benching purposes right now
     #[doc(hidden)]
     pub fn convert_all_to_array(&mut self) {
-        self.seconds_wheel.as_mut().unwrap().to_array();
-        self.minutes_wheel.as_mut().unwrap().to_array();
-        self.hours_wheel.as_mut().unwrap().to_array();
-        self.days_wheel.as_mut().unwrap().to_array();
+        self.seconds_wheel.as_mut().unwrap().to_deque();
+        self.minutes_wheel.as_mut().unwrap().to_deque();
+        self.hours_wheel.as_mut().unwrap().to_deque();
+        self.days_wheel.as_mut().unwrap().to_deque();
     }
 
     /// Installs a periodic window aggregation query

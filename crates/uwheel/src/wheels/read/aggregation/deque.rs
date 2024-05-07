@@ -1,6 +1,6 @@
 use super::{combine_or_insert, into_range};
 use crate::Aggregator;
-use core::ops::{Bound, Range, RangeBounds};
+use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 
 #[cfg(not(feature = "std"))]
 use alloc::collections::VecDeque;
@@ -11,26 +11,28 @@ use std::collections::VecDeque;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-/// An event-time indexed array containing partial aggregates
+/// An event-time indexed deque containing partial aggregates
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Default, Clone, Debug)]
-pub struct MutablePartialArray<A: Aggregator> {
-    inner: Vec<A::PartialAggregate>,
+pub struct MutablePartialDeque<A: Aggregator> {
+    inner: VecDeque<A::PartialAggregate>,
 }
 
-impl<A: Aggregator> MutablePartialArray<A> {
-    /// Creates an array with pre-allocated capacity
+impl<A: Aggregator> MutablePartialDeque<A> {
+    /// Creates an deque  with pre-allocated capacity
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            inner: Vec::with_capacity(capacity),
+            inner: VecDeque::with_capacity(capacity),
         }
     }
-    /// Creates an array from a vector of partial aggregates
+    /// Creates an deque from a vector of partial aggregates
     pub fn from_vec(partials: Vec<A::PartialAggregate>) -> Self {
-        Self { inner: partials }
+        Self {
+            inner: VecDeque::from(partials),
+        }
     }
-    /// Creates an array from a slice of partial aggregates
+    /// Creates an deque from a slice of partial aggregates
     pub fn from_slice<I: AsRef<[A::PartialAggregate]>>(slice: I) -> Self {
         Self::from_vec(slice.as_ref().to_vec())
     }
@@ -39,28 +41,25 @@ impl<A: Aggregator> MutablePartialArray<A> {
         core::mem::size_of::<A::PartialAggregate>() * self.inner.len()
     }
 
-    /// Extends the array from a slice of partial aggregates
-    pub fn extend_from_slice<I: AsRef<[A::PartialAggregate]>>(&mut self, slice: I) {
-        self.inner.extend_from_slice(slice.as_ref())
+    #[doc(hidden)]
+    pub fn as_slice(&self) -> &[A::PartialAggregate] {
+        // SAFETY: Assumes VecDeque::make_contigious has been called prior to this
+        self.inner.as_slices().0
+    }
+    #[doc(hidden)]
+    pub fn as_mut_slice(&mut self) -> &mut [A::PartialAggregate] {
+        // SAFETY: Assumes VecDeque::make_contigious has been called prior to this
+        self.inner.as_mut_slices().0
     }
 
-    #[doc(hidden)]
-    pub fn clear(&mut self) {
-        self.inner.clear();
-    }
-
-    #[doc(hidden)]
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-    #[doc(hidden)]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
     #[doc(hidden)]
     #[inline]
     pub fn push_front(&mut self, agg: A::PartialAggregate) {
-        self.inner.insert(0, agg);
+        self.inner.push_front(agg);
+
+        if A::simd_support() {
+            self.inner.make_contiguous();
+        }
     }
 
     #[doc(hidden)]
@@ -72,31 +71,27 @@ impl<A: Aggregator> MutablePartialArray<A> {
     #[doc(hidden)]
     #[inline]
     pub fn pop_back(&mut self) {
-        let _ = self.inner.pop();
+        let _ = self.inner.pop_back();
     }
 
-    /// Merges another mutable array into this array
+    /// Merges another mutable deque into this one
     pub fn merge(&mut self, other: &Self) {
-        A::merge(&mut self.inner, &other.inner);
-    }
-    /// Merges a partial array into this mutable array
-    pub fn merge_with_ref(&mut self, other: impl AsRef<[A::PartialAggregate]>) {
-        A::merge(&mut self.inner, other.as_ref());
+        self.inner.make_contiguous();
+        A::merge(self.as_mut_slice(), other.as_slice());
     }
 
-    /// Returns a front-to-back iterator of roll-up slots
-    #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = &A::PartialAggregate> {
-        self.inner.iter()
-    }
     /// Returns partial aggregate based on a given range
     #[inline]
-    pub fn range_to_vec<R>(&self, range: R) -> Vec<A::PartialAggregate>
+    pub fn range<R>(&self, range: R) -> Vec<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
     {
-        self.inner[into_range(&range, self.inner.len())]
+        let Range { start, end } = into_range(&range, self.inner.len());
+        let slots = end - start;
+        self.inner
             .iter()
+            .skip(start)
+            .take(slots)
             .copied()
             .rev()
             .collect()
@@ -107,13 +102,27 @@ impl<A: Aggregator> MutablePartialArray<A> {
     /// # Panics
     ///
     /// Panics if the starting point is greater than the end point or if
-    /// the end point is greater than the length of array
+    /// the end point is greater than the length of deque
     #[inline]
     pub fn combine_range<R>(&self, range: R) -> Option<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
     {
-        A::combine_slice(&self.inner[into_range(&range, self.inner.len())])
+        if A::simd_support() {
+            // SAFETY: assumes the inner deque has been made contigious
+            A::combine_slice(&self.as_slice()[into_range(&range, self.inner.len())])
+        } else {
+            let Range { start, end } = into_range(&range, self.inner.len());
+            let slots = end - start;
+            Some(
+                self.inner
+                    .iter()
+                    .skip(start)
+                    .take(slots)
+                    .copied()
+                    .fold(A::IDENTITY, A::combine),
+            )
+        }
     }
 
     /// Returns the combined partial aggregate within the given range that match the filter predicate
@@ -156,29 +165,41 @@ impl<A: Aggregator> MutablePartialArray<A> {
         self.inner.get_mut(slot)
     }
 }
-impl<A: Aggregator> AsRef<[A::PartialAggregate]> for MutablePartialArray<A> {
-    fn as_ref(&self) -> &[A::PartialAggregate] {
+
+impl<A: Aggregator> Deref for MutablePartialDeque<A> {
+    type Target = VecDeque<A::PartialAggregate>;
+
+    fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
-/// An event-time indexed array using prefix-sum optimization to answer queries at O(1)
+impl<A: Aggregator> DerefMut for MutablePartialDeque<A> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+/// An event-time indexed deque using prefix-sum optimization to answer queries at O(1)
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Default, Clone, Debug)]
-pub struct PrefixArray<A: Aggregator> {
-    slots: MutablePartialArray<A>,
-    prefix: MutablePartialArray<A>,
+pub struct PrefixDeque<A: Aggregator> {
+    slots: MutablePartialDeque<A>,
+    prefix: MutablePartialDeque<A>,
 }
 
-impl<A: Aggregator> PrefixArray<A> {
+impl<A: Aggregator> PrefixDeque<A> {
     fn rebuild_prefix(&mut self) {
-        self.prefix = MutablePartialArray::from_vec(A::build_prefix(self.slots.as_ref()));
+        // SAFETY: make sure all data points are included in our slice
+        self.slots.make_contiguous();
+
+        self.prefix = MutablePartialDeque::from_vec(A::build_prefix(self.slots.as_slice()));
     }
-    pub(crate) fn _from_array(array: &MutablePartialArray<A>) -> Self {
-        let prefix = MutablePartialArray::from_vec(A::build_prefix(array.as_ref()));
+    pub(crate) fn _from_deque(deque: &MutablePartialDeque<A>) -> Self {
+        let prefix = MutablePartialDeque::from_vec(A::build_prefix(deque.as_slice()));
         Self {
-            slots: array.clone(),
+            slots: deque.clone(),
             prefix,
         }
     }
@@ -199,7 +220,7 @@ impl<A: Aggregator> PrefixArray<A> {
         self.rebuild_prefix();
     }
     pub(crate) fn slots_slice(&self) -> &[A::PartialAggregate] {
-        self.slots.as_ref()
+        self.slots.as_slice()
     }
     #[inline]
     pub(crate) fn get(&self, slot: usize) -> Option<&A::PartialAggregate> {
@@ -210,11 +231,11 @@ impl<A: Aggregator> PrefixArray<A> {
         self.slots.iter()
     }
     #[inline]
-    pub(crate) fn range_to_vec<R>(&self, range: R) -> Vec<A::PartialAggregate>
+    pub(crate) fn range<R>(&self, range: R) -> Vec<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
     {
-        self.slots.range_to_vec(range)
+        self.slots.range(range)
     }
 
     #[inline]
@@ -234,26 +255,25 @@ impl<A: Aggregator> PrefixArray<A> {
             Bound::Excluded(&n) => n - 1,
             Bound::Unbounded => len,
         };
-        // dbg!(start, end, len);
-        A::prefix_query(self.prefix.as_ref(), start, end)
+        A::prefix_query(self.prefix.as_slice(), start, end)
     }
 }
 
-/// A Compressed array which enables user-defined compression
+/// A Compressed deque which enables user-defined compression
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone, Debug)]
-pub struct CompressedArray<A: Aggregator> {
-    buffer: MutablePartialArray<A>,
+pub struct CompressedDeque<A: Aggregator> {
+    buffer: MutablePartialDeque<A>,
     chunks: VecDeque<Vec<u8>>,
     pub(crate) chunk_size: usize,
 }
 
-impl<A: Aggregator> CompressedArray<A> {
+impl<A: Aggregator> CompressedDeque<A> {
     pub(crate) fn new(chunk_size: usize) -> Self {
         assert!(
             A::compression_support(),
-            "CompressedArray requires the Compression method to implemented in Aggregator"
+            "CompressedDeque requires the Compression method to implemented in Aggregator"
         );
 
         Self {
@@ -290,7 +310,9 @@ impl<A: Aggregator> CompressedArray<A> {
         // if we have reached the chunk size then compress
         if self.buffer.len() == self.chunk_size {
             let compressor = A::compression().unwrap().compressor;
-            let chunk = (compressor)(self.buffer.as_ref());
+            // SAFETY: make sure all data points are included in our slice
+            self.buffer.make_contiguous();
+            let chunk = (compressor)(self.buffer.as_slice());
             self.chunks.push_front(chunk);
 
             // clear current buffer
@@ -302,12 +324,11 @@ impl<A: Aggregator> CompressedArray<A> {
     }
 
     #[inline]
-    pub(crate) fn range_to_vec<R>(&self, range: R) -> Vec<A::PartialAggregate>
+    pub(crate) fn range<R>(&self, range: R) -> Vec<A::PartialAggregate>
     where
         R: RangeBounds<usize>,
     {
-        let array = self.partial_range_array(&range);
-        array.range_to_vec(range)
+        self.partial_range_deque(&range).range(range)
     }
 
     #[inline]
@@ -315,13 +336,12 @@ impl<A: Aggregator> CompressedArray<A> {
     where
         R: RangeBounds<usize>,
     {
-        let array = self.partial_range_array(&range);
-        array.combine_range(range)
+        self.partial_range_deque(&range).combine_range(range)
     }
 
-    // helper method to build an array using the given range
+    // helper method to build a temporary deque using the given range
     #[inline]
-    fn partial_range_array<R>(&self, range: &R) -> MutablePartialArray<A>
+    fn partial_range_deque<R>(&self, range: &R) -> MutablePartialDeque<A>
     where
         R: RangeBounds<usize>,
     {
@@ -339,20 +359,20 @@ impl<A: Aggregator> CompressedArray<A> {
         };
 
         let query_len = end - start;
-        let mut array: MutablePartialArray<A> = MutablePartialArray::with_capacity(query_len);
-        array.extend_from_slice(self.buffer.as_ref());
+        let mut vec = Vec::new();
+        vec.extend_from_slice(self.buffer.as_slice());
 
         // get len of range without the buffer
         let without_buffer_len = query_len.saturating_sub(self.buffer.len());
         // calculate number of chunks we need to decompress
         let chunks = (without_buffer_len % self.chunk_size) + 1;
 
-        // decompress chunks and extend array
+        // decompress chunks and extend slots
         for chunk in self.chunks.iter().take(chunks) {
             let decompressor = A::compression().unwrap().decompressor;
             let decompressed_chunk = (decompressor)(chunk);
-            array.extend_from_slice(&decompressed_chunk);
+            vec.extend_from_slice(&decompressed_chunk);
         }
-        array
+        MutablePartialDeque::from_vec(vec)
     }
 }

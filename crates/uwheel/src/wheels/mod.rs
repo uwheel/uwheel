@@ -584,7 +584,7 @@ mod tests {
     //     let mut wheel = RwWheel::<U32SumAggregator>::new(0);
 
     //     let ticks = wheel.read().remaining_ticks() - 1;
-    //     wheel.advance(time::Duration::seconds(ticks as i64));
+    //     wheel.advance(Duration::seconds(ticks as i64));
 
     //     // one tick away from full cycle clear
     //     assert_eq!(
