@@ -51,6 +51,8 @@ use uwheel_stats::profile_scope;
 /// µWheel adopts a Lazy Synchronization aggregation approach. Aggregates are only shifted over from the `WriterWheel` to the `ReaderWheel`
 /// once the internal low watermark has been advanced.
 ///
+/// ![](https://raw.githubusercontent.com/uwheel/uwheel/a63799ca63b0d50a25565b150120570603b6d4cf/assets/overview.svg)
+///
 /// ## Queries
 ///
 /// [RwWheel] supports both streaming window aggregation queries and temporal adhoc queries over arbitrary time ranges.

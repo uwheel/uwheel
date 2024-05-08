@@ -826,6 +826,10 @@ where
     ///
     /// HAW use a query optimizer internally to reduce execution time using a hybrid cost and heuristics based approach.
     ///
+    /// The following flow chart illustrates how the query optimizer chooses an execution plan.
+    ///
+    /// ![](https://raw.githubusercontent.com/uwheel/uwheel/a63799ca63b0d50a25565b150120570603b6d4cf/assets/query_optimizer_flow_chart.svg)
+    ///
     /// # Example
     ///
     /// ```
