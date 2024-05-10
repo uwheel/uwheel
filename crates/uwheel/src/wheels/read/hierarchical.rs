@@ -928,10 +928,11 @@ where
             best_plan = Some(ExecutionPlan::LandmarkAggregation);
         }
 
+        // Check for possible early return: Going further may just have more overhead
         if let Some(plan) = &best_plan {
-            // Early return if plan supports single-wheel prefix scan or if landmark aggregation is possible (both O(1) complexity)
-            // Or if the range duration is lower than the lowest granularity, then we cannot execute a combined aggreation
-            if plan.is_prefix_or_landmark() || range.duration().whole_seconds() < SECONDS as i64 {
+            // If the plan supports single-wheel prefix scan or landmark aggregation (both O(1) complexity).
+            // Or if the cost is low. For now we assume under 60 since values above are not usually quantizable to wheel intervals.
+            if plan.is_prefix_or_landmark() || plan.cost() < SECONDS {
                 return best_plan;
             }
         }
