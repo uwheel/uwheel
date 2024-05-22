@@ -189,27 +189,21 @@ pub struct TemplateApp {
 
 fn build_wheel() -> RwWheel<DemoAggregator> {
     let mut conf = HawConf::default();
-    conf.seconds.set_drill_down(true);
     conf.seconds
         .set_retention_policy(RetentionPolicy::KeepWithLimit(60));
 
-    conf.minutes.set_drill_down(true);
     conf.minutes
         .set_retention_policy(RetentionPolicy::KeepWithLimit(60));
 
-    conf.hours.set_drill_down(true);
     conf.hours
         .set_retention_policy(RetentionPolicy::KeepWithLimit(24));
 
-    conf.days.set_drill_down(true);
     conf.days
         .set_retention_policy(RetentionPolicy::KeepWithLimit(7));
 
-    conf.weeks.set_drill_down(true);
     conf.weeks
         .set_retention_policy(RetentionPolicy::KeepWithLimit(52));
 
-    conf.years.set_drill_down(true);
     conf.years
         .set_retention_policy(RetentionPolicy::KeepWithLimit(10));
 

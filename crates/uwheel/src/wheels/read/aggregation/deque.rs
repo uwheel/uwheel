@@ -56,10 +56,12 @@ impl<A: Aggregator> MutablePartialDeque<A> {
     #[inline]
     pub fn push_front(&mut self, agg: A::PartialAggregate) {
         self.inner.push_front(agg);
+    }
 
-        if A::simd_support() {
-            self.inner.make_contiguous();
-        }
+    #[doc(hidden)]
+    #[inline]
+    pub fn make_contiguous(&mut self) {
+        self.inner.make_contiguous();
     }
 
     #[doc(hidden)]

@@ -91,9 +91,18 @@ where
         self.inner.write().set_optimizer_hints(hints);
     }
 
-    #[doc(hidden)]
-    pub fn convert_all_to_prefix(&self) {
-        self.inner.write().convert_all_to_prefix();
+    /// Converts all wheels to be prefix-enabled
+    ///
+    /// See [Haw::to_prefix_wheels] for more information
+    pub fn to_prefix_wheels(&self) {
+        self.inner.write().to_prefix_wheels();
+    }
+
+    /// Organizes all wheels to be contigious to support explicit SIMD execution.
+    ///
+    /// See [Haw::to_simd_wheels] for more information
+    pub fn to_simd_wheels(&self) {
+        self.inner.write().to_simd_wheels();
     }
 
     #[doc(hidden)]

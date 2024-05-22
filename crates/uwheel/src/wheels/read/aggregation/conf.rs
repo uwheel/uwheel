@@ -61,6 +61,26 @@ pub enum DataLayout {
     Prefix,
 }
 
+/// Enum containing different wheel modes
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Copy, Clone, Default, Debug, PartialEq)]
+pub enum WheelMode {
+    /// The default wheel mode which is a online streaming mode
+    ///
+    /// Indicating that the wheel will be updated incrementally
+    #[default]
+    Stream,
+    /// An index wheel mode
+    ///
+    /// Indicating that the wheel will be used as read-only analytical index
+    ///
+    /// # Safety
+    ///
+    /// If Index mode is used together with explict SIMD support, then wheels must
+    /// be converted to SIMD supported wheels.
+    Index,
+}
+
 /// Configuration for an Aggregate Wheel
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Copy, Clone, Debug)]
@@ -77,8 +97,8 @@ pub struct WheelConf {
     pub tick_size_ms: u64,
     /// Defines the data retention policy of a wheel
     pub retention: RetentionPolicy,
-    /// Defines whether the wheel should maintain drill down slots to another dimension (wheel)
-    pub drill_down: bool,
+    /// Defines the wheel mode
+    pub mode: WheelMode,
 }
 
 impl WheelConf {
@@ -90,7 +110,7 @@ impl WheelConf {
             data_layout: Default::default(),
             tick_size_ms,
             retention: Default::default(),
-            drill_down: false,
+            mode: Default::default(),
         }
     }
     /// Sets the watermark
@@ -99,17 +119,18 @@ impl WheelConf {
         self
     }
 
-    /// Configures the wheel to maintain dril-down slots
-    pub fn with_drill_down(mut self, drill_down: bool) -> Self {
-        self.drill_down = drill_down;
-        self
-    }
-
     /// Configures the wheel to use the given data layout
     pub fn with_data_layout(mut self, layout: DataLayout) -> Self {
         self.data_layout = layout;
         self
     }
+
+    /// Configures the wheel to use the given wheel mode
+    pub fn with_mode(mut self, mode: WheelMode) -> Self {
+        self.mode = mode;
+        self
+    }
+
     /// Configures the wheel to use the given retention policy
     pub fn with_retention_policy(mut self, policy: RetentionPolicy) -> Self {
         self.retention = policy;
@@ -124,9 +145,10 @@ impl WheelConf {
     pub fn set_data_layout(&mut self, layout: DataLayout) {
         self.data_layout = layout;
     }
-    /// Sets the data layout for this wheel
-    pub fn set_drill_down(&mut self, drill_down: bool) {
-        self.drill_down = drill_down;
+
+    /// Sets the mode for this wheel
+    pub fn set_mode(&mut self, mode: WheelMode) {
+        self.mode = mode;
     }
 
     /// Sets the retention policy for this wheel
