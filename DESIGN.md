@@ -106,9 +106,9 @@ Note that each wheel (time dimension) may be configured to hold more than just t
 
 An aggregate wheel supports three possible data layouts that are configurable per wheel granularity:
 
-* ``Array``: A regular array of partial aggregates.
-* ``PrefixArray``: A prefix-enabled array which requires double the space but runs queries in O(1).
-* ``CompressedArray``: A compressed array which compresses wheel slots into chunks.
+* ``Deque``: A regular deque of partial aggregates.
+* ``PrefixDeque``: A prefix-enabled deque which requires double the space but runs queries in O(1).
+* ``CompressedDeque``: A compressed deque which compresses wheel slots into chunks.
 
 ### Queries
 

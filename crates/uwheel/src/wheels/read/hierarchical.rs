@@ -7,7 +7,7 @@ use time::OffsetDateTime;
 use super::{
     super::write::WriterWheel,
     aggregation::{
-        conf::{DataLayout, RetentionPolicy},
+        conf::{DataLayout, RetentionPolicy, WheelMode},
         maybe::MaybeWheel,
         Wheel,
     },
@@ -107,6 +107,22 @@ impl HawConf {
         self.years.set_watermark(watermark);
 
         self.watermark = watermark;
+        self
+    }
+    /// Configures all wheels to use the same `WheelMode`
+    ///
+    /// # Safety
+    ///
+    /// If using ``WheelMode::Index`` in combination with explicit SIMD support,
+    /// then make sure to convert wheels to support SIMD (see ``Haw::to_simd_wheels``).
+    pub fn with_mode(mut self, mode: WheelMode) -> Self {
+        self.seconds.set_mode(mode);
+        self.minutes.set_mode(mode);
+        self.hours.set_mode(mode);
+        self.days.set_mode(mode);
+        self.weeks.set_mode(mode);
+        self.years.set_mode(mode);
+
         self
     }
 
@@ -529,13 +545,62 @@ where
         OffsetDateTime::from_unix_timestamp(ts as i64 / 1000).unwrap()
     }
 
-    // for benching purposes right now
-    #[doc(hidden)]
-    pub fn convert_all_to_prefix(&mut self) {
-        self.seconds_wheel.as_mut().unwrap().to_prefix();
-        self.minutes_wheel.as_mut().unwrap().to_prefix();
-        self.hours_wheel.as_mut().unwrap().to_prefix();
-        self.days_wheel.as_mut().unwrap().to_prefix();
+    /// Converts all wheels to be prefix-enabled
+    ///
+    /// Prefix-enabled wheels require double the space but runs any range-sum query in O(1) complexity.
+    ///
+    /// If wheels are already prefix-enabled then this function does nothing.
+    ///
+    /// # Panics
+    ///
+    /// The function panics if the [Aggregator] does not implement ``combine_inverse`` since
+    /// it is not an invertible aggregator that supports prefix-sum range queries.
+    pub fn to_prefix_wheels(&mut self) {
+        assert!(
+            A::invertible(),
+            "Aggregator is not invertible, must implement combine_inverse."
+        );
+
+        if let Some(seconds) = self.seconds_wheel.as_mut() {
+            seconds.to_prefix();
+
+            if let Some(minutes) = self.minutes_wheel.as_mut() {
+                minutes.to_prefix();
+
+                if let Some(hours) = self.hours_wheel.as_mut() {
+                    hours.to_prefix();
+
+                    if let Some(days) = self.days_wheel.as_mut() {
+                        days.to_prefix();
+                    }
+                }
+            }
+        }
+    }
+
+    /// Converts all wheels to support explicit SIMD execution.
+    ///
+    /// This operation assumes that the underlying wheels are configured with the default `Deque` data layout.
+    ///
+    /// # Safety
+    /// If you have built a wheel in index mode and configured with explicit SIMD, then
+    /// this function must be called once the index process is complete.
+    pub fn to_simd_wheels(&mut self) {
+        if let Some(seconds) = self.seconds_wheel.as_mut() {
+            seconds.to_simd();
+
+            if let Some(minutes) = self.minutes_wheel.as_mut() {
+                minutes.to_simd();
+
+                if let Some(hours) = self.hours_wheel.as_mut() {
+                    hours.to_simd();
+
+                    if let Some(days) = self.days_wheel.as_mut() {
+                        days.to_simd();
+                    }
+                }
+            }
+        }
     }
 
     // for benching purposes right now

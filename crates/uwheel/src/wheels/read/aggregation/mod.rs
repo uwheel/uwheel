@@ -33,10 +33,8 @@ mod data;
 #[cfg(feature = "profiler")]
 use stats::Stats;
 
-use deque::MutablePartialDeque;
-
 use self::{
-    conf::{DataLayout, RetentionPolicy, WheelConf},
+    conf::{DataLayout, RetentionPolicy, WheelConf, WheelMode},
     data::Data,
 };
 
@@ -81,25 +79,17 @@ fn into_range(range: &impl RangeBounds<usize>, len: usize) -> Range<usize> {
 pub struct WheelSlot<A: Aggregator> {
     /// A possible partial aggregate
     pub total: A::PartialAggregate,
-    /// An array of partial aggregate slots
-    ///
-    /// The combined aggregate of these slots equal to the `total` field
-    pub drill_down_slots: Option<Vec<A::PartialAggregate>>,
 }
 impl<A: Aggregator> WheelSlot<A> {
     /// Creates a new wheel slot
-    pub fn new(
-        total: Option<A::PartialAggregate>,
-        drill_down_slots: Option<Vec<A::PartialAggregate>>,
-    ) -> Self {
+    pub fn new(total: Option<A::PartialAggregate>) -> Self {
         Self {
             total: total.unwrap_or(A::IDENTITY),
-            drill_down_slots,
         }
     }
     #[cfg(test)]
     fn with_total(total: Option<A::PartialAggregate>) -> Self {
-        Self::new(total, None)
+        Self::new(total)
     }
 }
 
@@ -126,12 +116,10 @@ pub struct Wheel<A: Aggregator> {
     tick_size_ms: u64,
     /// Retention policy for the wheel
     retention: RetentionPolicy,
-    /// flag indicating whether this wheel is configured with drill-down
-    drill_down: bool,
+    /// The configured wheel mode
+    mode: WheelMode,
     /// Wheel slots maintained in a particular data layout
     data: Data<A>,
-    /// Higher-order aggregates indexed by event time
-    drill_down_slots: MutablePartialDeque<A>,
     /// Keeps track whether we have done a full rotation (rotation_count == num_slots)
     rotation_count: usize,
     #[cfg(test)]
@@ -166,12 +154,11 @@ impl<A: Aggregator> Wheel<A> {
             capacity,
             num_slots,
             data,
-            drill_down_slots: MutablePartialDeque::default(),
             total: None,
             watermark: conf.watermark,
             tick_size_ms: conf.tick_size_ms,
-            drill_down: conf.drill_down,
             retention: conf.retention,
+            mode: conf.mode,
             rotation_count: 0,
             #[cfg(test)]
             total_ticks: 0,
@@ -187,15 +174,6 @@ impl<A: Aggregator> Wheel<A> {
     /// Returns the current watermark of the wheel as a Duration
     pub fn now(&self) -> Duration {
         Duration::milliseconds(self.watermark as i64)
-    }
-
-    /// Returns ``Some(size)``of the drill down if it is enabled or ```None`` if its not
-    fn _drill_down_step(&self) -> Option<usize> {
-        if self.drill_down && !self.drill_down_slots.is_empty() {
-            Some(self.drill_down_slots.len() / self.data.len())
-        } else {
-            None
-        }
     }
 
     /// Combines partial aggregates of the last `subtrahend` slots
@@ -233,12 +211,6 @@ impl<A: Aggregator> Wheel<A> {
             .map(|partial_agg| A::lower(partial_agg))
     }
 
-    /// Returns drill down slots from ´slot´ index
-    #[inline]
-    pub fn drill_down(&self, _slot: usize) -> Option<&[A::PartialAggregate]> {
-        None
-    }
-
     /// Returns partial aggregate from `subtrahend` slots backwards from the head
     ///
     /// - If given a position, returns the partial aggregate based on that position,
@@ -263,31 +235,22 @@ impl<A: Aggregator> Wheel<A> {
         self.at(subtrahend).map(|res| A::lower(*res))
     }
 
-    // helper method to combine drill-down N slots into 1 drill-down slot.
-    #[inline]
-    fn _combine_drill_down_slots<'a>(
-        &self,
-        iter: impl Iterator<Item = Option<&'a [A::PartialAggregate]>>,
-    ) -> Vec<A::PartialAggregate> {
-        iter.flatten().fold(Vec::new(), |mut res, slot| {
-            if res.is_empty() {
-                res.extend_from_slice(slot);
-            } else {
-                for (curr, other) in res.iter_mut().zip(slot) {
-                    *curr = A::combine(*curr, *other);
-                }
-            }
-            res
-        })
-    }
-
     /// Returns ``true`` if the underlying data is a PrefixDeque
     #[inline]
     pub fn is_prefix(&self) -> bool {
         matches!(self.data, Data::PrefixDeque(_))
     }
 
-    #[doc(hidden)]
+    /// Converts the data layout of the wheel to Prefix
+    ///
+    /// A prefix-enabled requires double the space but runs any range-sum query in O(1) complexity.
+    ///
+    /// If this wheel is already prefix-enabled then this function does nothing.
+    ///
+    /// # Panics
+    ///
+    /// The function panics if the [Aggregator] does not implement ``combine_inverse`` since
+    /// it is not an invertible aggregator that supports prefix-sum range queries.    
     pub fn to_prefix(&mut self) {
         assert!(A::invertible());
         if let Data::Deque(deque) = &self.data {
@@ -302,6 +265,15 @@ impl<A: Aggregator> Wheel<A> {
         if let Data::PrefixDeque(prefix_deque) = &self.data {
             let mut deque_data = Data::prefix_to_deque(prefix_deque);
             core::mem::swap(&mut self.data, &mut deque_data);
+        }
+    }
+
+    /// Organizes the inner deque to support explicit SIMD execution
+    ///
+    /// Assumes that the data layout is `Deque` and A::combine_simd is implemented.
+    pub fn to_simd(&mut self) {
+        if A::simd_support() {
+            self.data.maybe_make_contigious();
         }
     }
 
@@ -399,7 +371,7 @@ impl<A: Aggregator> Wheel<A> {
             data_layout: self.data.layout(),
             tick_size_ms: self.tick_size_ms,
             retention: self.retention,
-            drill_down: self.drill_down,
+            mode: self.mode,
         });
         core::mem::swap(self, &mut new);
     }
@@ -418,7 +390,14 @@ impl<A: Aggregator> Wheel<A> {
     pub fn insert_head(&mut self, entry: A::PartialAggregate) {
         #[cfg(feature = "profiler")]
         profile_scope!(&self.stats.insert);
+
         self.data.push_front(entry);
+
+        // If explicit SIMD support is available but the wheel is configured in Index mode, then
+        // avoid making the inner deque contigious.
+        if A::simd_support() && self.mode != WheelMode::Index {
+            self.data.maybe_make_contigious();
+        }
     }
 
     #[inline]
@@ -426,19 +405,6 @@ impl<A: Aggregator> Wheel<A> {
     pub fn insert_slot(&mut self, slot: WheelSlot<A>) {
         // update roll-up aggregates
         self.insert_head(slot.total);
-    }
-
-    /// Merges a vector of wheels in parallel into an Wheel
-    pub fn merge_many(wheels: Vec<Self>) -> Option<Self> {
-        wheels.into_iter().reduce(|mut a, b| {
-            a.merge(&b);
-            a
-        })
-    }
-
-    /// Returns a reference to roll-up slots
-    pub fn slots(&self) -> &MutablePartialDeque<A> {
-        unimplemented!();
     }
 
     /// Merge two Wheels of similar granularity
@@ -485,7 +451,7 @@ impl<A: Aggregator> Wheel<A> {
 
             // reset count
             self.rotation_count = 0;
-            Some(WheelSlot::new(total, None))
+            Some(WheelSlot::new(total))
         } else {
             None
         }
@@ -506,7 +472,7 @@ impl<A: Aggregator> Wheel<A> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{deque::MutablePartialDeque, *};
     use crate::{
         aggregator::{
             min::U64MinAggregator,

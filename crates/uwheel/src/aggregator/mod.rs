@@ -211,7 +211,6 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
 }
 
 /// Defines how partial aggregates are to be compressed and decompressed
-#[allow(dead_code)]
 pub struct Compression<T> {
     pub(crate) compressor: Compressor<T>,
     pub(crate) decompressor: Decompressor<T>,

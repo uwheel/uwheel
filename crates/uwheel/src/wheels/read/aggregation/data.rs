@@ -64,6 +64,14 @@ impl<A: Aggregator> Data<A> {
             Data::CompressedDeque(arr) => arr.push_front(agg),
         }
     }
+
+    #[inline]
+    pub fn maybe_make_contigious(&mut self) {
+        if let Data::Deque(deq) = self {
+            deq.make_contiguous();
+        }
+    }
+
     pub fn pop_back(&mut self) {
         match self {
             Data::Deque(arr) => arr.pop_back(),
