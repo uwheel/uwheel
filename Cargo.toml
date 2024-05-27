@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*", "examples/*"]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Max Meldrum <max@meldrum.se>"]
 edition = "2021"
 repository = "https://github.com/uwheel/uwheel"
@@ -15,9 +15,9 @@ readme = "README.md"
 opt-level = 2 # fast and small wasm
 
 [workspace.dependencies]
-uwheel = { path = "crates/uwheel", version = "0.1.1" }
-uwheel-tree = { path = "crates/uwheel-tree", version = "0.1.1" }
-uwheel-stats = { path = "crates/uwheel-stats", version = "0.1.1" }
+uwheel = { path = "crates/uwheel", version = "0.1.2" }
+uwheel-tree = { path = "crates/uwheel-tree", version = "0.1.2" }
+uwheel-stats = { path = "crates/uwheel-stats", version = "0.1.2" }
 
 parking_lot = "0.12"
 hashbrown = "0.14.3"
