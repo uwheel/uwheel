@@ -15,12 +15,12 @@ git checkout -b my_feature_branch
 Add remote upstream (SSH):
 
 ```bash
-git remote add upstream git@github.com:Max-Meldrum/uwheel.git
+git remote add upstream git@github.com:uwheel/uwheel.git
 ```
 Add remote upstream (HTTPS):
   
 ```bash
-git remote add upstream https://github.com/Max-Meldrum/uwheel.git
+git remote add upstream https://github.com/uwheel/uwheel.git
 ```
 Whenever you need to sync your fork:
 
@@ -40,4 +40,8 @@ Some general tips for creating Pull Requests:
 4. Connect PR/commit to a github issue, e.g., "closes #4"
 
 
-Before submitting a PR, make sure to run all related tests and verifications to catch potential errors locally rather than at the CI.
+Before submitting a PR, make sure to run all related tests and verifications to catch potential errors locally rather than at the CI:
+
+```bash
+./scripts/check.sh
+```

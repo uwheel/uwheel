@@ -6,6 +6,7 @@
 [![Cargo](https://img.shields.io/badge/crates.io-v0.1.2-orange)](https://crates.io/crates/uwheel)
 [![Documentation](https://docs.rs/uwheel/badge.svg)](https://docs.rs/uwheel)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
+[![Discord](https://img.shields.io/discord/1245309039940993085?label=µWheel%20discord)](https://discord.gg/dhRxfck9jN)
 [![Apache](https://img.shields.io/badge/license-Apache-blue.svg)](https://github.com/uwheel/uwheel/blob/main/LICENSE-APACHE)
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/uwheel/uwheel/blob/main/LICENSE-MIT)
 
@@ -152,6 +153,14 @@ See more examples [here](examples).
 - µWheel borrows scripts from the [egui](https://github.com/emilk/egui) crate.
 - µWheel uses a modified Duration from the [time](https://github.com/time-rs/time) crate.
 - µWheel soft forks a [Hierarchical Timing Wheel](https://github.com/Bathtor/rust-hash-wheel-timer) made by @Bathtor.
+
+## Contributing
+
+See [Contributing](CONTRIBUTING.md).
+
+## Community
+
+If you find µWheel interesting and want to learn more, then join the [Discord](https://discord.gg/dhRxfck9jN) community!
 
 ## License
 
