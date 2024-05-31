@@ -250,7 +250,7 @@ impl<A: Aggregator> Wheel<A> {
     /// # Panics
     ///
     /// The function panics if the [Aggregator] does not implement ``combine_inverse`` since
-    /// it is not an invertible aggregator that supports prefix-sum range queries.    
+    /// it is not an invertible aggregator that supports prefix-sum range queries.
     pub fn to_prefix(&mut self) {
         assert!(A::invertible());
         if let Data::Deque(deque) = &self.data {
@@ -272,9 +272,7 @@ impl<A: Aggregator> Wheel<A> {
     ///
     /// Assumes that the data layout is `Deque` and A::combine_simd is implemented.
     pub fn to_simd(&mut self) {
-        if A::simd_support() {
-            self.data.maybe_make_contigious();
-        }
+        self.data.maybe_make_contigious();
     }
 
     /// Returns number of slots used
@@ -557,56 +555,66 @@ mod tests {
 
     #[test]
     fn compressed_deque_test() {
-        let compressed_conf = WheelConf::new(HOUR_TICK_MS, 24)
-            .with_retention_policy(RetentionPolicy::Keep)
-            .with_data_layout(DataLayout::Compressed(60));
-        let mut compressed_wheel = Wheel::<PcoSumAggregator>::new(compressed_conf);
+        let chunk_sizes = vec![8, 24, 60, 120, 160];
 
-        let conf = WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
-        let mut wheel = Wheel::<U32SumAggregator>::new(conf);
+        for chunk_size in chunk_sizes {
+            let compressed_conf = WheelConf::new(HOUR_TICK_MS, 24)
+                .with_retention_policy(RetentionPolicy::Keep)
+                .with_data_layout(DataLayout::Compressed(chunk_size));
+            let mut compressed_wheel = Wheel::<PcoSumAggregator>::new(compressed_conf);
 
-        for i in 0..120 {
-            wheel.insert_slot(WheelSlot::with_total(Some(i)));
-            compressed_wheel.insert_slot(WheelSlot::with_total(Some(i)));
+            let conf =
+                WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
+            let mut wheel = Wheel::<U32SumAggregator>::new(conf);
 
-            wheel.tick();
-            compressed_wheel.tick();
+            for i in 0..120 {
+                wheel.insert_slot(WheelSlot::with_total(Some(i)));
+                compressed_wheel.insert_slot(WheelSlot::with_total(Some(i)));
+
+                wheel.tick();
+                compressed_wheel.tick();
+            }
+
+            assert_eq!(compressed_wheel.range(0..4), wheel.range(0..4));
+            assert_eq!(
+                compressed_wheel.combine_range(0..4),
+                wheel.combine_range(0..4)
+            );
+
+            assert_eq!(compressed_wheel.range(55..75), wheel.range(55..75));
+            assert_eq!(
+                compressed_wheel.combine_range(55..75),
+                wheel.combine_range(55..75)
+            );
+
+            assert_eq!(
+                wheel.combine_range(60..120),
+                compressed_wheel.combine_range(60..120)
+            );
+
+            assert_eq!(wheel.range(60..120), compressed_wheel.range(60..120));
+
+            // add half of the chunk_size to check whether it still works as intended
+            for i in 0u32..(chunk_size as u32 / 2) {
+                wheel.insert_slot(WheelSlot::with_total(Some(i)));
+                compressed_wheel.insert_slot(WheelSlot::with_total(Some(i)));
+
+                wheel.tick();
+                compressed_wheel.tick();
+            }
+
+            assert_eq!(compressed_wheel.range(55..75), wheel.range(55..75));
+            assert_eq!(
+                compressed_wheel.combine_range(55..75),
+                wheel.combine_range(55..75)
+            );
+
+            assert_eq!(wheel.range(60..85), compressed_wheel.range(60..85));
+            assert_eq!(
+                compressed_wheel.combine_range(60..85),
+                wheel.combine_range(60..85)
+            );
         }
-
-        let compressed_result = compressed_wheel.combine_range(0..4);
-        let result = wheel.combine_range(0..4);
-        assert_eq!(compressed_result, result);
-
-        assert_eq!(
-            compressed_wheel.combine_range(0..4),
-            wheel.combine_range(0..4)
-        );
-        assert_eq!(
-            compressed_wheel.combine_range(55..75),
-            wheel.combine_range(55..75)
-        );
-        assert_eq!(
-            wheel.combine_range(60..120),
-            compressed_wheel.combine_range(60..120)
-        );
-
-        // add half of the chunk_size to check whether it still works as intended
-        for i in 0..30 {
-            wheel.insert_slot(WheelSlot::with_total(Some(i)));
-            compressed_wheel.insert_slot(WheelSlot::with_total(Some(i)));
-
-            wheel.tick();
-            compressed_wheel.tick();
-        }
-
-        assert_eq!(
-            compressed_wheel.combine_range(55..75),
-            wheel.combine_range(55..75)
-        );
-        assert_eq!(
-            compressed_wheel.combine_range(60..85),
-            wheel.combine_range(60..85)
-        );
     }
 
     #[test]
