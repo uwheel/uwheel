@@ -197,6 +197,7 @@ pub struct TemplateApp {
     #[serde(skip)]
     end_date: Option<NaiveDate>,
     end_time: String,
+    query_result: String,
 }
 
 fn build_wheel(watermark: u64) -> RwWheel<DemoAggregator> {
@@ -256,6 +257,7 @@ impl Default for TemplateApp {
             start_time: "00:00:00".to_string(),
             end_date: None,
             end_time: "00:00:00".to_string(),
+            query_result: "".to_owned(),
         }
     }
 }
@@ -622,6 +624,7 @@ impl eframe::App for TemplateApp {
             start_time,
             end_date,
             end_time,
+            query_result,
         } = self;
 
         let update_haw_labels =
@@ -988,7 +991,7 @@ impl eframe::App for TemplateApp {
             #[cfg(not(target_arch = "wasm32"))]
             puffin::profile_scope!("query_panel");
 
-            ui.heading("🗠 Queries");
+            ui.heading("🗠 Query Panel");
             ui.separator();
             ui.heading("Intervals");
             // TODO: add measure on each call
@@ -1083,24 +1086,7 @@ impl eframe::App for TemplateApp {
             });
             ui.separator();
 
-            ui.heading("Serialize");
-            ui.label(
-                RichText::new(format!("Encoded bytes (postcard): {}", encoded_bytes_len)).strong(),
-            );
-            ui.label(
-                RichText::new(format!("Compressed bytes (lz4): {}", compressed_bytes_len)).strong(),
-            );
-            if ui.button("Run").clicked() {
-                let wheel = plot_wheel.borrow();
-                let bytes = to_allocvec(wheel.read()).unwrap();
-                let lz4_compressed = lz4_flex::compress_prepend_size(&bytes);
-                *encoded_bytes_len = bytes.len();
-                *compressed_bytes_len = lz4_compressed.len();
-            }
-
-            ui.separator();
-
-            ui.heading("Query");
+            ui.heading("Custom Range");
             let start_date =
                 start_date.get_or_insert_with(|| chrono::offset::Utc::now().date_naive());
             let start_button = DatePickerButton::new(start_date).id_source("StartDatePicker");
@@ -1111,23 +1097,17 @@ impl eframe::App for TemplateApp {
             ui.horizontal(|ui| {
                 ui.label("Start Date");
                 ui.add(start_button);
-            });
-            ui.horizontal(|ui| {
-                ui.label("Start Time (hh:mm:ss): ");
                 ui.text_edit_singleline(start_time);
             });
 
             ui.horizontal(|ui| {
                 ui.label("End Date");
                 ui.add(end_button);
-            });
-
-            ui.horizontal(|ui| {
-                ui.label("End Time (hh:mm:ss):");
                 ui.text_edit_singleline(end_time);
             });
 
-            if ui.button("Execute").clicked() {
+            ui.label(&format!("Result: {}", query_result));
+            if ui.button("Run").clicked() {
                 let start = NaiveDateTime::parse_from_str(
                     &format!("{} {}", start_date, start_time),
                     "%Y-%m-%d %H:%M:%S",
@@ -1140,10 +1120,40 @@ impl eframe::App for TemplateApp {
                 .unwrap();
                 let start_ms = start.and_utc().timestamp_millis() as u64;
                 let end_ms = end.and_utc().timestamp_millis() as u64;
-                let range = WheelRange::new_unchecked(start_ms, end_ms);
-                let res = star_wheel.borrow().read().combine_range_and_lower(range);
-                dbg!(res);
-                dbg!(start, end);
+
+                // SAFETY: ensure that start_ms is less than end_ms
+                if end_ms > start_ms {
+                    let range = WheelRange::new_unchecked(start_ms, end_ms);
+                    let res = plot_wheel
+                        .borrow()
+                        .read()
+                        .combine_range_and_lower(range)
+                        .unwrap_or(0);
+
+                    *query_result = res.to_string();
+                } else {
+                    log.push_front(LogEntry::Red(
+                        "End range needs to be greater than start range".to_string(),
+                    ));
+                }
+            }
+
+            ui.separator();
+
+            ui.heading("Serialize µWheel");
+
+            ui.label(
+                RichText::new(format!("Encoded bytes (postcard): {}", encoded_bytes_len)).strong(),
+            );
+            ui.label(
+                RichText::new(format!("Compressed bytes (lz4): {}", compressed_bytes_len)).strong(),
+            );
+            if ui.button("Run").clicked() {
+                let wheel = plot_wheel.borrow();
+                let bytes = to_allocvec(wheel.read()).unwrap();
+                let lz4_compressed = lz4_flex::compress_prepend_size(&bytes);
+                *encoded_bytes_len = bytes.len();
+                *compressed_bytes_len = lz4_compressed.len();
             }
 
             ui.separator();
@@ -1168,7 +1178,6 @@ impl eframe::App for TemplateApp {
                     }
                 },
             );
-            // TODO: add custom interval query option
         });
 
         let _open = about_open.get();
