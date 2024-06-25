@@ -198,27 +198,22 @@ pub struct TemplateApp {
     end_date: Option<NaiveDate>,
     end_time: String,
     query_result: String,
+    explain_query: bool,
 }
 
 fn build_wheel(watermark: u64) -> RwWheel<DemoAggregator> {
     let mut conf = HawConf::default().with_watermark(watermark);
-    conf.seconds
-        .set_retention_policy(RetentionPolicy::KeepWithLimit(60));
+    conf.seconds.set_retention_policy(RetentionPolicy::Keep);
 
-    conf.minutes
-        .set_retention_policy(RetentionPolicy::KeepWithLimit(60));
+    conf.minutes.set_retention_policy(RetentionPolicy::Keep);
 
-    conf.hours
-        .set_retention_policy(RetentionPolicy::KeepWithLimit(24));
+    conf.hours.set_retention_policy(RetentionPolicy::Keep);
 
-    conf.days
-        .set_retention_policy(RetentionPolicy::KeepWithLimit(7));
+    conf.days.set_retention_policy(RetentionPolicy::Keep);
 
-    conf.weeks
-        .set_retention_policy(RetentionPolicy::KeepWithLimit(52));
+    conf.weeks.set_retention_policy(RetentionPolicy::Keep);
 
-    conf.years
-        .set_retention_policy(RetentionPolicy::KeepWithLimit(10));
+    conf.years.set_retention_policy(RetentionPolicy::Keep);
 
     let conf = Conf::default().with_haw_conf(conf);
     RwWheel::with_conf(conf)
@@ -258,6 +253,7 @@ impl Default for TemplateApp {
             end_date: None,
             end_time: "00:00:00".to_string(),
             query_result: "".to_owned(),
+            explain_query: false,
         }
     }
 }
@@ -625,6 +621,7 @@ impl eframe::App for TemplateApp {
             end_date,
             end_time,
             query_result,
+            explain_query,
         } = self;
 
         let update_haw_labels =
@@ -1107,36 +1104,53 @@ impl eframe::App for TemplateApp {
             });
 
             ui.label(&format!("Result: {}", query_result));
-            if ui.button("Run").clicked() {
-                let start = NaiveDateTime::parse_from_str(
-                    &format!("{} {}", start_date, start_time),
-                    "%Y-%m-%d %H:%M:%S",
-                )
-                .unwrap();
-                let end = NaiveDateTime::parse_from_str(
-                    &format!("{} {}", end_date, end_time),
-                    "%Y-%m-%d %H:%M:%S",
-                )
-                .unwrap();
-                let start_ms = start.and_utc().timestamp_millis() as u64;
-                let end_ms = end.and_utc().timestamp_millis() as u64;
+            ui.horizontal(|ui| {
+                if ui.button("Run").clicked() {
+                    let start = NaiveDateTime::parse_from_str(
+                        &format!("{} {}", start_date, start_time),
+                        "%Y-%m-%d %H:%M:%S",
+                    )
+                    .unwrap();
+                    let end = NaiveDateTime::parse_from_str(
+                        &format!("{} {}", end_date, end_time),
+                        "%Y-%m-%d %H:%M:%S",
+                    )
+                    .unwrap();
+                    let start_ms = start.and_utc().timestamp_millis() as u64;
+                    let end_ms = end.and_utc().timestamp_millis() as u64;
 
-                // SAFETY: ensure that start_ms is less than end_ms
-                if end_ms > start_ms {
-                    let range = WheelRange::new_unchecked(start_ms, end_ms);
-                    let res = plot_wheel
-                        .borrow()
-                        .read()
-                        .combine_range_and_lower(range)
-                        .unwrap_or(0);
+                    // SAFETY: ensure that start_ms is less than end_ms
+                    if end_ms > start_ms {
+                        let range = WheelRange::new_unchecked(start_ms, end_ms);
 
-                    *query_result = res.to_string();
-                } else {
-                    log.push_front(LogEntry::Red(
-                        "End range needs to be greater than start range".to_string(),
-                    ));
+                        let res = plot_wheel
+                            .borrow()
+                            .read()
+                            .combine_range_and_lower(range)
+                            .unwrap_or(0);
+
+                        *query_result = res.to_string();
+
+                        if *explain_query {
+                            if let Some(plan) = plot_wheel
+                                .borrow()
+                                .read()
+                                .as_ref()
+                                .explain_combine_range(range)
+                            {
+                                log.push_front(LogEntry::Green(format!("Query Plan: {:#?}", plan)));
+                            } else {
+                                dbg!("No plan found");
+                            }
+                        }
+                    } else {
+                        log.push_front(LogEntry::Red(
+                            "End range needs to be greater than start range".to_string(),
+                        ));
+                    }
                 }
-            }
+                ui.checkbox(explain_query, "EXPLAIN ANALYZE");
+            });
 
             ui.separator();
 
