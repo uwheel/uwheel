@@ -4,8 +4,10 @@ use std::{
     rc::Rc,
 };
 
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use eframe::egui::{self};
 use egui::{Color32, Response, RichText, ScrollArea, Ui};
+use egui_extras::DatePickerButton;
 use egui_plot::{Bar, BarChart, Legend, Plot, PlotPoint};
 use hdrhistogram::Histogram;
 use postcard::to_allocvec;
@@ -17,6 +19,7 @@ use uwheel::{
     Entry,
     NumericalDuration,
     RwWheel,
+    WheelRange,
 };
 
 thread_local! {
@@ -185,10 +188,19 @@ pub struct TemplateApp {
     compressed_bytes_len: usize,
     about: About,
     about_open: Cell<bool>,
+    #[serde(skip)]
+    insert_date: Option<NaiveDate>,
+    insert_time: String,
+    #[serde(skip)]
+    start_date: Option<NaiveDate>,
+    start_time: String,
+    #[serde(skip)]
+    end_date: Option<NaiveDate>,
+    end_time: String,
 }
 
-fn build_wheel() -> RwWheel<DemoAggregator> {
-    let mut conf = HawConf::default();
+fn build_wheel(watermark: u64) -> RwWheel<DemoAggregator> {
+    let mut conf = HawConf::default().with_watermark(watermark);
     conf.seconds
         .set_retention_policy(RetentionPolicy::KeepWithLimit(60));
 
@@ -214,7 +226,16 @@ fn build_wheel() -> RwWheel<DemoAggregator> {
 impl Default for TemplateApp {
     #[allow(clippy::redundant_closure)]
     fn default() -> Self {
-        let wheel = build_wheel();
+        let watermark_date = chrono::Local::now().naive_local();
+        let watermark_date = watermark_date.with_second(0).unwrap();
+        let mut watermark_ms = watermark_date.and_utc().timestamp_millis() as u64;
+        watermark_ms = align_timestamp_round(watermark_ms as i64) as u64;
+        fn align_timestamp_round(timestamp_ms: i64) -> i64 {
+            // Add 500 to bias towards rounding up for values exactly in between
+            (timestamp_ms) / 1000 * 1000
+        }
+
+        let wheel = build_wheel(watermark_ms);
 
         let labels = HawLabels::new(&wheel);
         Self {
@@ -229,6 +250,12 @@ impl Default for TemplateApp {
             compressed_bytes_len: 0,
             about: Default::default(),
             about_open: Cell::new(true),
+            insert_date: None,
+            insert_time: watermark_date.time().format("%H:%M:%S").to_string(),
+            start_date: None,
+            start_time: "00:00:00".to_string(),
+            end_date: None,
+            end_time: "00:00:00".to_string(),
         }
     }
 }
@@ -276,9 +303,9 @@ impl TemplateApp {
 
         let mut bars = Vec::new();
         if let Some(seconds_wheel) = wheel.read().as_ref().seconds() {
-            for i in 1..=uwheel::SECONDS {
+            for i in 0..=uwheel::SECONDS - 1 {
                 let val = seconds_wheel.lower_at(i).unwrap_or(0) as f64;
-                let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Second));
+                let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Second));
                 pos += 1.0;
                 bars.push(bar);
             }
@@ -292,9 +319,9 @@ impl TemplateApp {
         // MINUTES
         let mut bars = Vec::new();
         if let Some(minutes_wheel) = wheel.read().as_ref().minutes() {
-            for i in 1..=uwheel::MINUTES {
+            for i in 0..=uwheel::MINUTES - 1 {
                 let val = minutes_wheel.lower_at(i).unwrap_or(0) as f64;
-                let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Minute));
+                let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Minute));
                 pos += 1.0;
                 bars.push(bar);
             }
@@ -308,9 +335,9 @@ impl TemplateApp {
         // HOURS
         let mut bars = Vec::new();
         if let Some(hours_wheel) = wheel.read().as_ref().hours() {
-            for i in 1..=uwheel::HOURS {
+            for i in 0..=uwheel::HOURS - 1 {
                 let val = hours_wheel.lower_at(i).unwrap_or(0) as f64;
-                let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Hour));
+                let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Hour));
                 pos += 1.0;
                 bars.push(bar);
             }
@@ -323,9 +350,9 @@ impl TemplateApp {
 
         let mut bars = Vec::new();
         if let Some(days_wheel) = wheel.read().as_ref().days() {
-            for i in 1..=uwheel::DAYS {
+            for i in 0..=uwheel::DAYS - 1 {
                 let val = days_wheel.lower_at(i).unwrap_or(0) as f64;
-                let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Day));
+                let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Day));
                 pos += 1.0;
                 bars.push(bar);
             }
@@ -338,9 +365,9 @@ impl TemplateApp {
 
         let mut bars = Vec::new();
         if let Some(weeks_wheel) = wheel.read().as_ref().weeks() {
-            for i in 1..=uwheel::WEEKS {
+            for i in 0..=uwheel::WEEKS - 1 {
                 let val = weeks_wheel.lower_at(i).unwrap_or(0) as f64;
-                let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Week));
+                let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Week));
                 pos += 1.0;
                 bars.push(bar);
             }
@@ -353,9 +380,9 @@ impl TemplateApp {
 
         let mut bars = Vec::new();
         if let Some(years_wheel) = wheel.read().as_ref().years() {
-            for i in 1..=uwheel::YEARS {
+            for i in 0..=uwheel::YEARS - 1 {
                 let val = years_wheel.lower_at(i).unwrap_or(0) as f64;
-                let bar = Bar::new(pos, val).name(fmt_str(i, Granularity::Year));
+                let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Year));
                 pos += 1.0;
                 bars.push(bar);
             }
@@ -582,13 +609,19 @@ impl eframe::App for TemplateApp {
             tick_granularity,
             log,
             star_wheel,
-            timestamp,
+            timestamp: _,
             aggregate,
             ticks,
             encoded_bytes_len,
             compressed_bytes_len,
             about,
             about_open,
+            insert_date,
+            insert_time,
+            start_date,
+            start_time,
+            end_date,
+            end_time,
         } = self;
 
         let update_haw_labels =
@@ -697,12 +730,56 @@ impl eframe::App for TemplateApp {
                 ui.label("Aggregate: ");
                 ui.text_edit_singleline(aggregate);
             });
+
+            let insert_date = insert_date.get_or_insert_with(|| chrono::Local::now().date_naive());
+            let insert_button = DatePickerButton::new(insert_date).id_source("InsertDatePicker");
+
             ui.horizontal(|ui| {
                 ui.label("Timestamp: ");
-                ui.text_edit_singleline(timestamp);
+                ui.add(insert_button);
+                ui.text_edit_singleline(insert_time);
             });
 
             if ui.button("Insert").clicked() {
+                if let Ok(time) = NaiveTime::parse_from_str(insert_time, "%H:%M:%S") {
+                    let timestamp_ms = NaiveDateTime::parse_from_str(
+                        &format!("{} {}", insert_date, time),
+                        "%Y-%m-%d %H:%M:%S",
+                    )
+                    .unwrap()
+                    .and_utc()
+                    .timestamp_millis() as u64;
+                    let watermark = star_wheel.borrow().watermark();
+
+                    if timestamp_ms < watermark {
+                        log.push_front(LogEntry::Red(format!(
+                            "Cannot insert timestamp {} before watermark {}",
+                            timestamp_ms, watermark
+                        )));
+                    } else {
+                        match aggregate.parse::<u64>() {
+                            Ok(value) => {
+                                star_wheel
+                                    .borrow_mut()
+                                    .insert(Entry::new(value, timestamp_ms));
+                                log.push_front(LogEntry::Green(format!(
+                                    "Inserted {} with timestamp {}",
+                                    aggregate, timestamp_ms
+                                )));
+                            }
+                            Err(_) => {
+                                log.push_front(LogEntry::Red(format!(
+                                    "Cannot parse {} to a u64",
+                                    &aggregate,
+                                )));
+                            }
+                        }
+                    }
+                } else {
+                    log.push_front(LogEntry::Red("Cannot parse time".to_string()));
+                }
+
+                /*
                 match (aggregate.parse::<u64>(), timestamp.parse::<u64>()) {
                     (Ok(aggregate), Ok(timestamp)) => {
                         star_wheel
@@ -732,6 +809,7 @@ impl eframe::App for TemplateApp {
                         ));
                     }
                 }
+                */
             }
             ui.separator();
             ui.heading("Tick");
@@ -765,8 +843,7 @@ impl eframe::App for TemplateApp {
 
                     log.push_front(LogEntry::Green(format!(
                         "Advanced time by {} {:?}",
-                        ticks,
-                        &tick_granularity
+                        ticks, &tick_granularity
                     )));
                     update_haw_labels(labels, star_wheel);
                 }
@@ -783,13 +860,7 @@ impl eframe::App for TemplateApp {
 
             ui.label(RichText::new(format!("Aggregator: {}", aggregator_name)).strong());
             let size_bytes = plot_wheel.borrow().size_bytes();
-            ui.label(
-                RichText::new(format!(
-                    "Memory Size Bytes: {}",
-                    size_bytes,
-                ))
-                .strong(),
-            );
+            ui.label(RichText::new(format!("Memory Size Bytes: {}", size_bytes,)).strong());
             ui.label(
                 RichText::new(format!(
                     "Total Wheel Slots: {}",
@@ -836,7 +907,14 @@ impl eframe::App for TemplateApp {
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Cycle time: ").strong());
                 ui.label(
-                    RichText::new(star_wheel.borrow().read().current_time_in_cycle().to_string()).strong(),
+                    RichText::new(
+                        star_wheel
+                            .borrow()
+                            .read()
+                            .current_time_in_cycle()
+                            .to_string(),
+                    )
+                    .strong(),
                 );
             });
             ui.horizontal(|ui| {
@@ -872,7 +950,8 @@ impl eframe::App for TemplateApp {
 
             ui.horizontal(|ui| {
                 if ui.button("Reset").clicked() {
-                    *star_wheel.borrow_mut() = build_wheel();
+                    let watermark = star_wheel.borrow().watermark();
+                    *star_wheel.borrow_mut() = build_wheel(watermark);
                     update_haw_labels(labels, star_wheel);
                 }
                 if ui.button("Simulate").clicked() {
@@ -1017,6 +1096,54 @@ impl eframe::App for TemplateApp {
                 let lz4_compressed = lz4_flex::compress_prepend_size(&bytes);
                 *encoded_bytes_len = bytes.len();
                 *compressed_bytes_len = lz4_compressed.len();
+            }
+
+            ui.separator();
+
+            ui.heading("Query");
+            let start_date =
+                start_date.get_or_insert_with(|| chrono::offset::Utc::now().date_naive());
+            let start_button = DatePickerButton::new(start_date).id_source("StartDatePicker");
+
+            let end_date = end_date.get_or_insert_with(|| chrono::offset::Utc::now().date_naive());
+            let end_button = DatePickerButton::new(end_date).id_source("EndDatePicker");
+
+            ui.horizontal(|ui| {
+                ui.label("Start Date");
+                ui.add(start_button);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Start Time (hh:mm:ss): ");
+                ui.text_edit_singleline(start_time);
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("End Date");
+                ui.add(end_button);
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("End Time (hh:mm:ss):");
+                ui.text_edit_singleline(end_time);
+            });
+
+            if ui.button("Execute").clicked() {
+                let start = NaiveDateTime::parse_from_str(
+                    &format!("{} {}", start_date, start_time),
+                    "%Y-%m-%d %H:%M:%S",
+                )
+                .unwrap();
+                let end = NaiveDateTime::parse_from_str(
+                    &format!("{} {}", end_date, end_time),
+                    "%Y-%m-%d %H:%M:%S",
+                )
+                .unwrap();
+                let start_ms = start.and_utc().timestamp_millis() as u64;
+                let end_ms = end.and_utc().timestamp_millis() as u64;
+                let range = WheelRange::new_unchecked(start_ms, end_ms);
+                let res = star_wheel.borrow().read().combine_range_and_lower(range);
+                dbg!(res);
+                dbg!(start, end);
             }
 
             ui.separator();

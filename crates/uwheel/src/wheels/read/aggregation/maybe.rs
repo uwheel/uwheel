@@ -127,7 +127,7 @@ impl<A: Aggregator> MaybeWheel<A> {
                 Granularity::Hour => distance.whole_hours(),
                 Granularity::Day => distance.whole_days(),
             } as usize;
-            let start_slot = slot_distance - slots;
+            let start_slot = slot_distance.saturating_sub(slots);
             let end_slot = start_slot + slots;
             // SAFETY: bounds check whether the calculated start and end slots are valid
             if wheel.len() < end_slot {

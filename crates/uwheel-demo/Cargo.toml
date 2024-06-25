@@ -9,14 +9,18 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 eframe = { version = "0.27.2", default-features = false, features = [
-  #"accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
-  "default_fonts", # Embed the default egui fonts.
-  "glow",          # Use the glow rendering backend. Alternative: "wgpu".
-  "persistence",   # Enable restoring app state when restarting the app.
+    #"accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts", # Embed the default egui fonts.
+    "glow",          # Use the glow rendering backend. Alternative: "wgpu".
+    "persistence",   # Enable restoring app state when restarting the app.
 ] }
 uwheel = { workspace = true, features = ["serde"] }
 egui_plot = "0.27.2"
-egui_extras = { version = "0.27.2", features = ["default", "image"] }
+egui_extras = { version = "0.27.2", features = [
+    "default",
+    "image",
+    "datepicker",
+] }
 image = { version = "0.24", default-features = false, features = ["png"] }
 fastrand = { workspace = true, features = ["js"] }
 hdrhistogram.workspace = true
@@ -24,6 +28,7 @@ lz4_flex.workspace = true
 postcard.workspace = true
 time = { version = "0.3.17", default-features = false }
 log = { version = "0.4", features = ["std"] }
+chrono = "0.4"
 
 # You only need serde if you want app persistence:
 serde = { version = "1", features = ["derive"] }
