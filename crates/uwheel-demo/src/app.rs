@@ -271,13 +271,13 @@ impl TemplateApp {
         let fmt_str = |i: usize, gran: Granularity| -> String { format!("{} {:?} ago", i, gran) };
 
         // Write-ahead chart
-        let mut pos: f64 = -1.0;
+        let mut pos: f64 = 1.0;
         let mut bars = Vec::new();
 
         for (y_pos, i) in (0..63).enumerate() {
             let val = *wheel.borrow_mut().write().at(i + 1).unwrap_or(&0) as f64;
             let bar = Bar::new(pos, val).name(format!("{} seconds ahead", y_pos + 1));
-            pos -= 1.0;
+            pos += 1.0;
             bars.push(bar);
         }
         let write_ahead_chart = BarChart::new(bars)
@@ -287,10 +287,10 @@ impl TemplateApp {
             .name("Write-ahead");
 
         // Watermark
-        pos = 1.0;
+        pos = 0.0;
         let watermark = wheel.borrow().watermark();
         let watermark_agg = *wheel.borrow_mut().write().at(0).unwrap_or(&0) as f64;
-        let bar = Bar::new(0.0, watermark_agg).name(to_offset_datetime(watermark).to_string());
+        let bar = Bar::new(pos, watermark_agg).name(to_offset_datetime(watermark).to_string());
         let watermark_chart = BarChart::new(vec![bar])
             .highlight(true)
             .color(WATERMARK_COLOR)
@@ -299,12 +299,15 @@ impl TemplateApp {
 
         let wheel = wheel.borrow();
 
+        // in order to start below the watermark
+        pos -= 1.0;
+
         let mut bars = Vec::new();
         if let Some(seconds_wheel) = wheel.read().as_ref().seconds() {
             for i in 0..=uwheel::SECONDS - 1 {
                 let val = seconds_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Second));
-                pos += 1.0;
+                pos -= 1.0;
                 bars.push(bar);
             }
         }
@@ -320,7 +323,7 @@ impl TemplateApp {
             for i in 0..=uwheel::MINUTES - 1 {
                 let val = minutes_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Minute));
-                pos += 1.0;
+                pos -= 1.0;
                 bars.push(bar);
             }
         }
@@ -336,7 +339,7 @@ impl TemplateApp {
             for i in 0..=uwheel::HOURS - 1 {
                 let val = hours_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Hour));
-                pos += 1.0;
+                pos -= 1.0;
                 bars.push(bar);
             }
         }
@@ -351,7 +354,7 @@ impl TemplateApp {
             for i in 0..=uwheel::DAYS - 1 {
                 let val = days_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Day));
-                pos += 1.0;
+                pos -= 1.0;
                 bars.push(bar);
             }
         }
@@ -366,7 +369,7 @@ impl TemplateApp {
             for i in 0..=uwheel::WEEKS - 1 {
                 let val = weeks_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Week));
-                pos += 1.0;
+                pos -= 1.0;
                 bars.push(bar);
             }
         }
@@ -381,7 +384,7 @@ impl TemplateApp {
             for i in 0..=uwheel::YEARS - 1 {
                 let val = years_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Year));
-                pos += 1.0;
+                pos -= 1.0;
                 bars.push(bar);
             }
         }
@@ -1123,11 +1126,13 @@ impl eframe::App for TemplateApp {
                     if end_ms > start_ms {
                         let range = WheelRange::new_unchecked(start_ms, end_ms);
 
-                        let res = plot_wheel
-                            .borrow()
-                            .read()
-                            .combine_range_and_lower(range)
-                            .unwrap_or(0);
+                        let res = measure(|| {
+                            plot_wheel
+                                .borrow()
+                                .read()
+                                .combine_range_and_lower(range)
+                                .unwrap_or(0)
+                        });
 
                         *query_result = res.to_string();
 
