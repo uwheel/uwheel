@@ -1,27 +1,55 @@
 use std::time::SystemTime;
 
+use aggregator::Compression;
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
-use uwheel::{
-    aggregator::sum::U64SumAggregator,
-    wheels::read::aggregation::conf::RetentionPolicy,
-    *,
-};
+use uwheel::{wheels::read::aggregation::conf::RetentionPolicy, *};
+use wheels::read::aggregation::conf::DataLayout;
 
 // 2023-11-09 00:00:00
 const START_WATERMARK: u64 = 1699488000000;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("combine_range");
-    group.bench_function("combine_range_u64_sum", combine_range::<U64SumAggregator>);
+    group.bench_function(
+        "combine_range_u32_sum",
+        combine_range_normal::<SumAggregator>,
+    );
+
+    group.bench_function(
+        "combine_range_u32_sum_prefix",
+        combine_range_prefix::<SumAggregator>,
+    );
+
+    group.bench_function(
+        "combine_range_u32_sum_compression_pco",
+        combine_range_compressed::<SumAggregator>,
+    );
+
     group.bench_function(
         "combined_aggregation_plan",
-        combined_aggregation_plan::<U64SumAggregator>,
+        combined_aggregation_plan::<SumAggregator>,
     );
     group.finish();
 }
-fn combine_range<A: Aggregator<PartialAggregate = u64>>(bencher: &mut Bencher) {
+
+enum HawType {
+    Compressed,
+    Prefix,
+    Normal,
+}
+fn combine_range_normal<A: Aggregator<PartialAggregate = u32>>(bencher: &mut Bencher) {
+    combine_range::<A>(HawType::Normal, bencher)
+}
+fn combine_range_prefix<A: Aggregator<PartialAggregate = u32>>(bencher: &mut Bencher) {
+    combine_range::<A>(HawType::Prefix, bencher)
+}
+fn combine_range_compressed<A: Aggregator<PartialAggregate = u32>>(bencher: &mut Bencher) {
+    combine_range::<A>(HawType::Compressed, bencher)
+}
+
+fn combine_range<A: Aggregator<PartialAggregate = u32>>(haw_type: HawType, bencher: &mut Bencher) {
     // 2023-11-09 00:00:00
-    let haw: Haw<A> = prepare_haw(START_WATERMARK, 3600 * 14);
+    let haw: Haw<A> = prepare_haw(START_WATERMARK, 3600 * 14, haw_type);
     let watermark = haw.watermark();
     bencher.iter(|| {
         let (start, end) = generate_seconds_range(START_WATERMARK, watermark);
@@ -34,9 +62,9 @@ fn combine_range<A: Aggregator<PartialAggregate = u64>>(bencher: &mut Bencher) {
     println!("{:?}", haw.stats());
 }
 
-fn combined_aggregation_plan<A: Aggregator<PartialAggregate = u64>>(bencher: &mut Bencher) {
+fn combined_aggregation_plan<A: Aggregator<PartialAggregate = u32>>(bencher: &mut Bencher) {
     // 2023-11-09 00:00:00
-    let haw: Haw<A> = prepare_haw(START_WATERMARK, 3600 * 14);
+    let haw: Haw<A> = prepare_haw(START_WATERMARK, 3600 * 14, HawType::Normal);
     let watermark = haw.watermark();
     bencher.iter(|| {
         let (start, end) = generate_seconds_range(START_WATERMARK, watermark);
@@ -83,18 +111,76 @@ pub fn generate_seconds_range(start_watermark: u64, watermark: u64) -> (u64, u64
     (random_start, random_start + duration_seconds)
 }
 
-fn prepare_haw<A: Aggregator<PartialAggregate = u64>>(
+fn prepare_haw<A: Aggregator<PartialAggregate = u32>>(
     start_watermark: u64,
     seconds: u64,
+    haw_type: HawType,
 ) -> Haw<A> {
-    let conf = HawConf::default()
+    let mut conf = HawConf::default()
         .with_watermark(start_watermark)
         .with_retention_policy(RetentionPolicy::Keep);
+    match haw_type {
+        HawType::Compressed => {
+            conf.seconds.set_data_layout(DataLayout::Compressed(60));
+            conf.minutes.set_data_layout(DataLayout::Compressed(60));
+            conf.hours.set_data_layout(DataLayout::Compressed(24));
+        }
+        HawType::Prefix => {}
+        HawType::Normal => {}
+    }
 
     let mut haw: Haw<A> = Haw::new(conf);
-    let deltas: Vec<Option<u64>> = (0..seconds).map(|_| Some(fastrand::u64(1..1000))).collect();
+    let deltas: Vec<Option<u32>> = (0..seconds).map(|_| Some(fastrand::u32(1..1000))).collect();
     haw.delta_advance(deltas);
+
+    haw.to_simd_wheels();
+
+    if let HawType::Prefix = haw_type {
+        haw.to_prefix_wheels();
+    }
+
     haw
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct SumAggregator;
+
+impl Aggregator for SumAggregator {
+    const IDENTITY: Self::PartialAggregate = 0;
+
+    type Input = u32;
+    type PartialAggregate = u32;
+    type MutablePartialAggregate = u32;
+    type Aggregate = u32;
+
+    fn lift(input: Self::Input) -> Self::MutablePartialAggregate {
+        input
+    }
+    fn combine_mutable(mutable: &mut Self::MutablePartialAggregate, input: Self::Input) {
+        *mutable += input
+    }
+    fn freeze(a: Self::MutablePartialAggregate) -> Self::PartialAggregate {
+        a
+    }
+
+    fn combine(a: Self::PartialAggregate, b: Self::PartialAggregate) -> Self::PartialAggregate {
+        a + b
+    }
+    fn lower(a: Self::PartialAggregate) -> Self::Aggregate {
+        a
+    }
+
+    fn combine_inverse() -> Option<aggregator::InverseFn<Self::PartialAggregate>> {
+        Some(|a, b| a - b)
+    }
+
+    fn compression() -> Option<Compression<Self::PartialAggregate>> {
+        let compressor =
+            |slice: &[u32]| pco::standalone::auto_compress(slice, pco::DEFAULT_COMPRESSION_LEVEL);
+        let decompressor =
+            |slice: &[u8]| pco::standalone::auto_decompress(slice).expect("failed to decompress");
+        Some(Compression::new(compressor, decompressor))
+    }
 }
 
 criterion_group!(benches, criterion_benchmark);

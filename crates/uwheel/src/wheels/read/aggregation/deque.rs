@@ -309,6 +309,7 @@ impl<A: Aggregator> CompressedDeque<A> {
 
     pub(crate) fn push_front(&mut self, agg: A::PartialAggregate) {
         self.buffer.push_front(agg);
+
         // if we have reached the chunk size then compress
         if self.buffer.len() == self.chunk_size {
             let compressor = A::compression().unwrap().compressor;
@@ -330,7 +331,8 @@ impl<A: Aggregator> CompressedDeque<A> {
     where
         R: RangeBounds<usize>,
     {
-        self.partial_range_deque(&range).range(range)
+        let (deque, new_range) = self.partial_range_deque(&range);
+        deque.range(new_range)
     }
 
     #[inline]
@@ -338,43 +340,88 @@ impl<A: Aggregator> CompressedDeque<A> {
     where
         R: RangeBounds<usize>,
     {
-        self.partial_range_deque(&range).combine_range(range)
+        let (deque, new_range) = self.partial_range_deque(&range);
+        deque.combine_range(new_range)
     }
 
     // helper method to build a temporary deque using the given range
     #[inline]
-    fn partial_range_deque<R>(&self, range: &R) -> MutablePartialDeque<A>
+    fn partial_range_deque<R>(&self, range: &R) -> (MutablePartialDeque<A>, Range<usize>)
     where
         R: RangeBounds<usize>,
     {
         let len = self.len();
 
         let start = match range.start_bound() {
-            Bound::Included(&n) => n,
-            Bound::Excluded(&n) => n + 1,
-            Bound::Unbounded => 0,
+            core::ops::Bound::Included(&n) => n,
+            core::ops::Bound::Excluded(&n) => n + 1,
+            core::ops::Bound::Unbounded => 0,
         };
         let end = match range.end_bound() {
-            Bound::Included(&n) => n + 1,
-            Bound::Excluded(&n) => n - 1,
-            Bound::Unbounded => len,
+            core::ops::Bound::Included(&n) => n + 1,
+            core::ops::Bound::Excluded(&n) => n,
+            core::ops::Bound::Unbounded => len,
         };
 
-        let query_len = end - start;
         let mut vec = Vec::new();
-        vec.extend_from_slice(self.buffer.as_slice());
 
-        // get len of range without the buffer
-        let without_buffer_len = query_len.saturating_sub(self.buffer.len());
-        // calculate number of chunks we need to decompress
-        let chunks = (without_buffer_len % self.chunk_size) + 1;
+        // number of slots to query
+        let slots = end - start;
+        let buffer_size = self.buffer.len();
+        let buffer_included = start <= self.chunk_size && buffer_size > 0;
+
+        // check whether we need to include the buffer which is not compressed
+        if buffer_included {
+            vec.extend_from_slice(&self.buffer.inner.iter().copied().collect::<Vec<_>>());
+        }
+
+        let start_after_buffer = start.saturating_sub(buffer_size);
+
+        // calculate start and end chunks
+        let start_chunk = start_after_buffer / self.chunk_size;
+        let end_chunk = end.saturating_sub(1).saturating_sub(buffer_size) / self.chunk_size;
+        let chunks_to_decompress = end_chunk - start_chunk + 1;
+
+        // SAFETY: we are sure that the compression fn is implemented since we assert it in the constructor
+        let decompressor = A::compression().unwrap().decompressor;
+
+        // Adjust the skip value based on whether the buffer is included
+        let skip_chunks = if buffer_included {
+            start_chunk.saturating_sub(1)
+        } else {
+            start_chunk
+        };
 
         // decompress chunks and extend slots
-        for chunk in self.chunks.iter().take(chunks) {
-            let decompressor = A::compression().unwrap().decompressor;
+        for chunk in self
+            .chunks
+            .iter()
+            .skip(skip_chunks)
+            .take(chunks_to_decompress)
+        {
             let decompressed_chunk = (decompressor)(chunk);
             vec.extend_from_slice(&decompressed_chunk);
         }
-        MutablePartialDeque::from_vec(vec)
+
+        // Build a partial deque from the partial aggregates
+        let partial_deque = MutablePartialDeque::from_vec(vec);
+
+        // If buffer is included and we are only querying the buffer itself then return directly
+        if buffer_included && end <= buffer_size {
+            (partial_deque, start..end)
+        } else {
+            // NOTE: buffer is not included hence we need to recalculate the start and end indices
+
+            // Calculate the remainder of the start index after the buffer
+            let start_rem = start_after_buffer % self.chunk_size;
+
+            // If buffer is included simply use the regular start point, else use the remainder
+            let new_start = if buffer_included { start } else { start_rem };
+
+            // calculate new end by adding total slots to new_start
+            let new_end = new_start + slots;
+
+            (partial_deque, new_start..new_end)
+        }
     }
 }
