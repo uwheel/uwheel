@@ -551,6 +551,26 @@ mod tests {
         let prefix_result = prefix_wheel.combine_range(0..4);
         let result = wheel.combine_range(0..4);
         assert_eq!(prefix_result, result);
+
+        // Test empty ranges
+        assert_eq!(prefix_wheel.combine_range(10..10), Some(0));
+        assert_eq!(wheel.combine_range(10..10), Some(0));
+
+        // Test full range
+        let full_range_prefix = prefix_wheel.combine_range(..);
+        let full_range_regular = wheel.combine_range(..);
+        assert_eq!(full_range_prefix, full_range_regular);
+
+        // Test single slot
+        for i in 0..30 {
+            let single_slot_prefix = prefix_wheel.combine_range(i..i + 1);
+            let single_slot_regular = wheel.combine_range(i..i + 1);
+            assert_eq!(
+                single_slot_prefix, single_slot_regular,
+                "Mismatch for single slot {}: prefix={:?}, regular={:?}",
+                i, single_slot_prefix, single_slot_regular
+            );
+        }
     }
 
     #[test]
@@ -639,6 +659,19 @@ mod tests {
         assert_eq!(deque.len(), 2);
         assert_eq!(deque.combine_range(..), Some(50));
         assert_eq!(deque.combine_range(0..2), Some(50));
+    }
+
+    #[test]
+    fn retention_drop_test() {
+        let conf = WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Drop);
+        let mut wheel = Wheel::<U64SumAggregator>::new(conf);
+
+        for i in 0..24 {
+            wheel.insert_slot(WheelSlot::with_total(Some(i)));
+            wheel.tick();
+        }
+        assert_eq!(wheel.total_slots(), 23);
+        wheel.tick();
     }
 
     #[test]

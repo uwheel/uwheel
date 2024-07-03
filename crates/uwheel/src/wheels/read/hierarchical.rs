@@ -1315,7 +1315,7 @@ where
     /// assert_eq!(haw.interval(1.seconds()), Some(0));
     /// assert_eq!(haw.interval(2.seconds()), Some(50));
     /// assert_eq!(haw.interval(3.seconds()), Some(50));
-    /// assert_eq!(haw.interval(4.seconds()), Some(60));  
+    /// assert_eq!(haw.interval(4.seconds()), Some(60));
     /// ```
     pub fn interval(&self, dur: Duration) -> Option<A::PartialAggregate> {
         self.interval_with_stats(dur).0
@@ -1939,5 +1939,115 @@ mod tests {
         let end = datetime!(2018 - 09 - 02 00:00:00 UTC);
 
         assert_eq!(haw.combine_range(WheelRange { start, end }), Some(172800));
+    }
+
+    #[test]
+    fn overlapping_ranges_test() {
+        let watermark = 1699488000000; // 2023-11-09 00:00:00
+        let conf = HawConf::default().with_watermark(watermark);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(conf);
+
+        let deltas = vec![Some(10), Some(20), Some(30), Some(40)];
+        haw.delta_advance(deltas);
+
+        // Test overlapping ranges
+        let range1 = WheelRange {
+            start: datetime!(2023-11-09 00:00:00 UTC),
+            end: datetime!(2023-11-09 00:00:02 UTC),
+        };
+        let range2 = WheelRange {
+            start: datetime!(2023-11-09 00:00:01 UTC),
+            end: datetime!(2023-11-09 00:00:03 UTC),
+        };
+
+        let range3 = WheelRange {
+            start: datetime!(2023-11-09 00:00:02 UTC),
+            end: datetime!(2023-11-09 00:00:04 UTC),
+        };
+
+        assert_eq!(haw.combine_range(range1), Some(30));
+        assert_eq!(haw.combine_range(range2), Some(50));
+        assert_eq!(haw.combine_range(range3), Some(70));
+    }
+
+    #[test]
+    fn sparse_data_test() {
+        let watermark = 1699488000000; // 2023-11-09 00:00:00
+        let conf = HawConf::default().with_watermark(watermark);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(conf);
+
+        // Add sparse data: values at 0s, 5s, and 10s
+        let deltas = vec![
+            Some(10),
+            None,
+            None,
+            None,
+            None,
+            Some(20),
+            None,
+            None,
+            None,
+            None,
+            Some(30),
+        ];
+        haw.delta_advance(deltas);
+
+        let start = datetime!(2023-11-09 00:00:00 UTC);
+        let end = datetime!(2023-11-09 00:00:11 UTC);
+        assert_eq!(haw.combine_range(WheelRange { start, end }), Some(60));
+        assert_eq!(
+            haw.range(WheelRange { start, end }),
+            Some(vec![
+                (1699488000000, 10),
+                (1699488001000, 0),
+                (1699488002000, 0),
+                (1699488003000, 0),
+                (1699488004000, 0),
+                (1699488005000, 20),
+                (1699488006000, 0),
+                (1699488007000, 0),
+                (1699488008000, 0),
+                (1699488009000, 0),
+                (1699488010000, 30),
+            ])
+        );
+    }
+
+    #[test]
+    fn empty_haw_test() {
+        let watermark = 1699488000000; // 2023-11-09 00:00:00
+        let conf = HawConf::default().with_watermark(watermark);
+        let haw: Haw<U64SumAggregator> = Haw::new(conf);
+
+        assert_eq!(haw.interval(1.seconds()), None);
+
+        let start = datetime!(2023-11-09 00:00:00 UTC);
+        let end = datetime!(2023-11-09 00:00:02 UTC);
+        assert_eq!(haw.combine_range(WheelRange { start, end }), None);
+        assert_eq!(haw.range(WheelRange { start, end }), None);
+    }
+
+    #[test]
+    fn out_of_bounds_query_test() {
+        let watermark = 1699488000000; // 2023-11-09 00:00:00
+        let conf = HawConf::default().with_watermark(watermark);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(conf);
+
+        let deltas = vec![Some(10), Some(20), Some(30), Some(40)];
+        haw.delta_advance(deltas);
+
+        // Query before the initial watermark + few seconds ahead
+        let before_and_in_range = WheelRange {
+            start: datetime!(2023-11-08 23:59:58 UTC),
+            end: datetime!(2023-11-09 00:00:01 UTC),
+        };
+        assert_eq!(haw.combine_range(before_and_in_range), Some(10));
+
+        // Query range ahead of the watemark
+        let outside_range = WheelRange {
+            start: datetime!(2023-11-09 00:00:05 UTC),
+            end: datetime!(2023-11-09 00:00:08 UTC),
+        };
+        assert_eq!(haw.combine_range(outside_range), None);
     }
 }

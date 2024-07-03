@@ -89,17 +89,16 @@ impl<A: Aggregator> WriterWheel<A> {
         // bump the watermark by 1 second as millis
         self.watermark += Duration::SECOND.whole_milliseconds() as u64;
 
+        // bump head + tail
+        self.head = self.wrap_add(self.head, 1);
+        let tail = self.tail;
+        self.tail = self.wrap_add(self.tail, 1);
+
         // advance the overflow wheel and check there are entries to aggregate
         for entry in self.overflow.advance_to(self.watermark) {
             self.insert(entry); // this is assumed to be safe if it was scheduled correctly
         }
 
-        // bump head
-        self.head = self.wrap_add(self.head, 1);
-
-        // bump tail and return the taken slot
-        let tail = self.tail;
-        self.tail = self.wrap_add(self.tail, 1);
         self.slot(tail).take()
     }
 
@@ -203,6 +202,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn empty_wheel_test() {
+        let mut wheel: WriterWheel<U64SumAggregator> =
+            WriterWheel::with_capacity_and_watermark(8, 0);
+        assert_eq!(wheel.head, 0);
+        assert_eq!(wheel.tail, 0);
+        assert_eq!(wheel.tick(), None);
+    }
+
+    #[test]
     fn write_ahead_test() {
         let mut wheel: WriterWheel<U64SumAggregator> =
             WriterWheel::with_capacity_and_watermark(16, 0);
@@ -240,5 +248,57 @@ mod tests {
         assert_eq!(wheel.tick(), Some(10));
         assert_eq!(wheel.head, 0);
         assert_eq!(wheel.tail, 0);
+    }
+
+    #[test]
+    fn wrap_around_test() {
+        let mut wheel: WriterWheel<U64SumAggregator> =
+            WriterWheel::with_capacity_and_watermark(4, 1000);
+        wheel.insert(Entry::new(1, 1000));
+        wheel.insert(Entry::new(2, 2000));
+        wheel.insert(Entry::new(3, 3000));
+        wheel.insert(Entry::new(4, 4000));
+        assert_eq!(wheel.tick(), Some(1));
+        assert_eq!(wheel.tick(), Some(2));
+        assert_eq!(wheel.tick(), Some(3));
+        assert_eq!(wheel.tick(), Some(4));
+        wheel.insert(Entry::new(5, 5000));
+        assert_eq!(wheel.head, 0);
+        assert_eq!(wheel.tail, 0);
+        assert_eq!(wheel.tick(), Some(5));
+    }
+
+    #[test]
+    fn late_event_handling_test() {
+        let mut wheel: WriterWheel<U64SumAggregator> =
+            WriterWheel::with_capacity_and_watermark(8, 0);
+        wheel.insert(Entry::new(10, 1000));
+        wheel.insert(Entry::new(20, 2000));
+        assert_eq!(wheel.tick(), None);
+        wheel.insert(Entry::new(5, 500)); // Late event
+        assert_eq!(wheel.at(0), Some(&10)); // Ensure late event was not added
+        assert_eq!(wheel.tick(), Some(10));
+    }
+
+    #[test]
+    fn overflow_test() {
+        let mut watermark = 0;
+        let write_ahead_capacity = 8;
+        let mut wheel: WriterWheel<U64SumAggregator> =
+            WriterWheel::with_capacity_and_watermark(write_ahead_capacity, watermark);
+
+        // Insert entries and ensure they are over the write ahead capacity
+        // meaning they will be scheduled to be aggregated later on
+        for _i in 0..1000 {
+            wheel.insert(Entry::new(1, watermark));
+            watermark += 1000;
+        }
+
+        let mut time = 0;
+        // Tick all the entries up to the watermark and ensure we get results as intended
+        while time < watermark {
+            assert_eq!(wheel.tick(), Some(1));
+            time += 1000;
+        }
     }
 }

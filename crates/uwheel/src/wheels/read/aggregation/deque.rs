@@ -255,7 +255,7 @@ impl<A: Aggregator> PrefixDeque<A> {
         let end = match range.end_bound() {
             Bound::Included(&n) => n + 1,
             Bound::Excluded(&n) => n - 1,
-            Bound::Unbounded => len,
+            Bound::Unbounded => len - 1,
         };
         A::prefix_query(self.prefix.as_slice(), start, end)
     }
