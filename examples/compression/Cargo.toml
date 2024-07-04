@@ -9,6 +9,7 @@ readme.workspace = true
 
 [dependencies]
 uwheel.workspace = true
+bitpacking.workspace = true
 fastrand.workspace = true
 clap.workspace = true
 pco.workspace = true
