@@ -1,6 +1,7 @@
 use std::time::SystemTime;
 
 use aggregator::Compression;
+use bitpacking::{BitPacker, BitPacker4x};
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 use uwheel::{wheels::read::aggregation::conf::RetentionPolicy, *};
 use wheels::read::aggregation::conf::DataLayout;
@@ -21,7 +22,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     );
 
     group.bench_function(
-        "combine_range_u32_sum_compression_pco",
+        "combine_range_u32_sum_bitpacking",
         combine_range_compressed::<SumAggregator>,
     );
 
@@ -121,9 +122,12 @@ fn prepare_haw<A: Aggregator<PartialAggregate = u32>>(
         .with_retention_policy(RetentionPolicy::Keep);
     match haw_type {
         HawType::Compressed => {
-            conf.seconds.set_data_layout(DataLayout::Compressed(60));
-            conf.minutes.set_data_layout(DataLayout::Compressed(60));
-            conf.hours.set_data_layout(DataLayout::Compressed(24));
+            conf.seconds
+                .set_data_layout(DataLayout::Compressed(BitPacker4x::BLOCK_LEN));
+            conf.minutes
+                .set_data_layout(DataLayout::Compressed(BitPacker4x::BLOCK_LEN));
+            conf.hours
+                .set_data_layout(DataLayout::Compressed(BitPacker4x::BLOCK_LEN));
         }
         HawType::Prefix => {}
         HawType::Normal => {}
@@ -175,10 +179,32 @@ impl Aggregator for SumAggregator {
     }
 
     fn compression() -> Option<Compression<Self::PartialAggregate>> {
-        let compressor =
-            |slice: &[u32]| pco::standalone::auto_compress(slice, pco::DEFAULT_COMPRESSION_LEVEL);
-        let decompressor =
-            |slice: &[u8]| pco::standalone::auto_decompress(slice).expect("failed to decompress");
+        let compressor = |slice: &[u32]| {
+            let bitpacker = BitPacker4x::new();
+            let num_bits = bitpacker.num_bits(slice);
+            let mut compressed = vec![0u8; BitPacker4x::BLOCK_LEN * 4];
+            let compressed_len = bitpacker.compress(slice, &mut compressed[..], num_bits);
+
+            // 1 bit for metadata + compressed data
+            let mut result = Vec::with_capacity(1 + compressed_len);
+            // Prepend metadata
+            result.push(num_bits);
+            // Append compressed data
+            result.extend_from_slice(&compressed[..compressed_len]);
+
+            result
+        };
+        let decompressor = |bytes: &[u8]| {
+            let bit_packer = BitPacker4x::new();
+            // Extract num bits metadata
+            let bits = bytes[0];
+            // Decompress data
+            let mut decompressed = vec![0u32; BitPacker4x::BLOCK_LEN];
+            bit_packer.decompress(&bytes[1..], &mut decompressed, bits);
+
+            decompressed
+        };
+
         Some(Compression::new(compressor, decompressor))
     }
 }

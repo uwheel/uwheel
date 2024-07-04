@@ -15,7 +15,7 @@ targets = []
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["std", "all", "avg", "sum", "min", "max", "smallvec"]
+default = ["std", "all", "avg", "sum", "min", "max"]
 std = ["serde?/std"]
 all = []
 avg = []
@@ -26,11 +26,11 @@ top_n = ["dep:hashbrown"]
 simd = ["dep:multiversion"]
 sync = ["dep:parking_lot", "std"]
 serde = [
-  "dep:serde",
-  "dep:serde-big-array",
-  "parking_lot?/serde",
-  "hashbrown?/serde",
-  "uwheel-stats?/serde",
+    "dep:serde",
+    "dep:serde-big-array",
+    "parking_lot?/serde",
+    "hashbrown?/serde",
+    "uwheel-stats?/serde",
 ]
 profiler = ["dep:uwheel-stats", "prettytable-rs", "std"]
 timer = []
@@ -50,13 +50,14 @@ smallvec = { workspace = true, optional = true }
 
 [dev-dependencies]
 time = { workspace = true, default-features = false, features = [
-  "macros",
-  "parsing",
+    "macros",
+    "parsing",
 ] }
 fastrand.workspace = true
 rand.workspace = true
 criterion.workspace = true
 pco.workspace = true
+bitpacking.workspace = true
 
 
 [[bench]]

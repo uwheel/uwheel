@@ -587,7 +587,7 @@ mod tests {
                 WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
             let mut wheel = Wheel::<U32SumAggregator>::new(conf);
 
-            for i in 0..120 {
+            for i in 0..150 {
                 wheel.insert_slot(WheelSlot::with_total(Some(i)));
                 compressed_wheel.insert_slot(WheelSlot::with_total(Some(i)));
 
