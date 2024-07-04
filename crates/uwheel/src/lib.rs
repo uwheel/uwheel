@@ -13,6 +13,8 @@
 //!    - Enables min aggregation
 //! - `max` (_enabled by default_)
 //!    - Enables max aggregation
+//! - `min_max` (_enabled by default_)
+//!    - Enables min-max aggregation
 //! - `all` (_enabled by default_)
 //!    - Enables all aggregation
 //! - `top_n`

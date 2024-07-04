@@ -15,6 +15,9 @@ pub mod max;
 /// Incremental MIN aggregation
 #[cfg(feature = "min")]
 pub mod min;
+/// Incremental MinMax aggregation for temporal pruning
+#[cfg(feature = "min_max")]
+pub mod min_max;
 /// Incremental SUM aggregation
 #[cfg(feature = "sum")]
 pub mod sum;

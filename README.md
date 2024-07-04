@@ -56,6 +56,7 @@ See more about its design [here](DESIGN.md) and try it out directly on the [web]
 | SUM |  Sum of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &check; |
 | MIN |  Minimum value of all inputs |  u16, u32, u64, i32, i16, i64, f32, f64 | &check;|
 | MAX |  Maximum value of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &check;|
+| MINMAX |  Minimum and Maximum value of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &cross;|
 | AVG |  Arithmetic mean of all inputs | u16, u32, u64, i16, i32, i64, f32, f64 | &cross; |
 | ALL |  Pre-computed SUM, AVG, MIN, MAX, COUNT | f64 | &cross;|
 | TOP N  |  Top N of all inputs | ``Aggregator`` with aggregate data that implements ``Ord`` | &cross;|
@@ -73,6 +74,8 @@ See a user-defined aggregator example [here](examples/aggregator/).
     - Enables min aggregation
 - `max` (_enabled by default_)
     - Enables max aggregation
+- `min_max` (_enabled by default_)
+    - Enables min-max aggregation
 - `all` (_enabled by default_)
     - Enables all aggregation
 - `top_n`
