@@ -1,7 +1,11 @@
 mod state;
 mod util;
 
-use crate::{aggregator::Aggregator, duration::Duration};
+use crate::{
+    aggregator::Aggregator,
+    duration::Duration,
+    wheels::read::hierarchical::WindowAggregate,
+};
 use state::State;
 
 #[cfg(not(feature = "std"))]
@@ -73,6 +77,30 @@ impl<A: Aggregator> WindowManager<A> {
         let window = WindowAggregator::with_capacity(pairs);
 
         Self { window, state }
+    }
+    pub fn handle_window(
+        &mut self,
+        watermark: u64,
+        windows: &mut Vec<WindowAggregate<A::PartialAggregate>>,
+    ) {
+        if watermark == self.state.next_window_end {
+            windows.push((watermark, self.window.query()));
+            self.clean_up_pairs();
+            self.state.next_window_end += self.state.slide as u64;
+        }
+    }
+
+    pub fn update_state(&mut self, watermark: u64) {
+        self.state.update_pair_len();
+        self.state.next_pair_end = watermark + self.state.current_pair_len as u64;
+        self.state.pair_ticks_remaining =
+            self.state.current_pair_duration().whole_seconds() as usize;
+    }
+
+    pub fn clean_up_pairs(&mut self) {
+        for _i in 0..self.state.total_pairs() {
+            self.window.pop();
+        }
     }
 }
 
@@ -382,6 +410,58 @@ mod tests {
                 (19000, 145),
                 (22000, 175)
             ]
+        );
+    }
+
+    #[test]
+    fn out_of_order_inserts_test() {
+        let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(1533081600000);
+        wheel.window(
+            Window::default()
+                .with_range(Duration::seconds(30))
+                .with_slide(Duration::seconds(10)),
+        );
+        wheel.insert(Entry::new(300, 1533081625000));
+        wheel.insert(Entry::new(100, 1533081605000));
+        wheel.insert(Entry::new(200, 1533081615000));
+        let results = wheel.advance_to(1533081630000);
+        assert_eq!(results, [(1533081630000, 600)]);
+    }
+
+    #[test]
+    fn edge_case_window_boundaries_test() {
+        let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(1533081600000);
+        wheel.window(
+            Window::default()
+                .with_range(Duration::seconds(10))
+                .with_slide(Duration::seconds(10)),
+        );
+        wheel.insert(Entry::new(100, 1533081609999)); // Just inside the window
+        wheel.insert(Entry::new(200, 1533081610000)); // On the boundary, start of new window (should not be included)
+        wheel.insert(Entry::new(300, 1533081610001)); // Just outside the window
+        let results = wheel.advance_to(1533081610000);
+        assert_eq!(results, [(1533081610000, 100)]);
+    }
+    #[test]
+    fn empty_window_test() {
+        let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(1533081600000);
+        wheel.window(
+            Window::default()
+                .with_range(Duration::seconds(30))
+                .with_slide(Duration::seconds(10)),
+        );
+        let results = wheel.advance_to(1533081630000);
+        assert_eq!(results, [(1533081630000, 0)]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn invalid_window_spec() {
+        let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(1533081600000);
+        wheel.window(
+            Window::default()
+                .with_range(Duration::seconds(10))
+                .with_slide(Duration::seconds(30)),
         );
     }
 }
