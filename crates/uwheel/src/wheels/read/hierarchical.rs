@@ -715,50 +715,32 @@ where
 
     // internal function to handle installed window queries
     fn handle_window_maybe(&mut self, windows: &mut Vec<WindowAggregate<A::PartialAggregate>>) {
-        // TODO: refactor this..
+        // NOTE: accessing window manager twice since we need to borrow mutably and immutably (self.combine_range)
+        if let Some((pairs_remaining, current_pair_len)) = self.window_manager.as_mut().map(|wm| {
+            wm.state.pair_ticks_remaining -= 1;
+            (wm.state.pair_ticks_remaining, wm.state.current_pair_len)
+        }) {
+            // if we have no more pairs to process
+            if pairs_remaining == 0 {
+                // query the pair range
+                let from = Self::to_offset_date(self.watermark - current_pair_len as u64);
+                let to = Self::to_offset_date(self.watermark);
+                let pair = self.combine_range(WheelRange {
+                    start: from,
+                    end: to,
+                });
 
-        let (pairs_remaining, current_pair_len) =
-            if let Some(manager) = self.window_manager.as_mut() {
-                manager.state.pair_ticks_remaining -= 1;
-                (
-                    manager.state.pair_ticks_remaining,
-                    manager.state.current_pair_len,
-                )
-            } else {
-                return;
-            };
+                // safe to unwrap at this point
+                let manager = self.window_manager.as_mut().unwrap();
 
-        if pairs_remaining == 0 {
-            let from = Self::to_offset_date(self.watermark - current_pair_len as u64);
-            let to = Self::to_offset_date(self.watermark);
-            let pair = self.combine_range(WheelRange {
-                start: from,
-                end: to,
-            });
+                // insert pair into window aggregator
+                manager.window.push(pair.unwrap_or(A::IDENTITY));
 
-            let manager = self.window_manager.as_mut().unwrap();
-            let state = &mut manager.state;
-            let window = &mut manager.window;
+                // Update pair metadata
+                manager.update_state(self.watermark);
 
-            let pair = pair.unwrap_or(A::IDENTITY);
-
-            // insert pair into window aggregator
-            window.push(pair);
-
-            // Update pair metadata
-            state.update_pair_len();
-            state.next_pair_end = self.watermark + state.current_pair_len as u64;
-            state.pair_ticks_remaining = state.current_pair_duration().whole_seconds() as usize;
-
-            if self.watermark == state.next_window_end {
-                // insert window result
-                windows.push((self.watermark, window.query()));
-                // clean up pair slices 1 if even, 2 if uneven pair
-                for _i in 0..state.total_pairs() {
-                    window.pop();
-                }
-                // adjust next window end
-                state.next_window_end += state.slide as u64;
+                // handle the window itself
+                manager.handle_window(self.watermark, windows);
             }
         }
     }
