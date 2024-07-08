@@ -2,7 +2,7 @@
 
 This doc describes the design of µWheel.
 
-The figures used in doc are borrowed from the paper "µWheel: Aggregate Management for Streams and Queries", which has been
+The figures used in doc are borrowed from the [paper](https://maxmeldrum.com/assets/files/uwheel_debs24.pdf) "µWheel: Aggregate Management for Streams and Queries", which has been
 accepted for publication in the proceedings of ACM, DEBS 2024. (Licensed under CC-BY 4.0)
 
 # Motivation
@@ -71,15 +71,15 @@ Internally the wheel consists of two wheels: write-ahead and overflow.
 
 ### Write-ahead Wheel
 
-The write-ahead wheel is a pre-allocated fixed-sized circular buffer that enables pre-aggregation of 
+The write-ahead wheel is a pre-allocated fixed-sized circular buffer that enables pre-aggregation of
 N time units above the low watermark. For instance, assuming the lowest granularity of seconds and a write-ahead capacity of 64
-then the wheel supports mutable aggregations up to 64 seconds above the watermark. 
+then the wheel supports mutable aggregations up to 64 seconds above the watermark.
 
 µWheel users may configure the write-ahead capacity.
 
 ### Overflow Wheel
 
-Events with timestamps that exceed the capacity of the ``write-ahead`` wheel are scheduled into a Overflow wheel (Hierarchical Timing Wheel) 
+Events with timestamps that exceed the capacity of the ``write-ahead`` wheel are scheduled into a Overflow wheel (Hierarchical Timing Wheel)
 and are inserted once the low watermark has advanced far enough.
 
 ## Reader Wheel
@@ -151,9 +151,9 @@ Window results are generated when [time is advanced](#Advancing-Time) in µWheel
 
 ## Advancing Time
 
-Aggregate Synchronization in µWheel refers to the advancement of time, a process which shifts aggregates from the writer wheel to the reader. 
-µWheel only performs synchronization lazily once its low watermark is advanced. This design choice has a twofold purpose. 
-First, it enables µWheel to avoid costly index maintenance (e.g., tree rebalance) in the hot path of writes. 
+Aggregate Synchronization in µWheel refers to the advancement of time, a process which shifts aggregates from the writer wheel to the reader.
+µWheel only performs synchronization lazily once its low watermark is advanced. This design choice has a twofold purpose.
+First, it enables µWheel to avoid costly index maintenance (e.g., tree rebalance) in the hot path of writes.
 Secondly, it creates a clear seperation between writes and reads, enabling concurrent ingestion and querying.
 
 Internally, the advancement of time causes wheels in µWheel to `tick`. This includes both ticking the [WriterWheel](#Writer-Wheel) and the [ReaderWheel](#Reader-Wheel).

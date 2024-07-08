@@ -14,8 +14,6 @@
 
 µWheel is an Embeddable Aggregate Management System for Streams and Queries.
 
-A full research paper detailing µWheel has been accepted to DEBS (Distributed and Event-based Systems) 2024 and will be available soon.
-
 See more about its design [here](DESIGN.md) and try it out directly on the [web](https://uwheel.github.io/uwheel/).
 
 ## Features
@@ -164,6 +162,14 @@ See [Contributing](CONTRIBUTING.md).
 ## Community
 
 If you find µWheel interesting and want to learn more, then join the [Discord](https://discord.gg/dhRxfck9jN) community!
+
+## Publications
+
+- Max Meldrum, Paris Carbone (2024). µWheel: Aggregate Management for Streams and Queries (**Best Paper Award**). In DEBS '24. [[PDF]](https://maxmeldrum.com/assets/files/uwheel_debs24.pdf).
+
+## Blog Posts
+
+- [Speeding up Temporal Aggregation in DataFusion by 60-60000x using µWheel](https://maxmeldrum.com/docs/posts/2024-05-14-uwheel-datafusion.html)
 
 ## License
 
