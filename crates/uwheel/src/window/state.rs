@@ -1,11 +1,11 @@
 use super::util::{create_pair_type, PairType};
 use crate::duration::Duration;
 
-/// Internal windowing state including stream slices
+/// Stream Slicing State using the pairs technique
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub struct State {
+pub struct SlicingState {
     pub(crate) range: usize,
     pub slide: usize,
     /// Type of Pair (Uneven, Even).
@@ -21,7 +21,7 @@ pub struct State {
     /// A flag indicating whether we are in pair p1.
     pub in_p1: bool,
 }
-impl State {
+impl SlicingState {
     pub fn new(time: u64, range: usize, slide: usize) -> Self {
         let pair_type = create_pair_type(range, slide);
         let current_pair_len = match pair_type {
@@ -59,5 +59,61 @@ impl State {
                 self.in_p1 = true;
             }
         }
+    }
+    pub fn update_state(&mut self, watermark: u64) {
+        self.update_pair_len();
+        self.next_pair_end = watermark + self.current_pair_len as u64;
+        self.pair_ticks_remaining = self.current_pair_duration().whole_seconds() as usize;
+    }
+}
+
+/// Internal state for session windowing
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Debug, Clone)]
+pub struct SessionState {
+    /// Static session gap
+    session_gap: Duration,
+    /// Current time of inactivity
+    pub(crate) inactive_period: Duration,
+    /// Timestamp of the last window start
+    last_window_start: Option<u64>,
+}
+
+impl SessionState {
+    pub fn new(session_gap: Duration) -> Self {
+        SessionState {
+            session_gap,
+            inactive_period: Duration::ZERO,
+            last_window_start: None,
+        }
+    }
+
+    pub fn has_active_session(&self) -> bool {
+        self.last_window_start.is_some()
+    }
+
+    pub fn is_inactive(&self) -> bool {
+        self.inactive_period >= self.session_gap
+        //self.inactive_period.checked_add(Duration::SECOND).unwrap() >= self.session_gap
+    }
+
+    /// Bumps the current inactive period by the given duration
+    pub fn bump_inactive_period(&mut self, duration: Duration) {
+        self.inactive_period = self.inactive_period.checked_add(duration).unwrap();
+    }
+    /// Resets the inactive period
+    pub fn reset_inactive_period(&mut self) {
+        self.inactive_period = Duration::ZERO;
+    }
+
+    /// Resets the session state and returns the last window start
+    pub fn reset(&mut self) -> Option<u64> {
+        let last_window_start = self.last_window_start.take();
+        self.inactive_period = Duration::ZERO;
+        last_window_start
+    }
+    /// Activates the session by setting the last window start
+    pub fn activate_session(&mut self, window_start: u64) {
+        self.last_window_start = Some(window_start);
     }
 }

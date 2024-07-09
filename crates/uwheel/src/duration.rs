@@ -45,6 +45,7 @@ const fn expect_failed(message: &str) -> ! {
 /// perform niche value optimization.
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub(crate) enum Padding {
     #[allow(clippy::missing_docs_in_private_items)]
     Optimize,
@@ -58,6 +59,7 @@ impl Default for Padding {
 
 /// A span of time with nanosecond precision.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Duration {
     /// Number of whole seconds.
     seconds: i64,

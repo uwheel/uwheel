@@ -4,11 +4,7 @@ fn main() {
     let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(0);
 
     // Install window
-    wheel.window(
-        Window::default()
-            .with_range(10.seconds())
-            .with_slide(3.seconds()),
-    );
+    wheel.window(Window::sliding(10.seconds(), 3.seconds()));
 
     // insert an entry per second
     for i in 1..=22 {

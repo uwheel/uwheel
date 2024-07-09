@@ -21,8 +21,9 @@ use crate::{
         aggregation::combine_or_insert,
         plan::{CombinedAggregation, WheelAggregations},
     },
-    window::WindowManager,
+    window::{WindowAggregate, WindowManager},
     Duration,
+    Window,
 };
 
 #[cfg(not(feature = "std"))]
@@ -39,9 +40,6 @@ crate::cfg_timer! {
     use crate::wheels::timer::{RawTimerWheel, TimerWheel, TimerError, TimerAction};
 }
 use super::aggregation::conf::WheelConf;
-
-/// Type Alias for a Window result
-pub type WindowAggregate<T> = (u64, T);
 
 /// Default Second tick represented in milliseconds
 pub const SECOND_TICK_MS: u64 = time::Duration::SECOND.whole_milliseconds() as u64;
@@ -613,16 +611,8 @@ where
     }
 
     /// Installs a periodic window aggregation query
-    pub fn window(&mut self, range: Duration, slide: Duration) {
-        assert!(
-            range >= slide,
-            "Window range must be larger or equal to slide"
-        );
-        self.window_manager = Some(WindowManager::new(
-            self.watermark,
-            range.whole_milliseconds() as usize,
-            slide.whole_milliseconds() as usize,
-        ));
+    pub fn window(&mut self, window: Window) {
+        self.window_manager = Some(WindowManager::new(self.watermark, window));
     }
 
     /// Advances the time of the wheel aligned by the lowest unit (Second)
@@ -675,7 +665,7 @@ where
                 self.delta.push(delta);
             }
             // maybe handle window if there is any configured
-            self.handle_window_maybe(&mut windows);
+            self.handle_window_maybe(delta, &mut windows);
         }
         windows
     }
@@ -704,7 +694,7 @@ where
                 self.tick(delta);
 
                 // maybe handle window if there is any configured
-                self.handle_window_maybe(&mut windows);
+                self.handle_window_maybe(delta, &mut windows);
             }
         } else {
             // Exceeds full cycle length, clear all!
@@ -714,11 +704,67 @@ where
     }
 
     // internal function to handle installed window queries
-    fn handle_window_maybe(&mut self, windows: &mut Vec<WindowAggregate<A::PartialAggregate>>) {
+    fn handle_window_maybe(
+        &mut self,
+        delta: Option<A::PartialAggregate>,
+        windows: &mut Vec<WindowAggregate<A::PartialAggregate>>,
+    ) {
+        match self.window_manager.as_ref().map(|wm| wm.window) {
+            Some(Window::Session { .. }) => self.handle_session_window(delta, windows),
+            Some(Window::Sliding { .. }) => self.handle_slicing_window(windows),
+            Some(Window::Tumbling { .. }) => self.handle_slicing_window(windows),
+            None => {
+                // do nothing, no window installed...
+            }
+        }
+    }
+
+    fn handle_session_window(
+        &mut self,
+        delta: Option<A::PartialAggregate>,
+        windows: &mut Vec<WindowAggregate<A::PartialAggregate>>,
+    ) {
+        // SAFETY: safe to unwrap since we confirm that there is a window manager before calling this function
+        let manager = self.window_manager.as_mut().unwrap();
+        let (ref mut state, ref mut aggregator) = manager.aggregator.session_as_mut();
+        if let Some(partial) = delta {
+            if !state.has_active_session() {
+                state.activate_session(self.watermark - 1000);
+            }
+            // Aggregate the partial into the session
+            aggregator.aggregate_session(partial);
+            // Reset the period of the session
+            state.reset_inactive_period();
+        } else {
+            // only do something with empty `None` delta if there is an active session
+            if state.has_active_session() {
+                // Bump session period by 1 tick (i.e. SECOND)
+                state.bump_inactive_period(Duration::SECOND);
+
+                // if we have reached session gap of inactivity, we can close the session
+                if state.is_inactive() {
+                    let session_aggregate = aggregator.get_and_reset();
+
+                    // SAFETY: safe to unwrap since we checked if there is an active session
+                    let window_start_ms = state.reset().unwrap();
+                    let window_end_ms = self.watermark.saturating_sub(1000);
+
+                    windows.push(WindowAggregate {
+                        window_start_ms,
+                        window_end_ms,
+                        aggregate: session_aggregate,
+                    });
+                }
+            }
+        }
+    }
+
+    fn handle_slicing_window(&mut self, windows: &mut Vec<WindowAggregate<A::PartialAggregate>>) {
         // NOTE: accessing window manager twice since we need to borrow mutably and immutably (self.combine_range)
         if let Some((pairs_remaining, current_pair_len)) = self.window_manager.as_mut().map(|wm| {
-            wm.state.pair_ticks_remaining -= 1;
-            (wm.state.pair_ticks_remaining, wm.state.current_pair_len)
+            let (ref mut state, _) = wm.aggregator.slicing_as_mut();
+            state.pair_ticks_remaining -= 1;
+            (state.pair_ticks_remaining, state.current_pair_len)
         }) {
             // if we have no more pairs to process
             if pairs_remaining == 0 {
@@ -730,17 +776,33 @@ where
                     end: to,
                 });
 
-                // safe to unwrap at this point
+                // SAFETY: safe to unwrap at this point
                 let manager = self.window_manager.as_mut().unwrap();
+                let (ref mut state, ref mut aggregator) = manager.aggregator.slicing_as_mut();
 
                 // insert pair into window aggregator
-                manager.window.push(pair.unwrap_or(A::IDENTITY));
+                aggregator.push(pair.unwrap_or(A::IDENTITY));
 
                 // Update pair metadata
-                manager.update_state(self.watermark);
+                state.update_state(self.watermark);
 
                 // handle the window itself
-                manager.handle_window(self.watermark, windows);
+                if self.watermark == state.next_window_end {
+                    let window_start_ms = self.watermark.saturating_sub(state.range as u64);
+                    let window_end_ms = self.watermark;
+                    windows.push(WindowAggregate {
+                        window_start_ms,
+                        window_end_ms,
+                        aggregate: aggregator.query(),
+                    });
+
+                    // clean up pairs
+                    for _i in 0..state.total_pairs() {
+                        aggregator.pop();
+                    }
+
+                    state.next_window_end += state.slide as u64;
+                }
             }
         }
     }
