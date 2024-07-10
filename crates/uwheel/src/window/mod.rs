@@ -26,6 +26,15 @@ pub struct WindowAggregate<T> {
 }
 
 /// Different window variants supported by µWheel
+///
+/// # Example
+///
+/// ```
+/// use uwheel::{Window, RwWheel, aggregator::sum::U32SumAggregator, NumericalDuration};
+///
+/// let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
+/// wheel.window(Window::tumbling(10.seconds()));
+/// ```
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Copy, Clone, Debug)]
 pub enum Window {
@@ -99,9 +108,9 @@ impl Window {
 pub struct WindowManager<A: Aggregator> {
     pub(crate) aggregator: WindowAggregator<A>,
     pub(crate) window: Window,
-    //pub(crate) state: State,
 }
 impl<A: Aggregator> WindowManager<A> {
+    /// Creates a new window manager with the given watermark and window type
     pub fn new(watermark: u64, window: Window) -> Self {
         let to_ms = |d: Duration| d.whole_milliseconds() as usize;
 

@@ -94,7 +94,6 @@ impl SessionState {
 
     pub fn is_inactive(&self) -> bool {
         self.inactive_period >= self.session_gap
-        //self.inactive_period.checked_add(Duration::SECOND).unwrap() >= self.session_gap
     }
 
     /// Bumps the current inactive period by the given duration

@@ -729,7 +729,7 @@ where
         let (ref mut state, ref mut aggregator) = manager.aggregator.session_as_mut();
         if let Some(partial) = delta {
             if !state.has_active_session() {
-                state.activate_session(self.watermark - 1000);
+                state.activate_session(self.watermark.saturating_sub(1000)); // subtract watermark by 1 tick to align correctly.
             }
             // Aggregate the partial into the session
             aggregator.aggregate_session(partial);
@@ -747,7 +747,7 @@ where
 
                     // SAFETY: safe to unwrap since we checked if there is an active session
                     let window_start_ms = state.reset().unwrap();
-                    let window_end_ms = self.watermark.saturating_sub(1000);
+                    let window_end_ms = self.watermark.saturating_sub(1000); // subtract watermark by 1 tick to align correctly.
 
                     windows.push(WindowAggregate {
                         window_start_ms,
