@@ -17,7 +17,17 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
+#[cfg(feature = "serde")]
+use serde_big_array::BigArray;
+
 /// A single entry in a slot
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(
+        bound = "EntryType: serde::Serialize + serde::de::DeserializeOwned, RestType: serde::Serialize + serde::de::DeserializeOwned"
+    )
+)]
 #[derive(Clone)]
 pub struct WheelEntry<EntryType, RestType> {
     /// The actual entry
@@ -37,7 +47,15 @@ const NUM_SLOTS: usize = 256;
 /// The `RestType` us used to store an array of bytes that are the rest of the delay.
 /// This way the same wheel structure can be used at different hierarchical levels.
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(
+        bound = "EntryType: serde::Serialize + serde::de::DeserializeOwned, RestType: serde::Serialize + serde::de::DeserializeOwned"
+    )
+)]
 pub struct ByteWheel<EntryType, RestType> {
+    #[cfg_attr(feature = "serde", serde(with = "BigArray"))]
     slots: [Option<WheelEntryList<EntryType, RestType>>; NUM_SLOTS],
     count: u64,
     current: u8,

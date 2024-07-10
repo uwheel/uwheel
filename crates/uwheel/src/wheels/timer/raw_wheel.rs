@@ -5,6 +5,11 @@ use core::time::Duration;
 use alloc::vec::Vec;
 
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound = "A: serde::Serialize + serde::de::DeserializeOwned")
+)]
 pub struct RawTimerWheel<A> {
     timer: QuadWheelWithOverflow<A>,
     time: u64,

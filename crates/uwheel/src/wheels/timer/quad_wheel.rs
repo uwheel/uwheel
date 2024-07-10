@@ -18,6 +18,11 @@ use super::{byte_wheel::*, *};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound = "EntryType: serde::Serialize + serde::de::DeserializeOwned")
+)]
 #[derive(Clone)]
 struct OverflowEntry<EntryType> {
     entry: EntryType,
@@ -74,6 +79,11 @@ pub fn no_prune<E>(_e: &E) -> PruneDecision {
 /// In this design the maximum schedule duration for the wheel itself is [`u32::MAX`](std::u32::MAX) units (typically ms),
 /// everything else goes into the overflow `Vec`.
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound = "EntryType: serde::Serialize + serde::de::DeserializeOwned")
+)]
 pub struct QuadWheelWithOverflow<EntryType> {
     primary: Box<ByteWheel<EntryType, [u8; 0]>>,
     secondary: Box<ByteWheel<EntryType, [u8; 1]>>,

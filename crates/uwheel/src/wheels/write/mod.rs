@@ -16,6 +16,8 @@ use alloc::{boxed::Box, vec::Vec};
 /// Reader-Writer Wheel.
 #[repr(C)]
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 pub struct WriterWheel<A: Aggregator> {
     /// Current low watermark
     watermark: u64,
