@@ -16,7 +16,7 @@ mod stats;
 #[allow(dead_code)]
 mod timer;
 
-use crate::{aggregator::Aggregator, duration::Duration, Entry};
+use crate::{aggregator::Aggregator, duration::Duration, window::WindowAggregate, Entry};
 use core::fmt::Debug;
 use write::DEFAULT_WRITE_AHEAD_SLOTS;
 
@@ -24,10 +24,7 @@ pub use read::{DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 pub use wheel_ext::WheelExt;
 pub use write::WriterWheel;
 
-use self::read::{
-    hierarchical::{HawConf, WindowAggregate},
-    ReaderWheel,
-};
+use self::read::{hierarchical::HawConf, ReaderWheel};
 
 use crate::window::Window;
 
@@ -138,7 +135,7 @@ where
     /// use uwheel::{Window, aggregator::sum::U32SumAggregator, RwWheel, NumericalDuration};
     ///
     /// // Define a window query
-    /// let window = Window::default().with_range(10.seconds()).with_slide(3.seconds());
+    /// let window = Window::sliding(10.seconds(), 3.seconds());
     /// // Initialize a Reader-Writer Wheel and install the window
     /// let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
     /// wheel.window(window);

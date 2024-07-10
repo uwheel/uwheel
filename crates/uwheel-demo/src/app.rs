@@ -1106,7 +1106,7 @@ impl eframe::App for TemplateApp {
                 ui.text_edit_singleline(end_time);
             });
 
-            ui.label(&format!("Result: {}", query_result));
+            ui.label(format!("Result: {}", query_result));
             ui.horizontal(|ui| {
                 if ui.button("Run").clicked() {
                     let start = NaiveDateTime::parse_from_str(

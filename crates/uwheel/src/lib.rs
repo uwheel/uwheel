@@ -72,7 +72,7 @@ pub use wheels::{
     Conf,
     RwWheel,
 };
-pub use window::Window;
+pub use window::{Window, WindowAggregate};
 
 #[doc(hidden)]
 pub use time::OffsetDateTime;

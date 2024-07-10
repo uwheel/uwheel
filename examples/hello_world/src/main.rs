@@ -14,11 +14,7 @@ fn main() {
     let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(watermark);
 
     // Install a Sliding Window Aggregation Query (results are produced when we advance the wheel).
-    wheel.window(
-        Window::default()
-            .with_range(30.minutes())
-            .with_slide(10.minutes()),
-    );
+    wheel.window(Window::sliding(30.minutes(), 10.minutes()));
 
     // Simulate ingestion and fill the wheel with 1 hour of aggregates (3600 seconds).
     for _ in 0..3600 {
@@ -28,8 +24,8 @@ fn main() {
         watermark += 1000;
 
         // Print the result if any window is triggered
-        for (ts, window) in wheel.advance_to(watermark) {
-            println!("Window fired at {} with result {}", ts, window);
+        for window in wheel.advance_to(watermark) {
+            println!("Window fired {:#?}", window);
         }
     }
     // Explore historical data - The low watermark is now 2023-11-09 01:00:00
