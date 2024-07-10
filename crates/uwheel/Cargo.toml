@@ -59,6 +59,7 @@ rand.workspace = true
 criterion.workspace = true
 pco.workspace = true
 bitpacking.workspace = true
+bincode.workspace = true
 
 
 [[bench]]

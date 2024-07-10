@@ -74,6 +74,8 @@ use uwheel_stats::profile_scope;
 /// // query the last second of aggregates
 /// assert_eq!(wheel.read().interval(1.seconds()), Some(100));
 /// ```
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 pub struct RwWheel<A>
 where
     A: Aggregator,
@@ -376,9 +378,9 @@ impl Conf {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(all(feature = "timer", not(feature = "serde")))]
+    #[cfg(feature = "timer")]
     use core::cell::RefCell;
-    #[cfg(all(feature = "timer", not(feature = "serde")))]
+    #[cfg(feature = "timer")]
     use std::rc::Rc;
 
     use super::*;
@@ -431,14 +433,39 @@ mod tests {
         rw_wheel.advance_to(86000);
     }
 
-    #[cfg(all(feature = "timer", not(feature = "serde")))]
+    #[cfg(feature = "serde")]
+    #[test]
+    fn rw_wheel_serde_test() {
+        let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
+        rw_wheel.insert(Entry::new(250, 1000));
+        rw_wheel.insert(Entry::new(250, 2000));
+        rw_wheel.insert(Entry::new(250, 3000));
+        rw_wheel.insert(Entry::new(250, 4000));
+
+        rw_wheel.insert(Entry::new(250, 100000)); // insert entry that will go into overflow wheel
+
+        let serialized = bincode::serialize(&rw_wheel).unwrap();
+
+        let mut deserialized_wheel =
+            bincode::deserialize::<RwWheel<U32SumAggregator>>(&serialized).unwrap();
+
+        assert_eq!(deserialized_wheel.watermark(), 0);
+        deserialized_wheel.advance_to(5000);
+        assert_eq!(deserialized_wheel.read().interval(4.seconds()), Some(1000));
+
+        // advance passed the overflow wheel entry and make sure its still there
+        deserialized_wheel.advance_to(101000);
+        assert_eq!(deserialized_wheel.read().interval(1.seconds()), Some(250));
+    }
+
+    #[cfg(feature = "timer")]
     #[test]
     fn timer_once_test() {
         let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::default();
         let gate = Rc::new(RefCell::new(false));
         let inner_gate = gate.clone();
 
-        let _ = rw_wheel.read().schdule_once(5000, move |read| {
+        let _ = rw_wheel.read().schedule_once(5000, move |read| {
             if let Some(last_five) = read.interval(5.seconds()) {
                 *inner_gate.borrow_mut() = true;
                 assert_eq!(last_five, 1000);
@@ -455,7 +482,7 @@ mod tests {
         assert!(*gate.borrow());
     }
 
-    #[cfg(all(feature = "timer", not(feature = "serde")))]
+    #[cfg(feature = "timer")]
     #[test]
     fn timer_repeat_test() {
         let mut rw_wheel: RwWheel<U32SumAggregator> = RwWheel::default();
@@ -465,7 +492,7 @@ mod tests {
         // schedule a repeat action
         let _ = rw_wheel
             .read()
-            .schdule_repeat(5000, 5.seconds(), move |read| {
+            .schedule_repeat(5000, 5.seconds(), move |read| {
                 if let Some(last_five) = read.interval(5.seconds()) {
                     *inner_sum.borrow_mut() += last_five;
                 }

@@ -235,8 +235,22 @@ pub type Compressor<T> = fn(&[T]) -> Vec<u8>;
 pub type Decompressor<T> = fn(&[u8]) -> Vec<T>;
 
 /// Bounds for Aggregator Input
+#[cfg(not(feature = "serde"))]
 pub trait InputBounds: Debug + Clone + Copy + Send {}
+#[cfg(feature = "serde")]
+/// Bounds for Aggregator Input
+pub trait InputBounds:
+    Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
+{
+}
+
+#[cfg(not(feature = "serde"))]
 impl<T> InputBounds for T where T: Debug + Clone + Copy + Send {}
+#[cfg(feature = "serde")]
+impl<T> InputBounds for T where
+    T: Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
+{
+}
 
 /// A mutable partial aggregate type
 #[cfg(not(feature = "serde"))]
