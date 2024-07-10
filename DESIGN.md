@@ -114,8 +114,9 @@ An aggregate wheel supports three possible data layouts that are configurable pe
 
 µWheel supports the following queries:
 
-* ``window(range, slide)``
-    * Installs a periodic streaming window aggregation query.
+* ``window(window)``
+    * Installs a streaming window aggregation query.
+    * µWheel supports Tumbling, Sliding, and Session Windows.
 * ``combine_range(start, end) -> Aggregate``
     * Combines the time range into a final aggregate.
 * ``interval(duration) -> Aggregate``
@@ -140,8 +141,7 @@ The image below illustrates a flow chart of the query optimizer which aims to se
 
 ## Streaming Window Aggregation
 
-µWheel uses the Pairs stream slicing technique internally and if a window is installed it continously build pairs.
-Pairs are managed internally by a circular-based window aggregator that implements the following functions:
+µWheel supports ``Tumbling``, ``Sliding``, and ``Session`` windows. For Tumbling and Sliding, µWheel uses the Pairs stream slicing technique internally and if a window is installed it continously build pairs. Pairs are managed internally by a circular-based window aggregator that implements the following functions:
 
 - ``push(p: Pair)`` Pushes a pair into the back.
 - ``compute()`` Computes the current window.
