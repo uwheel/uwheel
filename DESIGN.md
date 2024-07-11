@@ -123,6 +123,8 @@ An aggregate wheel supports three possible data layouts that are configurable pe
     * Combines the range ``start: watermark() - duration, end: watermark()``
 * ``range(start, end) -> Vec<(TimeStamp, Aggregate)>``
     * Returns aggregates and their timestamps in the given time range.
+* ``group_by(range, interval) -> Vec<(TimeStamp, Aggregate)>``
+    * Groups aggregates between the range by the interval.
 * ``landmark() -> Aggregate``
     * Executes a Landmark Window to get a aggregate result across the full hierarchical wheel.
     * Runs in O(1) since it combines the total rotation aggregate of each wheel (dimension).
