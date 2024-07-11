@@ -232,6 +232,25 @@ where
         self.inner.read().combine_range(range)
     }
 
+    /// Groups the data into aggregates based on the given range and interval
+    ///
+    /// Returns `None` if the range cannot be answered by the wheel
+    ///
+    /// # Arguments
+    ///
+    /// * `range` - The range to group the data (e.g., 2024-05-06 00:00:00 - 2024-05-10 00:00:00)
+    /// * `interval` - The duration which aggregates are grouped into (e.g., 1d)
+    ///
+    /// See [`Haw::group_by`] for more information.
+    #[inline]
+    pub fn group_by(
+        &self,
+        range: WheelRange,
+        interval: Duration,
+    ) -> Option<Vec<(u64, A::Aggregate)>> {
+        self.inner.read().group_by(range, interval)
+    }
+
     /// Returns partial aggregates within the given date range [start, end) using the lowest granularity
     ///
     /// Returns `None` if the range cannot be answered by the wheel

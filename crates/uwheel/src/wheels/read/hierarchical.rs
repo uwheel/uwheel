@@ -824,13 +824,92 @@ where
     pub fn watermark(&self) -> u64 {
         self.watermark
     }
-    #[doc(hidden)]
-    pub fn downsample(
+
+    /// Groups the data into aggregates based on the given range and interval
+    ///
+    /// Returns `None` if the range cannot be answered by the wheel
+    ///
+    /// # Arguments
+    ///
+    /// * `range` - The range to group the data (e.g., 2024-05-06 00:00:00 - 2024-05-10 00:00:00)
+    /// * `interval` - The duration which aggregates are grouped into (e.g., 1d)
+    ///
+    /// # Returns
+    ///
+    /// Returns `Option<Vec<(u64, A::Aggregate)>>` where:
+    /// * `Some(Vec<(u64, A::Aggregate)>)` - A vector of tuples, each containing:
+    ///   - `u64`: The timestamp as unix timestamp since epoch in milliseconds
+    ///   - `A::Aggregate`: The aggregated value for that interval
+    /// * `None` - If the range cannot be answered by the wheel
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use uwheel::{
+    ///     aggregator::sum::U32SumAggregator, Duration, Haw, HawConf, NumericalDuration, RetentionPolicy,
+    ///     WheelRange,
+    /// };
+    ///
+    /// let watermark = 1699488000000; // 2023-11-09 00:00:00
+    /// let conf = HawConf::default()
+    ///     .with_watermark(watermark)
+    ///     .with_retention_policy(RetentionPolicy::Keep);
+    ///
+    /// let mut haw: Haw<U32SumAggregator> = Haw::new(conf);
+    ///
+    /// // Fill the HAW with data
+    /// let minutes = Duration::minutes(2);
+    /// // 1u64 per second for 2 minutes
+    /// let deltas: Vec<Option<u32>> = (0..minutes.whole_seconds()).map(|_| Some(1)).collect();
+    /// haw.delta_advance(deltas);
+    ///
+    /// // define range between 2023-11-09 00:00:00 and 2023-11-09 00:02:00
+    /// let range = WheelRange::new_unchecked(
+    ///     1699488000000,
+    ///     1699488000000 + 2.minutes().whole_milliseconds() as u64,
+    /// );
+    /// // group_by the range and use 1 minute intervals where each minute is summed
+    /// assert_eq!(
+    ///     haw.group_by(range, 1.minutes()),
+    ///     Some(vec![(1699488000000, 60), (1699488060000, 60)])
+    /// );
+    /// ```
+    #[inline]
+    pub fn group_by(
         &self,
-        _range: impl Into<WheelRange>,
-        _sample_interval: Duration,
-    ) -> Option<Vec<(u64, A::PartialAggregate)>> {
-        todo!("https://github.com/Max-Meldrum/uwheel/issues/87");
+        range: WheelRange,
+        interval: Duration,
+    ) -> Option<Vec<(u64, A::Aggregate)>> {
+        let WheelRange { start, end } = range;
+
+        // Sanity check: return early with `None` if the range is invalid
+        if start >= end
+            || interval.whole_seconds() == 0
+            || Self::to_ms(start.unix_timestamp() as u64) > self.watermark
+        {
+            return None;
+        }
+
+        let mut result = Vec::new();
+
+        // define starting point
+        let mut step = start;
+
+        // Query each subrange until we reach the end
+        while step < end {
+            let next: OffsetDateTime = step + time::Duration::seconds(interval.whole_seconds());
+            let query_range = WheelRange {
+                start: step,
+                end: next,
+            };
+            result.push((
+                Self::to_ms(step.unix_timestamp() as u64),
+                A::lower(self.combine_range(query_range).unwrap_or(A::IDENTITY)),
+            ));
+            step = next;
+        }
+
+        Some(result)
     }
     /// Returns partial aggregates within the given date range [start, end) using the lowest granularity
     ///
@@ -2093,5 +2172,82 @@ mod tests {
             end: datetime!(2023-11-09 00:00:08 UTC),
         };
         assert_eq!(haw.combine_range(outside_range), None);
+    }
+
+    #[test]
+    fn group_by_test() {
+        // 2023-11-09 00:00:00
+        let watermark = 1699488000000;
+        let conf = HawConf::default()
+            .with_watermark(watermark)
+            .with_retention_policy(RetentionPolicy::Keep);
+
+        let mut haw: Haw<U64SumAggregator> = Haw::new(conf);
+
+        let days = Duration::days(10);
+        let deltas: Vec<Option<u64>> = (0..days.whole_seconds()).map(|_| Some(1)).collect();
+        haw.delta_advance(deltas);
+
+        let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
+        let end = datetime!(2023 - 11 - 10 00:00:00 UTC);
+
+        assert_eq!(
+            haw.group_by(WheelRange { start, end }, 1.days()),
+            Some(vec![(1699488000000, 86400)])
+        );
+
+        let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
+        let end = datetime!(2023 - 11 - 12 00:00:00 UTC);
+
+        assert_eq!(
+            haw.group_by(WheelRange { start, end }, 2.days()),
+            Some(vec![(1699488000000, 172800), (1699660800000, 172800)])
+        );
+
+        // Test case 3: Group by 12 hours for a 2-day range
+        let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
+        let end = datetime!(2023 - 11 - 11 00:00:00 UTC);
+        assert_eq!(
+            haw.group_by(WheelRange { start, end }, 12.hours()),
+            Some(vec![
+                (1699488000000, 43200),
+                (1699531200000, 43200),
+                (1699574400000, 43200),
+                (1699617600000, 43200)
+            ])
+        );
+
+        // Test case 4: Empty range (start == end)
+        let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
+        let end = datetime!(2023 - 11 - 09 00:00:00 UTC);
+        assert_eq!(haw.group_by(WheelRange { start, end }, 1.days()), None,);
+
+        // Test case 5: Range outside of data
+        let start = datetime!(2023 - 11 - 20 00:00:00 UTC);
+        let end = datetime!(2023 - 11 - 21 00:00:00 UTC);
+        assert_eq!(haw.group_by(WheelRange { start, end }, 1.days()), None);
+
+        // Test case 6: Invalid range (start > end)
+        let start = datetime!(2023 - 11 - 10 00:00:00 UTC);
+        let end = datetime!(2023 - 11 - 09 00:00:00 UTC);
+        assert_eq!(haw.group_by(WheelRange { start, end }, 1.days()), None);
+
+        // Test case 7: Zero duration grouping
+        let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
+        let end = datetime!(2023 - 11 - 10 00:00:00 UTC);
+        assert_eq!(haw.group_by(WheelRange { start, end }, 0.seconds()), None);
+
+        // Test case 8: Group by minutes for a 1-hour range
+        let start = datetime!(2023 - 11 - 09 00:00:00 UTC);
+        let end = datetime!(2023 - 11 - 09 01:00:00 UTC);
+        assert_eq!(
+            haw.group_by(WheelRange { start, end }, 15.minutes()),
+            Some(vec![
+                (1699488000000, 900), // 00:00 - 00:15
+                (1699488900000, 900), // 00:15 - 00:30
+                (1699489800000, 900), // 00:30 - 00:45
+                (1699490700000, 900), // 00:45 - 01:00
+            ])
+        );
     }
 }
