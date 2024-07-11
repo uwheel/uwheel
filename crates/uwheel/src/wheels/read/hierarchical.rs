@@ -834,6 +834,14 @@ where
     /// * `range` - The range to group the data (e.g., 2024-05-06 00:00:00 - 2024-05-10 00:00:00)
     /// * `interval` - The duration which aggregates are grouped into (e.g., 1d)
     ///
+    /// # Returns
+    ///
+    /// Returns `Option<Vec<(u64, A::Aggregate)>>` where:
+    /// * `Some(Vec<(u64, A::Aggregate)>)` - A vector of tuples, each containing:
+    ///   - `u64`: The timestamp as unix timestamp since epoch in milliseconds
+    ///   - `A::Aggregate`: The aggregated value for that interval
+    /// * `None` - If the range cannot be answered by the wheel
+    ///
     /// # Example
     ///
     /// ```
