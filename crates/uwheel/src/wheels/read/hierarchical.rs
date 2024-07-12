@@ -1088,6 +1088,7 @@ where
 
         let mut best_plan: Option<ExecutionPlan> = None;
 
+        /*
         // helper fn for maybe updating to a new optimal plan or inserting if there is none.
         let maybe_update_plan_or_insert =
             |plan: ExecutionPlan, current: &mut Option<ExecutionPlan>| {
@@ -1096,6 +1097,7 @@ where
                     None => Some(plan),
                 }
             };
+            */
 
         let wheel_start = self
             .watermark()
@@ -1104,64 +1106,27 @@ where
         // SAFETY: ensure start range is not lower than the start of the wheel time
         range.start = cmp::max(range.start, Self::to_offset_date(wheel_start));
 
-        if let Some(plan) = self.wheel_aggregation_plan(range) {
-            best_plan = Some(ExecutionPlan::WheelAggregation(plan));
-        }
-
         let end_ms = Self::to_ms(range.end.unix_timestamp() as u64);
         let start_ms = Self::to_ms(range.start.unix_timestamp() as u64);
 
         // Landmark optimization: landmark covers the whole range
         if start_ms <= wheel_start && end_ms >= self.watermark() {
-            best_plan = Some(ExecutionPlan::LandmarkAggregation);
+            return Some(ExecutionPlan::LandmarkAggregation);
         }
 
-        // Check for possible early return: Going further may just have more overhead
-        if let Some(plan) = &best_plan {
+        if let Some(plan) = self
+            .wheel_aggregation_plan(range)
+            .map(ExecutionPlan::WheelAggregation)
+        {
+            // Check for possible early return: Going further may just have more overhead
+
             // If the plan supports single-wheel prefix scan or landmark aggregation (both O(1) complexity).
             // Or if the cost is low. For now we assume under 60 since values above are not usually quantizable to wheel intervals.
             if plan.is_prefix_or_landmark() || plan.cost() < SECONDS {
-                return best_plan;
+                return Some(plan);
             }
-        }
-
-        // check if aggregator is invertible
-        if A::invertible() {
-            let mut aggregations = WheelAggregations::default();
-
-            // always include: [wheel_start, start)
-            let p1 = self.wheel_aggregation_plan(WheelRange {
-                start: Self::to_offset_date(wheel_start),
-                end: range.start,
-            });
-
-            // NOTE: works but refactor
-            if let Some(p1_plan) = p1 {
-                let mut valid = true;
-                aggregations.push(p1_plan);
-
-                // if range.end != current watermark also include [end, watermark_now]
-                if end_ms < self.watermark() {
-                    let p2 = self.wheel_aggregation_plan(WheelRange {
-                        start: range.end,
-                        end: Self::to_offset_date(self.watermark()),
-                    });
-                    if let Some(p2_plan) = p2 {
-                        aggregations.push(p2_plan);
-                    } else {
-                        valid = false;
-                    }
-                }
-
-                // only try to update plan if its deemed valid
-                // that is, no out of bound aggregation.
-                if valid {
-                    maybe_update_plan_or_insert(
-                        ExecutionPlan::InverseLandmarkAggregation(aggregations),
-                        &mut best_plan,
-                    );
-                }
-            }
+            // otherwise, set the plan as the best plan
+            best_plan = Some(plan);
         }
 
         // Check whether it is worth to create a combined plan as it comes with some overhead
@@ -1178,17 +1143,28 @@ where
         // if the range can be split into multiple non-overlapping ranges
         if combined_aggregation {
             // NOTE: could create multiple combinations of combined aggregations to check
-            if let Some(combined_plan) =
+            Self::maybe_update_plan_or_insert(
                 self.combined_aggregation_plan(Self::split_wheel_ranges(range))
-            {
-                maybe_update_plan_or_insert(
-                    ExecutionPlan::CombinedAggregation(combined_plan),
-                    &mut best_plan,
-                );
-            }
+                    .map(ExecutionPlan::CombinedAggregation),
+                &mut best_plan,
+            );
         }
 
         best_plan
+    }
+
+    // helper method for updating execution plans
+    #[inline]
+    fn maybe_update_plan_or_insert(
+        plan: Option<ExecutionPlan>,
+        current: &mut Option<ExecutionPlan>,
+    ) {
+        match (plan, current.take()) {
+            (Some(p), Some(c)) => *current = Some(cmp::min(c, p)),
+            (Some(p), None) => *current = Some(p),
+            (None, Some(c)) => *current = Some(c),
+            (None, None) => (),
+        }
     }
 
     /// Given a [start, end) interval, returns the cost (number of ⊕ operations) for a given wheel aggregation
@@ -2022,13 +1998,9 @@ mod tests {
         let start = datetime!(2023 - 11 - 09 05:00:00 UTC);
         let end = datetime!(2023 - 11 - 12 00:00:00 UTC);
 
-        // Runs a Inverse Landmark Execution
         let result = haw.combine_range(WheelRange { start, end });
         let plan = haw.create_exec_plan(WheelRange { start, end });
-        assert!(matches!(
-            plan,
-            Some(ExecutionPlan::InverseLandmarkAggregation(_))
-        ));
+        assert!(matches!(plan, Some(ExecutionPlan::CombinedAggregation(_))));
         assert_eq!(result, Some(241200));
     }
 
