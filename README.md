@@ -164,8 +164,21 @@ If you find µWheel interesting and want to learn more, then join the [Discord](
 - Max Meldrum, Paris Carbone (2024). µWheel: Aggregate Management for Streams and Queries (**Best Paper Award**). In DEBS '24. [[PDF]](https://maxmeldrum.com/assets/files/uwheel_debs24.pdf).
 
 ## Blog Posts
+- [Best Paper Award + 0.2.0 Release](https://uwheel.rs/post/best-paper-award-020-release/) - July 2024
+- [Speeding up Temporal Aggregation in DataFusion by 60-60000x using µWheel](https://uwheel.rs/post/datafusion/) - May 2024
 
-- [Speeding up Temporal Aggregation in DataFusion by 60-60000x using µWheel](https://uwheel.rs/post/datafusion/)
+## Citing µWheel
+
+```
+@inproceedings{meldrum2024uwheel,
+  author = {Meldrum, Max and Carbone, Paris},
+  title = {μWheel: Aggregate Management for Streams and Queries},
+  booktitle = {Proceedings of the 18th ACM International Conference on Distributed and Event-Based Systems},
+  year = {2024},
+  pages = {54--65},
+  doi = {10.1145/3629104.3666031}
+}
+```
 
 ## License
 
