@@ -1060,7 +1060,10 @@ where
         let range = range.into();
         let WheelRange { start, end } = range;
 
-        assert!(end > start, "End date needs to be larger than start date");
+        // Return early if the range is invalid (Start exceeds End)
+        if start > end {
+            return (None, 0);
+        }
 
         // create the best possible execution plan and run it
         match self.create_exec_plan(range) {
