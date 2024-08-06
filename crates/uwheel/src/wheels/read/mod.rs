@@ -225,11 +225,8 @@ where
     ///
     /// See [`Haw::combine_range_and_lower`] for more information.
     #[inline]
-    pub fn combine_range_and_lower(
-        &self,
-        range: impl Into<WheelRange>,
-    ) -> Option<A::PartialAggregate> {
-        self.inner.read().combine_range(range)
+    pub fn combine_range_and_lower(&self, range: impl Into<WheelRange>) -> Option<A::Aggregate> {
+        self.combine_range(range).map(A::lower)
     }
 
     /// Groups the data into aggregates based on the given range and interval
