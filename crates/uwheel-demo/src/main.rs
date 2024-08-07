@@ -6,9 +6,6 @@ mod app;
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
-    // tell puffin to collect data
-
-    puffin::set_scopes_on(true);
     // Log to stdout (if you run with `RUST_LOG=debug`).
     tracing_subscriber::fmt::init();
 
@@ -26,7 +23,7 @@ fn main() -> eframe::Result<()> {
         native_options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Ok(Box::new(app::TemplateApp::new(cc)))
+            Box::new(app::TemplateApp::new(cc))
         }),
     )
 }

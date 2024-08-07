@@ -265,9 +265,6 @@ impl TemplateApp {
     }
     // TODO: optimise
     fn wheels_plot(&self, wheel: Rc<RefCell<RwWheel<DemoAggregator>>>, ui: &mut Ui) -> Response {
-        #[cfg(not(target_arch = "wasm32"))]
-        puffin::profile_function!();
-
         let fmt_str = |i: usize, gran: Granularity| -> String { format!("{} {:?} ago", i, gran) };
 
         // Write-ahead chart
@@ -598,13 +595,6 @@ impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        #[cfg(not(target_arch = "wasm32"))]
-        puffin::GlobalProfiler::lock().new_frame(); // call once per frame!
-        #[cfg(not(target_arch = "wasm32"))]
-        puffin::profile_function!();
-        #[cfg(not(target_arch = "wasm32"))]
-        puffin_egui::profiler_window(ctx);
-
         let Self {
             labels,
             tick_granularity,
@@ -717,9 +707,6 @@ impl eframe::App for TemplateApp {
         });
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
-            #[cfg(not(target_arch = "wasm32"))]
-            puffin::profile_scope!("side_panel");
-
             ui.horizontal(|ui| {
                 ui.heading("💻 µWheel demo");
                 egui::widgets::global_dark_light_mode_buttons(ui);
@@ -988,9 +975,6 @@ impl eframe::App for TemplateApp {
         });
 
         egui::SidePanel::right("query_panel").show(ctx, |ui| {
-            #[cfg(not(target_arch = "wasm32"))]
-            puffin::profile_scope!("query_panel");
-
             ui.heading("🗠 Query Panel");
             ui.separator();
             ui.heading("Intervals");

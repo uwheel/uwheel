@@ -32,7 +32,7 @@ impl WebHandle {
                 eframe::WebOptions::default(),
                 Box::new(|cc| {
                     egui_extras::install_image_loaders(&cc.egui_ctx);
-                    Ok(Box::new(TemplateApp::new(cc)))
+                    Box::new(TemplateApp::new(cc))
                 }),
             )
             .await
