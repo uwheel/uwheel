@@ -26,7 +26,7 @@ fn main() -> eframe::Result<()> {
         native_options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Box::new(app::TemplateApp::new(cc))
+            Ok(Box::new(app::TemplateApp::new(cc)))
         }),
     )
 }
