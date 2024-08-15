@@ -62,32 +62,33 @@ See more about its design [here](DESIGN.md) and try it out directly on the [web]
 See a user-defined aggregator example [here](examples/aggregator/).
 
 ## Feature Flags
+
 - `std` (_enabled by default_)
-    - Enables features that rely on the standard library
+  - Enables features that rely on the standard library
 - `sum` (_enabled by default_)
-    - Enables sum aggregation
+  - Enables sum aggregation
 - `avg` (_enabled by default_)
-    - Enables avg aggregation
+  - Enables avg aggregation
 - `min` (_enabled by default_)
-    - Enables min aggregation
+  - Enables min aggregation
 - `max` (_enabled by default_)
-    - Enables max aggregation
+  - Enables max aggregation
 - `min_max` (_enabled by default_)
-    - Enables min-max aggregation
+  - Enables min-max aggregation
 - `all` (_enabled by default_)
-    - Enables all aggregation
+  - Enables all aggregation
 - `top_n`
-    - Enables Top-N aggregation
+  - Enables Top-N aggregation
 - `simd` (_requires `nightly`_)
-    - Enables support to speed up aggregation functions with SIMD operations
+  - Enables support to speed up aggregation functions with SIMD operations
 - `sync` (_implicitly enables `std`_)
-    - Enables a sync version of ``ReaderWheel`` that can be shared and queried across threads
+  - Enables a sync version of ``ReaderWheel`` that can be shared and queried across threads
 - `profiler` (_implicitly enables `std`_)
-    - Enables recording of latencies for various operations
+  - Enables recording of latencies for various operations
 - `serde`
-    - Enables serde support
+  - Enables serde support
 - `timer`
-    - Enables scheduling user-defined functions
+  - Enables scheduling user-defined functions
 
 ## Usage
 
@@ -96,6 +97,7 @@ For ``std`` support and compilation of built-in aggregators:
 ```toml
 uwheel  = "0.2.0"
 ```
+
 For ``no_std`` support and minimal compile time:
 
 ```toml
@@ -144,7 +146,6 @@ assert_eq!(wheel.read().interval(1.hours()), Some(3600));
 
 See more examples [here](examples).
 
-
 ## Acknowledgements
 
 - µWheel borrows scripts from the [egui](https://github.com/emilk/egui) crate.
@@ -164,6 +165,8 @@ If you find µWheel interesting and want to learn more, then join the [Discord](
 - Max Meldrum, Paris Carbone (2024). µWheel: Aggregate Management for Streams and Queries (**Best Paper Award**). In DEBS '24. [[PDF]](https://maxmeldrum.com/assets/files/uwheel_debs24.pdf).
 
 ## Blog Posts
+
+- [Introducing datafusion-uwheel, A Native DataFusion Optimizer for Time-based Analytics](https://uwheel.rs/post/datafusion_uwheel/) - August 2024
 - [Best Paper Award + 0.2.0 Release](https://uwheel.rs/post/best-paper-award-020-release/) - July 2024
 - [Speeding up Temporal Aggregation in DataFusion by 60-60000x using µWheel](https://uwheel.rs/post/datafusion/) - May 2024
 
@@ -184,7 +187,7 @@ If you find µWheel interesting and want to learn more, then join the [Discord](
 
 Licensed under either of
 
-  * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
-  * MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
+- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
 
 at your option.
