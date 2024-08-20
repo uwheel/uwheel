@@ -1091,17 +1091,6 @@ where
 
         let mut best_plan: Option<ExecutionPlan> = None;
 
-        /*
-        // helper fn for maybe updating to a new optimal plan or inserting if there is none.
-        let maybe_update_plan_or_insert =
-            |plan: ExecutionPlan, current: &mut Option<ExecutionPlan>| {
-                *current = match current.take() {
-                    Some(p) => Some(cmp::min(p, plan)),
-                    None => Some(plan),
-                }
-            };
-            */
-
         let wheel_start = self
             .watermark()
             .saturating_sub(self.current_time_in_cycle().whole_milliseconds() as u64);
@@ -1117,34 +1106,35 @@ where
             return Some(ExecutionPlan::LandmarkAggregation);
         }
 
-        if let Some(plan) = self
-            .wheel_aggregation_plan(range)
-            .map(ExecutionPlan::WheelAggregation)
-        {
+        // Create a single-wheel aggregation plan using the lowest granularity
+        if let Some(plan) = self.wheel_aggregation_plan(range) {
             // Check for possible early return: Going further may just have more overhead
 
-            // If the plan supports single-wheel prefix scan or landmark aggregation (both O(1) complexity).
-            // Or if the cost is low. For now we assume under 60 since values above are not usually quantizable to wheel intervals.
-            if plan.is_prefix_or_landmark() || plan.cost() < SECONDS {
-                return Some(plan);
+            // If the plan supports single-wheel prefix scan or if
+            // the cost is low and not quantizable to multiple wheels.
+            if plan.is_prefix() || plan.cost() < SECONDS {
+                return Some(ExecutionPlan::WheelAggregation(plan));
             }
-            // otherwise, set the plan as the best plan
-            best_plan = Some(plan);
+            // otherwise, set the plan as the current best plan
+            best_plan = Some(ExecutionPlan::WheelAggregation(plan));
         }
 
-        // Check whether it is worth to create a combined plan as it comes with some overhead
-        let combined_aggregation = {
-            let scan_estimation = best_plan.as_ref().map(|p| p.cost()).unwrap_or(0);
+        // Check whether it is worth to create a combined plan as it comes with some overhead.
+        let use_combined_aggregation = {
+            let single_wheel_cost = best_plan.as_ref().map(|p| p.cost()).unwrap_or(0);
 
             if self.conf.optimizer.use_hints && A::simd_support() {
-                scan_estimation > self.conf.optimizer.heuristics.simd_threshold
+                // With SIMD support check whether our hints tells us its worth to perform a
+                // single-wheel aggregation over a combined aggregation.
+                single_wheel_cost > self.conf.optimizer.heuristics.simd_threshold
             } else {
-                true // always generate a combined aggregation plan
+                // otherwise always generate a combined aggregation plan
+                true
             }
         };
 
-        // if the range can be split into multiple non-overlapping ranges
-        if combined_aggregation {
+        if use_combined_aggregation {
+            // Generate a Combined Aggregation plan by splitting the range into multiple non-overlapping ranges.
             // NOTE: could create multiple combinations of combined aggregations to check
             Self::maybe_update_plan_or_insert(
                 self.combined_aggregation_plan(Self::split_wheel_ranges(range))
