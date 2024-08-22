@@ -26,6 +26,9 @@ use crate::{
     Window,
 };
 
+#[cfg(test)]
+use proptest::prelude::*;
+
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
@@ -241,6 +244,28 @@ pub struct WheelRange {
     pub(crate) start: OffsetDateTime,
     pub(crate) end: OffsetDateTime,
 }
+
+#[cfg(test)]
+impl Arbitrary for WheelRange {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+        (any::<i64>(), any::<i64>())
+            .prop_map(|(start, end)| {
+                let start = OffsetDateTime::from_unix_timestamp(start.abs() % 1_600_000_000)
+                    .unwrap_or(OffsetDateTime::UNIX_EPOCH);
+                let end = OffsetDateTime::from_unix_timestamp(end.abs() % 1_600_000_000)
+                    .unwrap_or(OffsetDateTime::UNIX_EPOCH);
+                WheelRange {
+                    start: start.min(end),
+                    end: start.max(end),
+                }
+            })
+            .boxed()
+    }
+}
+
 impl WheelRange {
     /// Creates a WheelRange using a start and end timestamp as unix timestamps in milliseconds
     pub fn new(start_ms: u64, end_ms: u64) -> Result<Self, RangeError> {
@@ -1191,17 +1216,13 @@ where
         }
     }
 
-    /// Logically splits the wheel range into multiple non-overlapping ranges to execute using Combined Aggregation
     #[inline]
     #[doc(hidden)]
     pub fn split_wheel_ranges(range: WheelRange) -> WheelRanges {
         let mut ranges = WheelRanges::default();
         let WheelRange { start, end } = range;
-
-        // initial starting point
         let mut current_start = start;
 
-        // while we have not reached the end date, keep building wheel rangess.
         while current_start < end {
             let current_end = Self::new_curr_end(current_start, end);
             let range = WheelRange {
@@ -1224,29 +1245,32 @@ where
 
         // based on the lowest granularity figure out the duration to next alignment point
         let next = if second > 0 {
-            time::Duration::seconds(SECONDS as i64 - second as i64)
+            time::Duration::seconds(60 - second as i64)
         } else if minute > 0 {
-            time::Duration::minutes(MINUTES as i64 - minute as i64)
+            time::Duration::minutes(60 - minute as i64)
         } else if hour > 0 {
-            time::Duration::hours(HOURS as i64 - hour as i64)
+            time::Duration::hours(24 - hour as i64)
         } else if day > 0 {
-            let days_to_add = if (end - current_start).whole_days() > 0 {
-                let mut date = current_start.date();
-                // iterate until there is no next day for the current month
-                while let Some(next) = date.next_day() {
-                    date = next;
-                }
-                date.day() as i64
+            let year = current_start.year();
+            let month = current_start.month() as u8;
+
+            // Calculate days in the current month
+            let days_in_current_month = Self::days_in_month(year, month);
+            let remaining_days_in_month = days_in_current_month as i64 - day as i64;
+
+            // Determine if we should move to the next month
+            let days_to_add = if remaining_days_in_month > 0 {
+                remaining_days_in_month
             } else {
-                1
+                1 // Move to the next day, which is the first day of the next month
             };
+
             time::Duration::days(days_to_add)
         } else {
             unimplemented!("Weeks and Years not supported yet");
         };
-        // TODO: time::checked_add is somewhat expensive.
-        // let s = current_start.unix_timestamp() * 1000 + next.whole_milliseconds() as i64;
-        // let next_aligned = OffsetDateTime::from_unix_timestamp(s / 1000).unwrap();
+
+        // TODO(perf): time::checked_add is somewhat expensive.
         let next_aligned = current_start + next;
 
         if next_aligned > end {
@@ -1264,15 +1288,35 @@ where
                 (rem_days, time::Duration::days(rem_days)),
             ];
 
-            // Jump with lowest remaining duration > 0
+            // Jump with lowest remaining resolution
             let idx = remains
                 .iter()
                 .rposition(|&(rem, _)| rem > 0)
-                .unwrap_or(remains.len());
+                .unwrap_or(remains.len() - 1);
 
             current_start + remains[idx].1
         } else {
             next_aligned
+        }
+    }
+
+    // helper method to get the days of a month
+    #[inline]
+    fn days_in_month(year: i32, month: u8) -> u8 {
+        const DAYS_30: [u8; 4] = [4, 6, 9, 11];
+        const DAYS_31: [u8; 7] = [1, 3, 5, 7, 8, 10, 12];
+
+        if DAYS_31.contains(&month) {
+            31
+        } else if DAYS_30.contains(&month) {
+            30
+        } else {
+            // This must be February
+            if (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0) {
+                29
+            } else {
+                28
+            }
         }
     }
 
@@ -1717,10 +1761,11 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
-        aggregator::sum::U64SumAggregator,
+        aggregator::sum::{U32SumAggregator, U64SumAggregator},
         duration::NumericalDuration,
         wheels::read::plan::Aggregation,
     };
+    use proptest::prelude::*;
     use time::macros::datetime;
 
     use super::*;
@@ -2030,6 +2075,38 @@ mod tests {
     }
 
     #[test]
+    fn year_cross_test() {
+        // 2022-12-31 00:00:00
+        let watermark = 1672444800000;
+
+        let conf = HawConf::default()
+            .with_watermark(watermark)
+            .with_retention_policy(RetentionPolicy::Keep);
+        let mut haw: Haw<U64SumAggregator> = Haw::new(conf);
+
+        let days_as_secs = 3600 * 24;
+        let days = days_as_secs * 366;
+        let deltas: Vec<Option<u64>> = (0..days).map(|_| Some(1)).collect();
+        // advance wheel by 366 days (leap year)
+        haw.delta_advance(deltas);
+
+        let start = datetime!(2022 - 12 - 31 00:00:00 UTC);
+        let end = datetime!(2022 - 12 - 31 23:59:59 UTC);
+
+        assert_eq!(haw.combine_range(WheelRange { start, end }), Some(86399));
+
+        let start = datetime!(2022 - 12 - 31 00:00:00 UTC);
+        let end = datetime!(2023 - 01 - 01 12:00:00 UTC);
+
+        assert_eq!(haw.combine_range(WheelRange { start, end }), Some(129600));
+
+        let start = datetime!(2022 - 12 - 31 00:00:00 UTC);
+        let end = datetime!(2024 - 01 - 01 00:00:00 UTC);
+
+        assert_eq!(haw.combine_range(WheelRange { start, end }), Some(31622400));
+    }
+
+    #[test]
     fn overlapping_ranges_test() {
         let watermark = 1699488000000; // 2023-11-09 00:00:00
         let conf = HawConf::default().with_watermark(watermark);
@@ -2214,5 +2291,38 @@ mod tests {
                 (1699490700000, 900), // 00:45 - 01:00
             ])
         );
+    }
+
+    proptest! {
+        #[test]
+        fn split_wheel_ranges(range in any::<WheelRange>()) {
+            let ranges = Haw::<U32SumAggregator>::split_wheel_ranges(range);
+
+            // Ensure that the ranges are non-overlapping and within the original range
+            let mut current_start = range.start;
+
+            for r in ranges.iter() {
+                prop_assert!(r.start >= current_start, "Start time should be non-decreasing");
+                prop_assert!(r.end <= range.end, "End time should not exceed the original range's end");
+                prop_assert!(r.start < r.end, "Each split range must have a valid start and end");
+                current_start = r.end;
+            }
+
+            // Ensure that the ranges cover the entire original range
+            if !ranges.is_empty() {
+                prop_assert_eq!(ranges.first().unwrap().start, range.start, "First range should start at the original start");
+                prop_assert_eq!(ranges.last().unwrap().end, range.end, "Last range should end at the original end");
+            }
+        }
+        #[test]
+        fn combine_range_empty_haw(range in any::<WheelRange>()) {
+            let haw = Haw::<U32SumAggregator>::new(HawConf::default());
+            haw.combine_range(range);
+        }
+        #[test]
+        fn range_empty_haw(range in any::<WheelRange>()) {
+            let haw = Haw::<U32SumAggregator>::new(HawConf::default());
+            haw.range(range);
+        }
     }
 }
