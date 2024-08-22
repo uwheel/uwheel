@@ -4,7 +4,7 @@ members = ["crates/*", "examples/*"]
 exclude = ["crates/uwheel-tree"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Max Meldrum <max@meldrum.se>"]
 edition = "2021"
 repository = "https://github.com/uwheel/uwheel"
@@ -16,9 +16,9 @@ readme = "README.md"
 opt-level = 2 # fast and small wasm
 
 [workspace.dependencies]
-uwheel = { path = "crates/uwheel", version = "0.2.0" }
-uwheel-tree = { path = "crates/uwheel-tree", version = "0.2.0" }
-uwheel-stats = { path = "crates/uwheel-stats", version = "0.2.0" }
+uwheel = { path = "crates/uwheel", version = "0.2.1" }
+uwheel-tree = { path = "crates/uwheel-tree", version = "0.2.1" }
+uwheel-stats = { path = "crates/uwheel-stats", version = "0.2.1" }
 
 parking_lot = "0.12"
 hashbrown = "0.14.3"
@@ -31,7 +31,6 @@ prettytable-rs = "0.10.0"
 hdrhistogram = "7"
 clap = { version = "4.5.4", features = ["derive"] }
 criterion = "0.4"
-duckdb = { version = "0.10.0", features = ["bundled"] }
 serde = { version = "1.0", default-features = false }
 serde-big-array = { version = "0.5.1", default-features = false }
 postcard = { version = "1.0.0", features = ["alloc"] }

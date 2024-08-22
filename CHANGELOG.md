@@ -2,6 +2,21 @@
 
 This file contains all notable changes to µWheel.
 
+
+## 0.2.1  (2024-08-22)
+
+### Fixed
+
+* Fix split wheel range bug with certain dates [#147](https://github.com/uwheel/uwheel/pull/147) by [@Max-Meldrum](https://github.com/Max-Meldrum)
+* Remove assert in combine_range favouring ``None`` instead [#143](https://github.com/uwheel/uwheel/pull/143) by [@Max-Meldrum](https://github.com/Max-Meldrum)
+* Fix return type for combine_range_and_lower [#140](https://github.com/uwheel/uwheel/pull/140) by [@Max-Meldrum](https://github.com/Max-Meldrum)
+
+### Added
+
+* Add initial test cases using proptest [#147](https://github.com/uwheel/uwheel/pull/147) by [@Max-Meldrum](https://github.com/Max-Meldrum)
+* Add group_by benches [#144](https://github.com/uwheel/uwheel/pull/144) by [@Max-Meldrum](https://github.com/Max-Meldrum)
+
+
 ## 0.2.0 (2024-07-13)
 
 ### Added
