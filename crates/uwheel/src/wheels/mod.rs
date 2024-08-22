@@ -385,6 +385,7 @@ mod tests {
 
     use super::*;
     use crate::{aggregator::sum::U32SumAggregator, duration::*, *};
+    use proptest::prelude::*;
 
     #[test]
     fn delta_generate_test() {
@@ -709,5 +710,19 @@ mod tests {
         assert_eq!(wheel.read().landmark(), Some(6));
         // assert_eq!(wheel.read().interval(2.seconds()), Some(5));
         assert_eq!(wheel.read().interval(10.seconds()), Some(6));
+    }
+
+    fn create_and_advance_wheel(start: u64, end: u64) -> u64 {
+        let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(start);
+        wheel.advance_to(end);
+        wheel.watermark()
+    }
+
+    proptest! {
+        #[test]
+        fn advance_to(start in 0u64..u64::MAX, watermark in 0u64..u64::MAX) {
+            let advanced_time = create_and_advance_wheel(start, watermark);
+            prop_assert!(advanced_time >= start);
+        }
     }
 }
