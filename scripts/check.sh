@@ -14,7 +14,7 @@ cargo check -p uwheel --lib --target thumbv7m-none-eabi --no-default-features
 cargo hack check --all
 # cargo check -p uwheel-demo --lib --target wasm32-unknown-unknown
 cargo fmt --all -- --check
-cargo hack clippy --workspace --all-targets --  -D warnings -W clippy::all
+cargo hack clippy --workspace --all-targets -- -D warnings -W clippy::all
 cargo hack test --workspace
 # cargo test --workspace --doc
 
@@ -28,3 +28,5 @@ cargo hack test --workspace
 (cd crates/uwheel && cargo check --features "timer, serde")
 (cd crates/uwheel && cargo check --features "sync, profiler")
 (cd crates/uwheel/fuzz && cargo check)
+
+./scripts/query_tests.sh

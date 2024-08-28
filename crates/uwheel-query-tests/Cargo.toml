@@ -1,0 +1,21 @@
+[package]
+name = "uwheel-query-tests"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+categories.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[dependencies]
+uwheel.workspace = true
+tokio.workspace = true
+datafusion.workspace = true
+bitpacking.workspace = true
+chrono.workspace = true
+parquet.workspace = true
+fastrand.workspace = true
+clap.workspace = true
+pretty_assertions = "1.4.0"
+pbr = "1.1.1"

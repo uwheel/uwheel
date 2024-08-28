@@ -66,3 +66,17 @@ jobs:
       - name: Check no_std support
         run: cargo check -p uwheel --lib --target thumbv7m-none-eabi --no-default-features
 
+  query_integration_tests:
+    name: Query integration tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+
+      - name: Set up cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run query integration tests
+        run: ./scripts/query_tests.sh
