@@ -5,3 +5,4 @@ dist/
 .DS_STORE
 web_demo/uwheel_demo_bg.wasm
 web_demo/uwheel_demo.js
+yellow_tripdata_2022-01.parquet

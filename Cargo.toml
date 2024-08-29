@@ -27,6 +27,10 @@ minstant = "0.1"
 multiversion = { version = "0.7.3", default-features = false }
 fastrand = "2.0.2"
 rand = "0.8.5"
+datafusion = "40.0.0"
+tokio = { version = "1.39.3", features = ["rt-multi-thread"] }
+chrono = "0.4.38"
+parquet = "51.0.0"
 prettytable-rs = "0.10.0"
 hdrhistogram = "7"
 clap = { version = "4.5.4", features = ["derive"] }
