@@ -33,7 +33,7 @@ See more about its design [here](DESIGN.md) and try it out directly on the [web]
 µWheel unifies the aggregate management for online streaming and offline analytical queries in a single system.
 µWheel is not a general purpose solution but a specialized system tailored for a pre-defined aggregation function.
 
-µWheel is an execellent choice when:
+µWheel is an excellent choice when:
 
 - You know the aggregation function apriori.
 - You need high-throughput ingestion of out-of-order streams.
