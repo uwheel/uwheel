@@ -24,11 +24,6 @@ pub fn create_pair_type(range: usize, slide: usize) -> PairType {
     }
 }
 
-#[inline]
-const fn ceil_div(a: usize, b: usize) -> usize {
-    (a + (b - 1)) / b
-}
-
 /// Based on a Range and Slide, generate number of slots required using the Pairs technique
 pub const fn pairs_space(range: usize, slide: usize) -> usize {
     assert!(range >= slide, "Range needs to be larger than slide");
@@ -36,6 +31,6 @@ pub const fn pairs_space(range: usize, slide: usize) -> usize {
     if p2 == 0 {
         range / slide
     } else {
-        ceil_div(2 * range, slide)
+        (2 * range).div_ceil(slide)
     }
 }
