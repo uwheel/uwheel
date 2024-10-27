@@ -102,32 +102,31 @@ macro_rules! sum_impl {
             #[multiversion(targets = "simd")]
             fn simd_build_prefix(slice: &[$pa]) -> Vec<$pa> {
                 let len = slice.len();
-                let mut output = vec![$pa::default(); len];
+                let mut output = vec![<$pa>::default(); len];
 
-                let chunk_size = 4;
+                let chunk_size = <$simd>::LEN;
                 let chunks = slice.chunks_exact(chunk_size);
                 let remainder = chunks.remainder();
 
-                let mut cumulative_sum = $pa::default();
+                let mut cumulative_sum = <$pa>::default();
 
                 // Process each chunk
                 for (i, chunk) in chunks.enumerate() {
-                    let data = <$simd>::from_slice(chunk);
-
-                    let mut adjusted_data = data + <$simd>::splat(cumulative_sum);
+                    let mut data = <$simd>::from_slice(chunk);
 
                     // Calculate prefix sum within one SIMD chunk
                     for j in 1..chunk_size {
-                        adjusted_data[j] += adjusted_data[j - 1];
+                        data[j] += data[j - 1];
                     }
 
-                    // Manually copy the SIMD values to the output slice
-                    for j in 0..chunk_size {
-                        output[i * chunk_size + j] = adjusted_data[j];
-                    }
+                    data += <$simd>::splat(cumulative_sum);
 
                     // Update cumulative sum for next chunk
-                    cumulative_sum = adjusted_data[chunk_size - 1];
+                    cumulative_sum = data[chunk_size - 1];
+
+                    // copy back
+                    output[i * chunk_size..i * chunk_size + data.as_array().len()]
+                        .copy_from_slice(data.as_array());
                 }
 
                 // Handle remaining elements (non-SIMD part)
@@ -223,11 +222,48 @@ mod tests {
 
     #[cfg(feature = "simd")]
     #[test]
-    fn simd_sum_prefix_test() {
+    fn simd_sum_prefix_functionality_test() {
+        // less than 1 chunk
         let partials = vec![1, 2, 3];
         let prefix_sum = U64SumAggregator::simd_build_prefix(&partials);
         assert_eq!(U64SumAggregator::prefix_query(&prefix_sum, 0, 1), Some(3));
         assert_eq!(U64SumAggregator::prefix_query(&prefix_sum, 1, 2), Some(5));
         assert_eq!(U64SumAggregator::prefix_query(&prefix_sum, 0, 2), Some(6));
+
+        // greater than 1 chunk
+        let partials: Vec<u64> = (1..101).collect();
+        let prefix_sum = U64SumAggregator::simd_build_prefix(&partials);
+        assert_eq!(
+            U64SumAggregator::prefix_query(&prefix_sum, 0, 99),
+            Some(5050)
+        );
+
+        // different SIMD LANE
+        let partials = vec![1i16, 2i16, 3i16];
+        let prefix_sum = I16SumAggregator::simd_build_prefix(&partials);
+        assert_eq!(
+            I16SumAggregator::prefix_query(&prefix_sum, 0, 1),
+            Some(3i16)
+        );
+        assert_eq!(
+            I16SumAggregator::prefix_query(&prefix_sum, 1, 2),
+            Some(5i16)
+        );
+        assert_eq!(
+            I16SumAggregator::prefix_query(&prefix_sum, 0, 2),
+            Some(6i16)
+        );
+    }
+
+    #[cfg(feature = "simd")]
+    #[test]
+    fn simd_sum_prefix_performance_test() {
+        let len = 100_000_000;
+        let partials: Vec<u64> = vec![1u64; len];
+        let prefix_sum = U64SumAggregator::simd_build_prefix(&partials);
+        assert_eq!(
+            U64SumAggregator::prefix_query(&prefix_sum, 0, len - 1),
+            Some(len as u64)
+        );
     }
 }
