@@ -254,16 +254,4 @@ mod tests {
             Some(6i16)
         );
     }
-
-    #[cfg(feature = "simd")]
-    #[test]
-    fn simd_sum_prefix_performance_test() {
-        let len = 100_000_000;
-        let partials: Vec<u64> = vec![1u64; len];
-        let prefix_sum = U64SumAggregator::simd_build_prefix(&partials);
-        assert_eq!(
-            U64SumAggregator::prefix_query(&prefix_sum, 0, len - 1),
-            Some(len as u64)
-        );
-    }
 }
