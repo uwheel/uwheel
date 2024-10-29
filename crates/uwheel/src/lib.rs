@@ -120,10 +120,10 @@ impl<T: Debug> From<(T, u64)> for Entry<T> {
 #[macro_export]
 macro_rules! capacity_to_slots {
     ($cap:tt) => {
-        if $cap.is_power_of_two() {
-            $cap
+        if $cap.get().is_power_of_two() {
+            $cap.get()
         } else {
-            $cap.next_power_of_two()
+            $cap.get().next_power_of_two()
         }
     };
 }

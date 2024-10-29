@@ -12,7 +12,7 @@ use uwheel::{
 fn main() {
     let mut time = 0;
     let mut wheel: RwWheel<U32SumAggregator> = RwWheel::new(0);
-    let seconds_ticks = SECONDS - 1;
+    let seconds_ticks = SECONDS.get() - 1;
     let minutes_ticks = (3600 - seconds_ticks) - 1;
     let hours_ticks = (86400 - (minutes_ticks + seconds_ticks)) - 1;
     let days_ticks = (604800 - (hours_ticks + minutes_ticks + seconds_ticks)) - 1;

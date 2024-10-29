@@ -17,7 +17,7 @@ mod stats;
 mod timer;
 
 use crate::{aggregator::Aggregator, duration::Duration, window::WindowAggregate, Entry};
-use core::fmt::Debug;
+use core::{fmt::Debug, num::NonZeroUsize};
 use write::DEFAULT_WRITE_AHEAD_SLOTS;
 
 pub use read::{DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
@@ -316,12 +316,12 @@ where
 #[derive(Debug, Copy, Clone)]
 pub struct WriterConf {
     /// Defines the capacity of write-ahead slots
-    write_ahead_capacity: usize,
+    write_ahead_capacity: NonZeroUsize,
 }
 impl Default for WriterConf {
     fn default() -> Self {
         Self {
-            write_ahead_capacity: DEFAULT_WRITE_AHEAD_SLOTS,
+            write_ahead_capacity: NonZeroUsize::new(DEFAULT_WRITE_AHEAD_SLOTS).unwrap(),
         }
     }
 }
@@ -351,11 +351,12 @@ impl Conf {
     ///
     /// ```
     /// use uwheel::Conf;
+    /// use core::num::NonZeroUsize;
     ///
     /// // Configure a write-ahead capacity of 128 (seconds)
-    /// let rw_conf = Conf::default().with_write_ahead(128);
+    /// let rw_conf = Conf::default().with_write_ahead(NonZeroUsize::new(128).unwrap());
     /// ```
-    pub fn with_write_ahead(mut self, capacity: usize) -> Self {
+    pub fn with_write_ahead(mut self, capacity: NonZeroUsize) -> Self {
         self.writer_conf.write_ahead_capacity = capacity;
         self
     }

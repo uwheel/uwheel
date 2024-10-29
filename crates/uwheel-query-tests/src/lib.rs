@@ -1,7 +1,7 @@
 #![allow(warnings)]
 
 use aggregator::{Compression, InverseFn};
-use std::fs::File;
+use std::{fs::File, num::NonZeroUsize};
 use uwheel::{
     aggregator::{self, sum::F64SumAggregator},
     Aggregator,
@@ -68,7 +68,7 @@ pub fn build_count_wheel(path: &str, wheel_type: WheelType) -> RwWheel<SumAggreg
     let mut wheel: RwWheel<SumAggregator> = RwWheel::with_conf(
         Conf::default()
             .with_haw_conf(conf)
-            .with_write_ahead(64000usize.next_power_of_two()),
+            .with_write_ahead(NonZeroUsize::new(64000usize.next_power_of_two()).unwrap()),
     );
 
     let parquet_reader = ParquetRecordBatchReaderBuilder::try_new(file)
@@ -131,7 +131,7 @@ pub fn build_fare_wheel(path: &str) -> RwWheel<F64SumAggregator> {
     let mut wheel: RwWheel<F64SumAggregator> = RwWheel::with_conf(
         Conf::default()
             .with_haw_conf(conf)
-            .with_write_ahead(64000usize.next_power_of_two()),
+            .with_write_ahead(NonZeroUsize::new(64000usize.next_power_of_two()).unwrap()),
     );
 
     let parquet_reader = ParquetRecordBatchReaderBuilder::try_new(file)

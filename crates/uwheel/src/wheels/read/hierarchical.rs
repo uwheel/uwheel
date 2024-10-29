@@ -1,6 +1,7 @@
 use core::{
     cmp,
     fmt::{self, Display},
+    num::NonZeroUsize,
 };
 use time::OffsetDateTime;
 
@@ -190,17 +191,17 @@ impl HawConf {
 }
 
 /// Default capacity of second slots
-pub const SECONDS: usize = 60;
+pub const SECONDS: NonZeroUsize = NonZeroUsize::new(60).unwrap();
 /// Default capacity of minute slots
-pub const MINUTES: usize = 60;
+pub const MINUTES: NonZeroUsize = NonZeroUsize::new(60).unwrap();
 /// Default capacity of hour slots
-pub const HOURS: usize = 24;
+pub const HOURS: NonZeroUsize = NonZeroUsize::new(24).unwrap();
 /// Default capacity of day slots
-pub const DAYS: usize = 7;
+pub const DAYS: NonZeroUsize = NonZeroUsize::new(7).unwrap();
 /// Default capacity of week slots
-pub const WEEKS: usize = 52;
+pub const WEEKS: NonZeroUsize = NonZeroUsize::new(52).unwrap();
 /// Default capacity of year slots
-pub const YEARS: usize = 10;
+pub const YEARS: NonZeroUsize = NonZeroUsize::new(10).unwrap();
 
 /// A type containing error variants that
 #[derive(Debug, Copy, Clone)]
@@ -463,17 +464,18 @@ where
     const HOURS_AS_SECS: u64 = time::Duration::HOUR.whole_seconds() as u64;
     const DAYS_AS_SECS: u64 = time::Duration::DAY.whole_seconds() as u64;
     const WEEK_AS_SECS: u64 = time::Duration::WEEK.whole_seconds() as u64;
-    const YEAR_AS_SECS: u64 = Self::WEEK_AS_SECS * WEEKS as u64;
+    const YEAR_AS_SECS: u64 = Self::WEEK_AS_SECS * WEEKS.get() as u64;
     const CYCLE_LENGTH_SECS: u64 = Self::CYCLE_LENGTH.whole_seconds() as u64;
 
     const SECOND_AS_MS: u64 = time::Duration::SECOND.whole_milliseconds() as u64;
 
-    const TOTAL_SECS_IN_WHEEL: u64 = Self::YEAR_AS_SECS * YEARS as u64;
+    const TOTAL_SECS_IN_WHEEL: u64 = Self::YEAR_AS_SECS * YEARS.get() as u64;
     /// Duration of a full wheel cycle
     pub const CYCLE_LENGTH: time::Duration =
-        time::Duration::seconds((Self::YEAR_AS_SECS * (YEARS as u64 + 1)) as i64); // need 1 extra to force full cycle rotation
+        time::Duration::seconds((Self::YEAR_AS_SECS * (YEARS.get() as u64 + 1)) as i64); // need 1 extra to force full cycle rotation
     /// Total number of wheel slots across all granularities
-    pub const TOTAL_WHEEL_SLOTS: usize = SECONDS + MINUTES + HOURS + DAYS + WEEKS + YEARS;
+    pub const TOTAL_WHEEL_SLOTS: usize =
+        SECONDS.get() + MINUTES.get() + HOURS.get() + DAYS.get() + WEEKS.get() + YEARS.get();
 
     /// Creates a new Wheel from the given configuration
     pub fn new(conf: HawConf) -> Self {
@@ -1137,7 +1139,7 @@ where
 
             // If the plan supports single-wheel prefix scan or if
             // the cost is low and not quantizable to multiple wheels.
-            if plan.is_prefix() || plan.cost() < SECONDS {
+            if plan.is_prefix() || plan.cost() < SECONDS.get() {
                 return Some(ExecutionPlan::WheelAggregation(plan));
             }
             // otherwise, set the plan as the current best plan

@@ -132,7 +132,7 @@ mod tests {
         let mut time = 0u64;
         let mut wheel = RwWheel::<AllAggregator>::new(time);
 
-        for _ in 0..SECONDS {
+        for _ in 0..SECONDS.get() {
             let entry = crate::Entry::new(1.0, time);
             wheel.insert(entry);
             time += 1000; // increase by 1 second
