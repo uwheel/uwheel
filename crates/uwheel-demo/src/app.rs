@@ -301,7 +301,7 @@ impl TemplateApp {
 
         let mut bars = Vec::new();
         if let Some(seconds_wheel) = wheel.read().as_ref().seconds() {
-            for i in 0..=uwheel::SECONDS - 1 {
+            for i in 0..=uwheel::SECONDS.get() - 1 {
                 let val = seconds_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Second));
                 pos -= 1.0;
@@ -317,7 +317,7 @@ impl TemplateApp {
         // MINUTES
         let mut bars = Vec::new();
         if let Some(minutes_wheel) = wheel.read().as_ref().minutes() {
-            for i in 0..=uwheel::MINUTES - 1 {
+            for i in 0..=uwheel::MINUTES.get() - 1 {
                 let val = minutes_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Minute));
                 pos -= 1.0;
@@ -333,7 +333,7 @@ impl TemplateApp {
         // HOURS
         let mut bars = Vec::new();
         if let Some(hours_wheel) = wheel.read().as_ref().hours() {
-            for i in 0..=uwheel::HOURS - 1 {
+            for i in 0..=uwheel::HOURS.get() - 1 {
                 let val = hours_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Hour));
                 pos -= 1.0;
@@ -348,7 +348,7 @@ impl TemplateApp {
 
         let mut bars = Vec::new();
         if let Some(days_wheel) = wheel.read().as_ref().days() {
-            for i in 0..=uwheel::DAYS - 1 {
+            for i in 0..=uwheel::DAYS.get() - 1 {
                 let val = days_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Day));
                 pos -= 1.0;
@@ -363,7 +363,7 @@ impl TemplateApp {
 
         let mut bars = Vec::new();
         if let Some(weeks_wheel) = wheel.read().as_ref().weeks() {
-            for i in 0..=uwheel::WEEKS - 1 {
+            for i in 0..=uwheel::WEEKS.get() - 1 {
                 let val = weeks_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Week));
                 pos -= 1.0;
@@ -378,7 +378,7 @@ impl TemplateApp {
 
         let mut bars = Vec::new();
         if let Some(years_wheel) = wheel.read().as_ref().years() {
-            for i in 0..=uwheel::YEARS - 1 {
+            for i in 0..=uwheel::YEARS.get() - 1 {
                 let val = years_wheel.lower_at(i).unwrap_or(0) as f64;
                 let bar = Bar::new(pos, val).name(fmt_str(i + 1, Granularity::Year));
                 pos -= 1.0;
