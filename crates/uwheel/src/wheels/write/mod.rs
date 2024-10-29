@@ -1,4 +1,4 @@
-use core::{mem, time::Duration as CoreDuration};
+use core::{mem, num::NonZeroUsize, time::Duration as CoreDuration};
 
 use crate::{aggregator::Aggregator, duration::Duration, Entry};
 
@@ -26,7 +26,7 @@ pub struct WriterWheel<A: Aggregator> {
     /// This value may be different than capacity if capacity is not a power of two.
     num_slots: usize,
     /// Defines the capacity of the write-ahead wheel
-    capacity: usize,
+    capacity: NonZeroUsize,
     /// A Hierarchical Timing Wheel for managing future entries that do not fit within the write-ahead wheel
     overflow: RawTimerWheel<Entry<A::Input>>,
     /// Pre-allocated memory for mutable write-ahead aggregation
@@ -45,17 +45,20 @@ impl<A: Aggregator> Default for WriterWheel<A> {
 impl<A: Aggregator> WriterWheel<A> {
     /// Creates a Write wheel starting from the given watermark and a capacity of [DEFAULT_WRITE_AHEAD_SLOTS]
     pub fn with_watermark(watermark: u64) -> Self {
-        Self::with_capacity_and_watermark(DEFAULT_WRITE_AHEAD_SLOTS, watermark)
+        Self::with_capacity_and_watermark(
+            NonZeroUsize::new(DEFAULT_WRITE_AHEAD_SLOTS).unwrap(),
+            watermark,
+        )
     }
     /// Creates a WriterWheel starting from the given watermark and capacity
-    pub fn with_capacity_and_watermark(capacity: usize, watermark: u64) -> Self {
+    pub fn with_capacity_and_watermark(capacity: NonZeroUsize, watermark: u64) -> Self {
         let num_slots = crate::capacity_to_slots!(capacity);
         Self {
             num_slots,
             capacity,
             watermark,
             overflow: RawTimerWheel::new(watermark),
-            slots: (0..capacity)
+            slots: (0..capacity.get())
                 .map(|_| None)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
@@ -113,7 +116,7 @@ impl<A: Aggregator> WriterWheel<A> {
     /// How many write ahead slots are available
     #[inline]
     pub fn write_ahead_len(&self) -> usize {
-        self.capacity - self.len()
+        self.capacity.get() - self.len()
     }
     // used for uwheel-demo
     #[doc(hidden)]
@@ -183,7 +186,7 @@ impl<A: Aggregator> WheelExt for WriterWheel<A> {
         self.num_slots
     }
     fn capacity(&self) -> usize {
-        self.capacity
+        self.capacity.get()
     }
     fn head(&self) -> usize {
         self.head
@@ -206,7 +209,7 @@ mod tests {
     #[test]
     fn empty_wheel_test() {
         let mut wheel: WriterWheel<U64SumAggregator> =
-            WriterWheel::with_capacity_and_watermark(8, 0);
+            WriterWheel::with_capacity_and_watermark(NonZeroUsize::new(8).unwrap(), 0);
         assert_eq!(wheel.head, 0);
         assert_eq!(wheel.tail, 0);
         assert_eq!(wheel.tick(), None);
@@ -215,7 +218,7 @@ mod tests {
     #[test]
     fn write_ahead_test() {
         let mut wheel: WriterWheel<U64SumAggregator> =
-            WriterWheel::with_capacity_and_watermark(16, 0);
+            WriterWheel::with_capacity_and_watermark(NonZeroUsize::new(16).unwrap(), 0);
 
         wheel.insert(Entry::new(1, 0));
         wheel.insert(Entry::new(10, 1000));
@@ -255,7 +258,7 @@ mod tests {
     #[test]
     fn wrap_around_test() {
         let mut wheel: WriterWheel<U64SumAggregator> =
-            WriterWheel::with_capacity_and_watermark(4, 1000);
+            WriterWheel::with_capacity_and_watermark(NonZeroUsize::new(4).unwrap(), 1000);
         wheel.insert(Entry::new(1, 1000));
         wheel.insert(Entry::new(2, 2000));
         wheel.insert(Entry::new(3, 3000));
@@ -273,7 +276,7 @@ mod tests {
     #[test]
     fn late_event_handling_test() {
         let mut wheel: WriterWheel<U64SumAggregator> =
-            WriterWheel::with_capacity_and_watermark(8, 0);
+            WriterWheel::with_capacity_and_watermark(NonZeroUsize::new(8).unwrap(), 0);
         wheel.insert(Entry::new(10, 1000));
         wheel.insert(Entry::new(20, 2000));
         assert_eq!(wheel.tick(), None);
@@ -285,7 +288,7 @@ mod tests {
     #[test]
     fn overflow_test() {
         let mut watermark = 0;
-        let write_ahead_capacity = 8;
+        let write_ahead_capacity = NonZeroUsize::new(8).unwrap();
         let mut wheel: WriterWheel<U64SumAggregator> =
             WriterWheel::with_capacity_and_watermark(write_ahead_capacity, watermark);
 

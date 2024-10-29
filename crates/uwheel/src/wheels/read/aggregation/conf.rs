@@ -1,3 +1,5 @@
+use core::num::NonZeroUsize;
+
 /// An enum with different retention policies
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Copy, Default, Clone, Debug)]
@@ -86,7 +88,7 @@ pub enum WheelMode {
 #[derive(Copy, Clone, Debug)]
 pub struct WheelConf {
     /// Defines the base capacity of a wheel (e.g., seconds => 60).
-    pub capacity: usize,
+    pub capacity: NonZeroUsize,
     /// Defines the low watermark of a wheel
     pub watermark: u64,
     /// Defines the chosen data layout of a wheel
@@ -103,7 +105,7 @@ pub struct WheelConf {
 
 impl WheelConf {
     /// Initiates a new Configuration
-    pub fn new(tick_size_ms: u64, capacity: usize) -> Self {
+    pub fn new(tick_size_ms: u64, capacity: NonZeroUsize) -> Self {
         Self {
             capacity,
             watermark: Default::default(),

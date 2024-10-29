@@ -6,11 +6,9 @@ use core::{
     assert,
     fmt::Debug,
     mem,
+    num::NonZeroUsize,
     ops::{Range, RangeBounds},
-    option::{
-        Option,
-        Option::{None, Some},
-    },
+    option::Option::{self, None, Some},
 };
 
 #[cfg(feature = "profiler")]
@@ -105,7 +103,7 @@ impl<A: Aggregator> WheelSlot<A> {
 #[derive(Clone, Debug)]
 pub struct Wheel<A: Aggregator> {
     /// Number of slots (60 seconds => 60 slots)
-    capacity: usize,
+    capacity: NonZeroUsize,
     /// Total number of wheel slots (must be power of two)
     num_slots: usize,
     /// Partial aggregate for a full rotation
@@ -340,7 +338,7 @@ impl<A: Aggregator> Wheel<A> {
         if !self.data.is_empty() && self.retention.should_drop() {
             self.data.pop_back();
         } else if let RetentionPolicy::KeepWithLimit(limit) = self.retention {
-            if self.data.len() > self.capacity + limit {
+            if self.data.len() > self.capacity.get() + limit {
                 self.data.pop_back();
             }
         };
@@ -353,7 +351,7 @@ impl<A: Aggregator> Wheel<A> {
     /// Ticks left until the wheel fully rotates
     #[inline]
     pub fn ticks_remaining(&self) -> usize {
-        self.capacity - self.rotation_count
+        self.capacity.get() - self.rotation_count
     }
 
     fn size_bytesz(&self) -> Option<usize> {
@@ -443,7 +441,7 @@ impl<A: Aggregator> Wheel<A> {
         }
 
         // Return rotation data if wheel has doen a full rotation
-        if self.rotation_count == self.capacity {
+        if self.rotation_count == self.capacity.get() {
             // our total partial aggregate to be rolled up
             let total = self.total.take();
 
@@ -458,7 +456,7 @@ impl<A: Aggregator> Wheel<A> {
     /// Check whether this wheel is utilising all its slots
     #[inline]
     pub fn is_full(&self) -> bool {
-        self.data.len() >= self.capacity
+        self.data.len() >= self.capacity.get()
     }
 
     #[cfg(feature = "profiler")]
@@ -470,6 +468,8 @@ impl<A: Aggregator> Wheel<A> {
 
 #[cfg(test)]
 mod tests {
+    use core::num::NonZeroUsize;
+
     use super::{deque::MutablePartialDeque, *};
     use crate::{
         aggregator::{
@@ -522,7 +522,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn invalid_prefix_conf() {
-        let conf = WheelConf::new(HOUR_TICK_MS, 24)
+        let conf = WheelConf::new(HOUR_TICK_MS, NonZeroUsize::new(24).unwrap())
             .with_retention_policy(RetentionPolicy::Keep)
             .with_data_layout(DataLayout::Prefix);
         // should panic as U64MinAggregator does not support prefix-sum
@@ -531,12 +531,13 @@ mod tests {
 
     #[test]
     fn agg_wheel_prefix_test() {
-        let prefix_conf = WheelConf::new(HOUR_TICK_MS, 24)
+        let prefix_conf = WheelConf::new(HOUR_TICK_MS, NonZeroUsize::new(24).unwrap())
             .with_retention_policy(RetentionPolicy::Keep)
             .with_data_layout(DataLayout::Prefix);
         let mut prefix_wheel = Wheel::<U64SumAggregator>::new(prefix_conf);
 
-        let conf = WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
+        let conf = WheelConf::new(HOUR_TICK_MS, NonZeroUsize::new(24).unwrap())
+            .with_retention_policy(RetentionPolicy::Keep);
         let mut wheel = Wheel::<U64SumAggregator>::new(conf);
 
         for i in 0..30 {
@@ -578,13 +579,13 @@ mod tests {
         let chunk_sizes = vec![8, 24, 60, 120, 160];
 
         for chunk_size in chunk_sizes {
-            let compressed_conf = WheelConf::new(HOUR_TICK_MS, 24)
+            let compressed_conf = WheelConf::new(HOUR_TICK_MS, NonZeroUsize::new(24).unwrap())
                 .with_retention_policy(RetentionPolicy::Keep)
                 .with_data_layout(DataLayout::Compressed(chunk_size));
             let mut compressed_wheel = Wheel::<PcoSumAggregator>::new(compressed_conf);
 
-            let conf =
-                WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
+            let conf = WheelConf::new(HOUR_TICK_MS, NonZeroUsize::new(24).unwrap())
+                .with_retention_policy(RetentionPolicy::Keep);
             let mut wheel = Wheel::<U32SumAggregator>::new(conf);
 
             for i in 0..150 {
@@ -663,7 +664,8 @@ mod tests {
 
     #[test]
     fn retention_drop_test() {
-        let conf = WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Drop);
+        let conf = WheelConf::new(HOUR_TICK_MS, NonZeroUsize::new(24).unwrap())
+            .with_retention_policy(RetentionPolicy::Drop);
         let mut wheel = Wheel::<U64SumAggregator>::new(conf);
 
         for i in 0..24 {
@@ -676,7 +678,8 @@ mod tests {
 
     #[test]
     fn retention_keep_test() {
-        let conf = WheelConf::new(HOUR_TICK_MS, 24).with_retention_policy(RetentionPolicy::Keep);
+        let conf = WheelConf::new(HOUR_TICK_MS, NonZeroUsize::new(24).unwrap())
+            .with_retention_policy(RetentionPolicy::Keep);
         let mut wheel = Wheel::<U64SumAggregator>::new(conf);
 
         for i in 0..60 {
@@ -687,7 +690,7 @@ mod tests {
     }
     #[test]
     fn retention_keep_with_limit_test() {
-        let conf = WheelConf::new(HOUR_TICK_MS, 24)
+        let conf = WheelConf::new(HOUR_TICK_MS, NonZeroUsize::new(24).unwrap())
             .with_retention_policy(RetentionPolicy::KeepWithLimit(10));
         let mut wheel = Wheel::<U64SumAggregator>::new(conf);
 

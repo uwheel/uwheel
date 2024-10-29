@@ -32,6 +32,7 @@
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(feature = "simd", feature(portable_simd))]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(const_option)]
 #![deny(nonstandard_style, missing_copy_implementations, missing_docs)]
 #![forbid(unsafe_code)]
 #![allow(clippy::large_enum_variant, clippy::enum_variant_names)]
@@ -120,10 +121,10 @@ impl<T: Debug> From<(T, u64)> for Entry<T> {
 #[macro_export]
 macro_rules! capacity_to_slots {
     ($cap:tt) => {
-        if $cap.is_power_of_two() {
-            $cap
+        if $cap.get().is_power_of_two() {
+            $cap.get()
         } else {
-            $cap.next_power_of_two()
+            $cap.get().next_power_of_two()
         }
     };
 }

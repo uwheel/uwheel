@@ -76,7 +76,7 @@ mod tests {
         let mut time = 0u64;
         let mut wheel = RwWheel::<U64AvgAggregator>::new(time);
 
-        for _ in 0..SECONDS + 1 {
+        for _ in 0..SECONDS.get() + 1 {
             wheel.advance_to(time);
             let entry = crate::Entry::new(10, time);
             wheel.insert(entry);
