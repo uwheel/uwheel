@@ -1,0 +1,12 @@
+[package]
+name = "hammerslide-rs"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+categories.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[dependencies]
+rand.workspace = true
