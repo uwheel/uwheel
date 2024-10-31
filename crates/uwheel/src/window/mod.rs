@@ -4,7 +4,7 @@ pub mod state;
 mod util;
 
 use crate::{aggregator::Aggregator, duration::Duration};
-use hammer_slide::HammerSlide;
+use hammer_slide::{HammerSlide, DEFAULT_WINDOW_SLIDE};
 use state::{SessionState, SlicingState};
 
 #[cfg(not(feature = "std"))]
@@ -207,7 +207,7 @@ impl<A: Aggregator> Default for SlicingAggregator<A> {
             Self::Soe(SubtractOnEvict::new())
         } else {
             // Self::TwoStacks(TwoStacks::new())
-            Self::HammerSlide(HammerSlide::new(0, 1))
+            Self::HammerSlide(HammerSlide::new(0, DEFAULT_WINDOW_SLIDE))
         }
     }
 }
@@ -218,14 +218,14 @@ impl<A: Aggregator> SlicingAggregator<A> {
             Self::Soe(SubtractOnEvict::with_capacity(capacity))
         } else {
             // Self::TwoStacks(TwoStacks::with_capacity(capacity))
-            Self::HammerSlide(HammerSlide::new(capacity, 1))
+            Self::HammerSlide(HammerSlide::with_capacity(capacity))
         }
     }
     pub fn push(&mut self, agg: A::PartialAggregate) {
         match self {
             Self::Soe(soe) => soe.push(agg),
             Self::TwoStacks(stacks) => stacks.push(agg),
-            Self::HammerSlide(hammer_slide) => hammer_slide.insert(agg),
+            Self::HammerSlide(hammer_slide) => hammer_slide.push(agg),
         }
     }
 
@@ -233,7 +233,7 @@ impl<A: Aggregator> SlicingAggregator<A> {
         match self {
             Self::Soe(soe) => soe.query(),
             Self::TwoStacks(stacks) => stacks.query(),
-            Self::HammerSlide(hammer_slide) => hammer_slide.query(false),
+            Self::HammerSlide(hammer_slide) => hammer_slide.query(),
         }
     }
 
@@ -241,7 +241,7 @@ impl<A: Aggregator> SlicingAggregator<A> {
         match self {
             Self::Soe(soe) => soe.pop(),
             Self::TwoStacks(stacks) => stacks.pop(),
-            Self::HammerSlide(hammer_slide) => hammer_slide.evict(1),
+            Self::HammerSlide(hammer_slide) => hammer_slide.pop(),
         }
     }
 }
