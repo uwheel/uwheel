@@ -1,7 +1,10 @@
+mod circular_queue;
+mod hammer_slide;
 pub mod state;
 mod util;
 
 use crate::{aggregator::Aggregator, duration::Duration};
+use hammer_slide::HammerSlide;
 use state::{SessionState, SlicingState};
 
 #[cfg(not(feature = "std"))]
@@ -196,13 +199,15 @@ impl<A: Aggregator> SessionAggregator<A> {
 pub enum SlicingAggregator<A: Aggregator> {
     Soe(SubtractOnEvict<A>),
     TwoStacks(TwoStacks<A>),
+    HammerSlide(HammerSlide<A>),
 }
 impl<A: Aggregator> Default for SlicingAggregator<A> {
     fn default() -> Self {
         if A::invertible() {
             Self::Soe(SubtractOnEvict::new())
         } else {
-            Self::TwoStacks(TwoStacks::new())
+            // Self::TwoStacks(TwoStacks::new())
+            Self::HammerSlide(HammerSlide::new(0, 1))
         }
     }
 }
@@ -212,20 +217,23 @@ impl<A: Aggregator> SlicingAggregator<A> {
         if A::invertible() {
             Self::Soe(SubtractOnEvict::with_capacity(capacity))
         } else {
-            Self::TwoStacks(TwoStacks::with_capacity(capacity))
+            // Self::TwoStacks(TwoStacks::with_capacity(capacity))
+            Self::HammerSlide(HammerSlide::new(capacity, 1))
         }
     }
     pub fn push(&mut self, agg: A::PartialAggregate) {
         match self {
             Self::Soe(soe) => soe.push(agg),
             Self::TwoStacks(stacks) => stacks.push(agg),
+            Self::HammerSlide(hammer_slide) => hammer_slide.insert(agg),
         }
     }
 
-    pub fn query(&self) -> A::PartialAggregate {
+    pub fn query(&mut self) -> A::PartialAggregate {
         match self {
             Self::Soe(soe) => soe.query(),
             Self::TwoStacks(stacks) => stacks.query(),
+            Self::HammerSlide(hammer_slide) => hammer_slide.query(false),
         }
     }
 
@@ -233,6 +241,7 @@ impl<A: Aggregator> SlicingAggregator<A> {
         match self {
             Self::Soe(soe) => soe.pop(),
             Self::TwoStacks(stacks) => stacks.pop(),
+            Self::HammerSlide(hammer_slide) => hammer_slide.evict(1),
         }
     }
 }
