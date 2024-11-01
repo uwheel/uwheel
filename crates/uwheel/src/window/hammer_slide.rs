@@ -60,6 +60,9 @@ impl<A: Aggregator> HammerSlide<A> {
     }
 
     pub fn pop(&mut self) {
+        if self.m_ostack_size == 0 {
+            self.swap();
+        }
         self.m_ostack_ptr += 1;
         self.m_ostack_size -= 1;
         self.m_capacity -= 1;
