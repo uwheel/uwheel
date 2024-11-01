@@ -1,4 +1,8 @@
+#[cfg(feature = "std")]
 use std::vec::Vec;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 
 use crate::Aggregator;
 
@@ -16,12 +20,18 @@ pub struct CircularQueue<A: Aggregator> {
 
 impl<A: Aggregator> CircularQueue<A> {
     pub fn new(size: usize) -> Self {
+        let mut arr = Vec::new();
+
+        for _ in 0..size {
+            arr.push(A::IDENTITY);
+        }
+
         CircularQueue {
             m_front: -1,
             m_rear: -1,
             m_size: size,
             m_counter: 0,
-            m_arr: vec![A::PartialAggregate::default(); size],
+            m_arr: arr,
         }
     }
 
@@ -45,11 +55,10 @@ impl<A: Aggregator> CircularQueue<A> {
     // Remove and return an element from the front of the queue
     pub fn dequeue(&mut self) -> Option<A::PartialAggregate> {
         if self.m_front == -1 || self.m_counter == 0 {
-            println!("Queue is Empty");
             return None;
         }
 
-        let data = self.m_arr[self.m_front as usize].clone();
+        let data = self.m_arr[self.m_front as usize];
         self.m_arr[self.m_front as usize] = A::PartialAggregate::default();
 
         if self.m_front == self.m_rear {
@@ -63,22 +72,6 @@ impl<A: Aggregator> CircularQueue<A> {
 
         self.m_counter -= 1;
         Some(data)
-    }
-
-    // Remove multiple elements from the front of the queue
-    pub fn dequeue_many(&mut self, num_of_items: usize) {
-        if num_of_items > self.m_counter {
-            panic!("Cannot dequeue more items than present in the queue");
-        }
-
-        self.m_front = (self.m_front + num_of_items as i32) % self.m_size as i32;
-        self.m_counter -= num_of_items;
-
-        // If the queue becomes empty, reset the front and rear pointers
-        if self.m_front == (self.m_rear + 1) % self.m_size as i32 {
-            self.m_front = -1;
-            self.m_rear = -1;
-        }
     }
 }
 
@@ -133,15 +126,5 @@ mod tests {
     fn test_dequeue_empty() {
         let mut queue: CircularQueue<DummyAggregator> = CircularQueue::new(2);
         assert_eq!(queue.dequeue(), None);
-    }
-
-    #[test]
-    #[should_panic(expected = "Cannot dequeue more items than present in the queue")]
-    fn test_dequeue_many_overflow() {
-        let mut queue: CircularQueue<DummyAggregator> = CircularQueue::new(5);
-        for i in 1..=3 {
-            queue.enqueue(i);
-        }
-        queue.dequeue_many(4);
     }
 }

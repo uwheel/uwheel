@@ -1,57 +1,44 @@
 use crate::{window::circular_queue::CircularQueue, Aggregator};
-use std::{marker::PhantomData, vec::Vec};
+
+#[cfg(feature = "std")]
+use std::vec::Vec;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Default)]
 pub struct HammerSlide<A: Aggregator> {
-    m_window_slide: usize,
-
     m_capacity: usize,
     m_istack_size: usize,
     m_istack_ptr: isize,
     m_ostack_size: usize,
     m_ostack_ptr: isize,
-    m_istack_val: A::PartialAggregate, // should be PartialAggregate
+    m_istack_val: A::PartialAggregate,
 
-    m_queue: CircularQueue<A>, // should be any possible input type
+    m_queue: CircularQueue<A>,
     m_ostack_val: Vec<A::PartialAggregate>,
-
-    _phantom: PhantomData<(A::Input, A::Aggregate)>,
 }
 
-pub const DEFAULT_WINDOW_SLIDE: usize = 1;
-
 impl<A: Aggregator> HammerSlide<A> {
-    pub fn new(window_size: usize, window_slide: usize) -> Self {
-        let queue = CircularQueue::new(window_size);
-        HammerSlide {
-            m_window_slide: window_slide,
-            m_capacity: 0,
-            m_istack_size: 0,
-            m_istack_ptr: -1,
-            m_ostack_size: 0,
-            m_ostack_ptr: -1,
-            m_istack_val: Default::default(),
-            m_queue: queue,
-            m_ostack_val: vec![Default::default(); window_size],
-            _phantom: PhantomData,
-        }
-    }
-
     pub fn with_capacity(capacity: usize) -> Self {
         let queue = CircularQueue::new(capacity);
+        let mut stack = Vec::new();
+
+        for _ in 0..capacity {
+            stack.push(A::IDENTITY);
+        }
+
         HammerSlide {
-            m_window_slide: DEFAULT_WINDOW_SLIDE,
             m_capacity: 0,
             m_istack_size: 0,
             m_istack_ptr: -1,
             m_ostack_size: 0,
             m_ostack_ptr: -1,
-            m_istack_val: Default::default(),
+            m_istack_val: A::IDENTITY,
             m_queue: queue,
-            m_ostack_val: vec![Default::default(); capacity],
-            _phantom: PhantomData,
+            m_ostack_val: stack,
         }
     }
 
@@ -102,33 +89,6 @@ impl<A: Aggregator> HammerSlide<A> {
 }
 
 impl<A: Aggregator> HammerSlide<A> {
-    fn evict_many(&mut self, number_of_items: usize) {
-        self.m_ostack_ptr += number_of_items as isize;
-        self.m_ostack_size -= number_of_items;
-        self.m_capacity -= number_of_items;
-
-        self.m_queue.dequeue_many(number_of_items);
-    }
-
-    fn insert_simple_range(&mut self, vals: &[A::PartialAggregate], start: usize, end: usize) {
-        let num_of_vals = end - start;
-        let mut temp_value = if self.m_istack_size == 0 {
-            A::IDENTITY
-        } else {
-            self.m_istack_val
-        };
-
-        for i in start..end {
-            temp_value = A::combine(vals[i], temp_value);
-            self.m_queue.enqueue(vals[i]);
-        }
-
-        self.m_istack_ptr = self.m_queue.m_rear as isize;
-        self.m_capacity += num_of_vals;
-        self.m_istack_size += num_of_vals;
-        self.m_istack_val = temp_value;
-    }
-
     fn swap(&mut self) {
         let mut output_index = 0;
         let mut input_index = self.m_istack_ptr as usize;
@@ -170,8 +130,8 @@ mod tests {
     use rand::{distributions::Uniform, Rng};
 
     #[test]
-    fn test_hammer_slide_sum_insert_and_query() {
-        let mut hammer_slide: HammerSlide<U32SumAggregator> = HammerSlide::new(10, 1);
+    fn test_insert_and_query_sum() {
+        let mut hammer_slide: HammerSlide<U32SumAggregator> = HammerSlide::with_capacity(10);
 
         let mut expected = 0;
 
@@ -185,8 +145,8 @@ mod tests {
     }
 
     #[test]
-    fn test_hammer_slide_min_insert_and_query() {
-        let mut hammer_slide: HammerSlide<U32MinAggregator> = HammerSlide::new(10, 1);
+    fn test_insert_and_query_min() {
+        let mut hammer_slide: HammerSlide<U32MinAggregator> = HammerSlide::with_capacity(10);
 
         let mut expected = u32::MAX;
 
@@ -200,33 +160,14 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_many_and_query_sum() {
-        let mut hammer_slide: HammerSlide<U32SumAggregator> = HammerSlide::new(10, 1);
-
-        let values = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        hammer_slide.insert_simple_range(&values, 0, values.len());
-
-        let result = hammer_slide.query();
-        assert_eq!(result, 36);
-    }
-
-    #[test]
-    fn test_insert_many_and_query_min() {
-        let mut hammer_slide: HammerSlide<U32MinAggregator> = HammerSlide::new(10, 1);
-
-        let values = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        hammer_slide.insert_simple_range(&values, 0, values.len());
-
-        let result = hammer_slide.query();
-        assert_eq!(result, 1);
-    }
-
-    #[test]
     fn test_evict_and_query_sum() {
-        let mut hammer_slide: HammerSlide<U32SumAggregator> = HammerSlide::new(10, 1);
+        let mut hammer_slide: HammerSlide<U32SumAggregator> = HammerSlide::with_capacity(10);
 
         let values = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        hammer_slide.insert_simple_range(&values, 0, values.len());
+
+        for val in values {
+            hammer_slide.push(val);
+        }
 
         let mut expected = hammer_slide.query();
 
@@ -239,10 +180,13 @@ mod tests {
 
     #[test]
     fn test_evict_and_query_min() {
-        let mut hammer_slide: HammerSlide<U32MinAggregator> = HammerSlide::new(10, 1);
+        let mut hammer_slide: HammerSlide<U32MinAggregator> = HammerSlide::with_capacity(10);
 
         let values = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        hammer_slide.insert_simple_range(&values, 0, values.len());
+
+        for val in values {
+            hammer_slide.push(val);
+        }
 
         assert_eq!(hammer_slide.query(), 1);
 
@@ -262,7 +206,7 @@ mod tests {
         const INPUT_SIZE: usize = 1_000_000;
 
         let mut hammer_slide: HammerSlide<U32SumAggregator> =
-            HammerSlide::new(WINDOW_SIZE, WINDOW_SLIDE);
+            HammerSlide::with_capacity(WINDOW_SIZE);
 
         // Generate random input data
         let rng = rand::thread_rng();
@@ -315,7 +259,7 @@ mod tests {
         const INPUT_SIZE: usize = 1_000_000;
 
         let mut hammer_slide: HammerSlide<U32MinAggregator> =
-            HammerSlide::new(WINDOW_SIZE, WINDOW_SLIDE);
+            HammerSlide::with_capacity(WINDOW_SIZE);
 
         // Generate input data
         let input: Vec<u32> = (1..=INPUT_SIZE as u32).collect();

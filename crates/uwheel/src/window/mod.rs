@@ -4,7 +4,7 @@ pub mod state;
 mod util;
 
 use crate::{aggregator::Aggregator, duration::Duration};
-use hammer_slide::{HammerSlide, DEFAULT_WINDOW_SLIDE};
+use hammer_slide::HammerSlide;
 use state::{SessionState, SlicingState};
 
 #[cfg(not(feature = "std"))]
@@ -206,8 +206,7 @@ impl<A: Aggregator> Default for SlicingAggregator<A> {
         if A::invertible() {
             Self::Soe(SubtractOnEvict::new())
         } else {
-            // Self::TwoStacks(TwoStacks::new())
-            Self::HammerSlide(HammerSlide::new(0, DEFAULT_WINDOW_SLIDE))
+            Self::TwoStacks(TwoStacks::new())
         }
     }
 }
@@ -217,7 +216,6 @@ impl<A: Aggregator> SlicingAggregator<A> {
         if A::invertible() {
             Self::Soe(SubtractOnEvict::with_capacity(capacity))
         } else {
-            // Self::TwoStacks(TwoStacks::with_capacity(capacity))
             Self::HammerSlide(HammerSlide::with_capacity(capacity))
         }
     }
@@ -321,12 +319,7 @@ impl<A: Aggregator> TwoStacks<A> {
     pub fn new() -> Self {
         Self::default()
     }
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            front: Vec::with_capacity(capacity),
-            back: Vec::with_capacity(capacity),
-        }
-    }
+
     #[inline(always)]
     fn agg(stack: &[Value<A>]) -> A::PartialAggregate {
         if let Some(top) = stack.last() {
