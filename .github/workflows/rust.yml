@@ -32,7 +32,9 @@ jobs:
         run: cargo hack check --all
 
       - name: Test
-        run: cargo hack test --workspace
+        uses: taiki-e/install-action@nextest
+        with:
+          tool: nextest
 
   check_wasm:
     name: Check wasm32 compatibility
