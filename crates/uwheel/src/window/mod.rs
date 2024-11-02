@@ -1,7 +1,10 @@
+mod circular_queue;
+mod hammer_slide;
 pub mod state;
 mod util;
 
 use crate::{aggregator::Aggregator, duration::Duration};
+use hammer_slide::HammerSlide;
 use state::{SessionState, SlicingState};
 
 #[cfg(not(feature = "std"))]
@@ -196,6 +199,7 @@ impl<A: Aggregator> SessionAggregator<A> {
 pub enum SlicingAggregator<A: Aggregator> {
     Soe(SubtractOnEvict<A>),
     TwoStacks(TwoStacks<A>),
+    HammerSlide(HammerSlide<A>),
 }
 impl<A: Aggregator> Default for SlicingAggregator<A> {
     fn default() -> Self {
@@ -212,20 +216,22 @@ impl<A: Aggregator> SlicingAggregator<A> {
         if A::invertible() {
             Self::Soe(SubtractOnEvict::with_capacity(capacity))
         } else {
-            Self::TwoStacks(TwoStacks::with_capacity(capacity))
+            Self::HammerSlide(HammerSlide::with_capacity(capacity))
         }
     }
     pub fn push(&mut self, agg: A::PartialAggregate) {
         match self {
             Self::Soe(soe) => soe.push(agg),
             Self::TwoStacks(stacks) => stacks.push(agg),
+            Self::HammerSlide(hammer_slide) => hammer_slide.push(agg),
         }
     }
 
-    pub fn query(&self) -> A::PartialAggregate {
+    pub fn query(&mut self) -> A::PartialAggregate {
         match self {
             Self::Soe(soe) => soe.query(),
             Self::TwoStacks(stacks) => stacks.query(),
+            Self::HammerSlide(hammer_slide) => hammer_slide.query(),
         }
     }
 
@@ -233,6 +239,7 @@ impl<A: Aggregator> SlicingAggregator<A> {
         match self {
             Self::Soe(soe) => soe.pop(),
             Self::TwoStacks(stacks) => stacks.pop(),
+            Self::HammerSlide(hammer_slide) => hammer_slide.pop(),
         }
     }
 }
@@ -312,12 +319,7 @@ impl<A: Aggregator> TwoStacks<A> {
     pub fn new() -> Self {
         Self::default()
     }
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            front: Vec::with_capacity(capacity),
-            back: Vec::with_capacity(capacity),
-        }
-    }
+
     #[inline(always)]
     fn agg(stack: &[Value<A>]) -> A::PartialAggregate {
         if let Some(top) = stack.last() {
@@ -352,7 +354,7 @@ impl<A: Aggregator> TwoStacks<A> {
 mod tests {
     use super::Window;
     use crate::{
-        aggregator::sum::U64SumAggregator,
+        aggregator::{min::U64MinAggregator, sum::U64SumAggregator},
         window::WindowAggregate,
         Duration,
         Entry,
@@ -366,6 +368,14 @@ mod tests {
         wheel.window(Window::tumbling(Duration::seconds(30)));
 
         window_30_sec_tumbling(wheel);
+    }
+
+    #[test]
+    fn window_30_sec_tumbling_min_agg_test() {
+        let mut wheel: RwWheel<U64MinAggregator> = RwWheel::new(1533081600000);
+        wheel.window(Window::tumbling(Duration::seconds(30)));
+
+        window_30_sec_tumbling_min_agg(wheel);
     }
 
     fn window_30_sec_tumbling(mut wheel: RwWheel<U64SumAggregator>) {
@@ -393,12 +403,45 @@ mod tests {
         );
     }
 
+    fn window_30_sec_tumbling_min_agg(mut wheel: RwWheel<U64MinAggregator>) {
+        wheel.insert(Entry::new(100, 1533081605000));
+        wheel.insert(Entry::new(200, 1533081615000));
+        wheel.insert(Entry::new(300, 1533081625000));
+        wheel.insert(Entry::new(400, 1533081635000));
+        wheel.insert(Entry::new(500, 1533081645000));
+
+        let results = wheel.advance_to(1533081660000);
+        assert_eq!(
+            results,
+            [
+                WindowAggregate {
+                    window_start_ms: 1533081600000,
+                    window_end_ms: 1533081630000,
+                    aggregate: 100
+                }, // Min of entries at 1533081605000, 1533081615000, 1533081625000
+                WindowAggregate {
+                    window_start_ms: 1533081630000,
+                    window_end_ms: 1533081660000,
+                    aggregate: 400
+                }, // Min of entries at 1533081635000, 1533081645000
+            ]
+        );
+    }
+
     #[test]
     fn window_1_min_tumbling_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(0);
         wheel.window(Window::tumbling(Duration::minutes(1)));
 
         window_1_min_tumbling(wheel);
+    }
+
+    #[test]
+    fn window_1_min_tumbling_min_agg_test() {
+        let mut wheel: RwWheel<U64MinAggregator> = RwWheel::new(0);
+        wheel.window(Window::tumbling(Duration::minutes(1)));
+
+        window_1_min_tumbling_min_agg(wheel);
     }
 
     fn window_1_min_tumbling(mut wheel: RwWheel<U64SumAggregator>) {
@@ -425,12 +468,44 @@ mod tests {
         );
     }
 
+    fn window_1_min_tumbling_min_agg(mut wheel: RwWheel<U64MinAggregator>) {
+        wheel.insert(Entry::new(10, 15000));
+        wheel.insert(Entry::new(20, 45000));
+        wheel.insert(Entry::new(30, 75000));
+        wheel.insert(Entry::new(40, 105000));
+
+        let results = wheel.advance_to(120000);
+        assert_eq!(
+            results,
+            [
+                WindowAggregate {
+                    window_start_ms: 0,
+                    window_end_ms: 60000,
+                    aggregate: 10,
+                },
+                WindowAggregate {
+                    window_start_ms: 60000,
+                    window_end_ms: 120000,
+                    aggregate: 30,
+                },
+            ]
+        );
+    }
+
     #[test]
     fn window_2_min_tumbling_with_gap_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(0);
         wheel.window(Window::tumbling(Duration::minutes(2)));
 
         window_2_min_tumbling_with_gap(wheel);
+    }
+
+    #[test]
+    fn window_2_min_tumbling_with_gap_min_agg_test() {
+        let mut wheel: RwWheel<U64MinAggregator> = RwWheel::new(0);
+        wheel.window(Window::tumbling(Duration::minutes(2)));
+
+        window_2_min_tumbling_with_gap_min_agg(wheel);
     }
 
     fn window_2_min_tumbling_with_gap(mut wheel: RwWheel<U64SumAggregator>) {
@@ -463,6 +538,36 @@ mod tests {
         );
     }
 
+    fn window_2_min_tumbling_with_gap_min_agg(mut wheel: RwWheel<U64MinAggregator>) {
+        wheel.insert(Entry::new(100, 30000));
+        wheel.insert(Entry::new(200, 90000));
+        wheel.insert(Entry::new(300, 150000));
+        wheel.insert(Entry::new(400, 270000));
+        wheel.insert(Entry::new(500, 330000));
+
+        let results = wheel.advance_to(360000);
+        assert_eq!(
+            results,
+            [
+                WindowAggregate {
+                    window_start_ms: 0,
+                    window_end_ms: 120000,
+                    aggregate: 100
+                }, // Min of entries at 30000 and 90000
+                WindowAggregate {
+                    window_start_ms: 120000,
+                    window_end_ms: 240000,
+                    aggregate: 300
+                }, // Min of entries at 150000 and 210000
+                WindowAggregate {
+                    window_start_ms: 240000,
+                    window_end_ms: 360000,
+                    aggregate: 400
+                }, // Min of entries at 270000 and 330000
+            ]
+        );
+    }
+
     #[test]
     fn window_30_sec_range_10_sec_slide_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(1533081600000);
@@ -472,6 +577,17 @@ mod tests {
         ));
 
         window_30_sec_range_10_sec_slide(wheel);
+    }
+
+    #[test]
+    fn window_30_sec_range_10_sec_slide_min_agg_test() {
+        let mut wheel: RwWheel<U64MinAggregator> = RwWheel::new(1533081600000);
+        wheel.window(Window::sliding(
+            Duration::seconds(30),
+            Duration::seconds(10),
+        ));
+
+        window_30_sec_range_10_sec_slide_min_agg(wheel);
     }
 
     fn window_30_sec_range_10_sec_slide(mut wheel: RwWheel<U64SumAggregator>) {
@@ -493,6 +609,29 @@ mod tests {
                 window_start_ms: 1533081600000,
                 window_end_ms: 1533081630000,
                 aggregate: 2845
+            }]
+        )
+    }
+
+    fn window_30_sec_range_10_sec_slide_min_agg(mut wheel: RwWheel<U64MinAggregator>) {
+        wheel.insert(Entry::new(681, 1533081607321));
+        wheel.insert(Entry::new(625, 1533081619748));
+        wheel.insert(Entry::new(1319, 1533081621175));
+        wheel.insert(Entry::new(220, 1533081626470));
+        wheel.insert(Entry::new(398, 1533081630291));
+        wheel.insert(Entry::new(2839, 1533081662717));
+        wheel.insert(Entry::new(172, 1533081663534));
+        wheel.insert(Entry::new(1133, 1533081664024));
+        wheel.insert(Entry::new(1417, 1533081678095));
+        wheel.insert(Entry::new(195, 1533081679609));
+
+        let results = wheel.advance_to(1533081630000);
+        assert_eq!(
+            results,
+            [WindowAggregate {
+                window_start_ms: 1533081600000,
+                window_end_ms: 1533081630000,
+                aggregate: 220
             }]
         )
     }
@@ -557,6 +696,68 @@ mod tests {
             ]
         );
     }
+
+    fn window_60_sec_range_10_sec_slide_min_agg(mut wheel: RwWheel<U64MinAggregator>) {
+        wheel.insert(Entry::new(1, 9000));
+        wheel.insert(Entry::new(1, 15000));
+        wheel.insert(Entry::new(1, 25000));
+        wheel.insert(Entry::new(1, 35000));
+        wheel.insert(Entry::new(1, 59000));
+
+        assert!(wheel.advance_to(59000).is_empty());
+
+        wheel.insert(Entry::new(3, 69000));
+        wheel.insert(Entry::new(5, 75000));
+        wheel.insert(Entry::new(10, 110000));
+
+        let results = wheel.advance_to(130000);
+        assert_eq!(
+            results,
+            [
+                WindowAggregate {
+                    window_start_ms: 0,
+                    window_end_ms: 60000,
+                    aggregate: 1
+                },
+                WindowAggregate {
+                    window_start_ms: 10000,
+                    window_end_ms: 70000,
+                    aggregate: 1
+                },
+                WindowAggregate {
+                    window_start_ms: 20000,
+                    window_end_ms: 80000,
+                    aggregate: 1
+                },
+                WindowAggregate {
+                    window_start_ms: 30000,
+                    window_end_ms: 90000,
+                    aggregate: 1
+                },
+                WindowAggregate {
+                    window_start_ms: 40000,
+                    window_end_ms: 100000,
+                    aggregate: 1
+                },
+                WindowAggregate {
+                    window_start_ms: 50000,
+                    window_end_ms: 110000,
+                    aggregate: 1
+                },
+                WindowAggregate {
+                    window_start_ms: 60000,
+                    window_end_ms: 120000,
+                    aggregate: 3
+                },
+                WindowAggregate {
+                    window_start_ms: 70000,
+                    window_end_ms: 130000,
+                    aggregate: 5
+                }
+            ]
+        );
+    }
+
     #[test]
     fn window_60_sec_range_10_sec_slide_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(0);
@@ -565,6 +766,16 @@ mod tests {
             Duration::seconds(10),
         ));
         window_60_sec_range_10_sec_slide(wheel);
+    }
+
+    #[test]
+    fn window_60_sec_range_10_sec_slide_min_agg_test() {
+        let mut wheel: RwWheel<U64MinAggregator> = RwWheel::new(0);
+        wheel.window(Window::sliding(
+            Duration::seconds(60),
+            Duration::seconds(10),
+        ));
+        window_60_sec_range_10_sec_slide_min_agg(wheel);
     }
 
     fn window_120_sec_range_10_sec_slide(mut wheel: RwWheel<U64SumAggregator>) {
@@ -622,17 +833,87 @@ mod tests {
         );
     }
 
+    fn window_120_sec_range_10_sec_slide_min_agg(mut wheel: RwWheel<U64MinAggregator>) {
+        wheel.insert(Entry::new(1, 9000));
+        wheel.insert(Entry::new(1, 15000));
+        wheel.insert(Entry::new(1, 25000));
+        wheel.insert(Entry::new(1, 35000));
+        wheel.insert(Entry::new(1, 59000));
+
+        assert!(wheel.advance_to(60000).is_empty());
+
+        wheel.insert(Entry::new(3, 69000));
+        wheel.insert(Entry::new(5, 75000));
+        wheel.insert(Entry::new(10, 110000));
+
+        assert!(wheel.advance_to(100000).is_empty());
+
+        wheel.insert(Entry::new(3, 125000));
+
+        // 1 window triggered [0-120] -> should be 23
+        // 2nd window triggered [10-130] -> should be (23 - 1) + 3 = 25
+        // 3nd window triggered [20-140] -> should be (25 -1)
+        // 4nd window triggered [30-150] -> should be (24-1) = 23
+        // 5nd window triggered [40-160] -> should be (23 -1 ) = 22
+        let results = wheel.advance_to(160000);
+        assert_eq!(
+            results,
+            [
+                WindowAggregate {
+                    window_start_ms: 0,
+                    window_end_ms: 120000,
+                    aggregate: 1,
+                },
+                WindowAggregate {
+                    window_start_ms: 10000,
+                    window_end_ms: 130000,
+                    aggregate: 1,
+                },
+                WindowAggregate {
+                    window_start_ms: 20000,
+                    window_end_ms: 140000,
+                    aggregate: 1,
+                },
+                WindowAggregate {
+                    window_start_ms: 30000,
+                    window_end_ms: 150000,
+                    aggregate: 1,
+                },
+                WindowAggregate {
+                    window_start_ms: 40000,
+                    window_end_ms: 160000,
+                    aggregate: 1,
+                },
+            ]
+        );
+    }
+
     #[test]
     fn window_2_min_range_10_sec_slide_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(0);
         wheel.window(Window::sliding(Duration::minutes(2), Duration::seconds(10)));
         window_120_sec_range_10_sec_slide(wheel);
     }
+
+    #[test]
+    fn window_2_min_range_10_sec_slide_min_agg_test() {
+        let mut wheel: RwWheel<U64MinAggregator> = RwWheel::new(0);
+        wheel.window(Window::sliding(Duration::minutes(2), Duration::seconds(10)));
+        window_120_sec_range_10_sec_slide_min_agg(wheel);
+    }
+
     #[test]
     fn window_10_sec_range_3_sec_slide_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(0);
         wheel.window(Window::sliding(Duration::seconds(10), Duration::seconds(3)));
         window_10_sec_range_3_sec_slide(wheel);
+    }
+
+    #[test]
+    fn window_10_sec_range_3_sec_slide_min_agg_test() {
+        let mut wheel: RwWheel<U64MinAggregator> = RwWheel::new(0);
+        wheel.window(Window::sliding(Duration::seconds(10), Duration::seconds(3)));
+        window_10_sec_range_3_sec_slide_min_agg(wheel);
     }
 
     fn window_10_sec_range_3_sec_slide(mut wheel: RwWheel<U64SumAggregator>) {
@@ -679,6 +960,50 @@ mod tests {
         );
     }
 
+    fn window_10_sec_range_3_sec_slide_min_agg(mut wheel: RwWheel<U64MinAggregator>) {
+        // Based on Figure 4 in https://asterios.katsifodimos.com/assets/publications/window-semantics-encyclopediaBigDAta18.pdf
+        for i in 1..=22 {
+            wheel.insert(Entry::new(i, i * 1000 - 1));
+        }
+        let results = wheel.advance(22.seconds());
+
+        // w1: reduce[1..=10] = 55
+        // w2: reduce[4..=13] = 85
+        // w3: reduce[7..=16] = 115
+        // w4: reduce[10..=19] = 145
+        // w5: reduce[13..=22] = 175
+        assert_eq!(
+            results,
+            [
+                WindowAggregate {
+                    window_start_ms: 0,
+                    window_end_ms: 10000,
+                    aggregate: 1
+                },
+                WindowAggregate {
+                    window_start_ms: 3000,
+                    window_end_ms: 13000,
+                    aggregate: 4
+                },
+                WindowAggregate {
+                    window_start_ms: 6000,
+                    window_end_ms: 16000,
+                    aggregate: 7
+                },
+                WindowAggregate {
+                    window_start_ms: 9000,
+                    window_end_ms: 19000,
+                    aggregate: 10
+                },
+                WindowAggregate {
+                    window_start_ms: 12000,
+                    window_end_ms: 22000,
+                    aggregate: 13
+                },
+            ]
+        );
+    }
+
     #[test]
     fn out_of_order_inserts_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(1533081600000);
@@ -696,6 +1021,27 @@ mod tests {
                 window_start_ms: 1533081600000,
                 window_end_ms: 1533081630000,
                 aggregate: 600
+            }]
+        );
+    }
+
+    #[test]
+    fn out_of_order_inserts_min_agg_test() {
+        let mut wheel: RwWheel<U64MinAggregator> = RwWheel::new(1533081600000);
+        wheel.window(Window::sliding(
+            Duration::seconds(30),
+            Duration::seconds(10),
+        ));
+        wheel.insert(Entry::new(300, 1533081625000));
+        wheel.insert(Entry::new(100, 1533081605000));
+        wheel.insert(Entry::new(200, 1533081615000));
+        let results = wheel.advance_to(1533081630000);
+        assert_eq!(
+            results,
+            [WindowAggregate {
+                window_start_ms: 1533081600000,
+                window_end_ms: 1533081630000,
+                aggregate: 100
             }]
         );
     }
@@ -720,8 +1066,48 @@ mod tests {
             }]
         );
     }
+
+    #[test]
+    fn edge_case_window_boundaries_min_agg_test() {
+        let mut wheel: RwWheel<U64MinAggregator> = RwWheel::new(1533081600000);
+        wheel.window(Window::sliding(
+            Duration::seconds(10),
+            Duration::seconds(10),
+        ));
+        wheel.insert(Entry::new(100, 1533081609999)); // Just inside the window
+        wheel.insert(Entry::new(200, 1533081610000)); // On the boundary, start of new window (should not be included)
+        wheel.insert(Entry::new(300, 1533081610001)); // Just outside the window
+        let results = wheel.advance_to(1533081610000);
+        assert_eq!(
+            results,
+            [WindowAggregate {
+                window_start_ms: 1533081600000,
+                window_end_ms: 1533081610000,
+                aggregate: 100
+            }]
+        );
+    }
+
     #[test]
     fn empty_window_test() {
+        let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(1533081600000);
+        wheel.window(Window::sliding(
+            Duration::seconds(30),
+            Duration::seconds(10),
+        ));
+        let results = wheel.advance_to(1533081630000);
+        assert_eq!(
+            results,
+            [WindowAggregate {
+                window_start_ms: 1533081600000,
+                window_end_ms: 1533081630000,
+                aggregate: 0
+            }]
+        );
+    }
+
+    #[test]
+    fn empty_window_min_agg_test() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(1533081600000);
         wheel.window(Window::sliding(
             Duration::seconds(30),
@@ -742,6 +1128,16 @@ mod tests {
     #[should_panic]
     fn invalid_window_spec() {
         let mut wheel: RwWheel<U64SumAggregator> = RwWheel::new(1533081600000);
+        wheel.window(Window::sliding(
+            Duration::seconds(10),
+            Duration::seconds(30),
+        ));
+    }
+
+    #[test]
+    #[should_panic]
+    fn invalid_window_spec_min_agg() {
+        let mut wheel: RwWheel<U64MinAggregator> = RwWheel::new(1533081600000);
         wheel.window(Window::sliding(
             Duration::seconds(10),
             Duration::seconds(30),
