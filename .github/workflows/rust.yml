@@ -32,6 +32,7 @@ jobs:
         run: cargo hack check --all
 
       - name: Test
+        run: cargo nextest run
         uses: taiki-e/install-action@nextest
         with:
           tool: nextest
