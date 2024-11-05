@@ -78,5 +78,17 @@ jobs:
       - name: Set up cargo cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Cache data file
+        uses: actions/cache@v3
+        with:
+          path: crates/uwheel-query-tests/yellow_tripdata_2022-01.parquet
+          key: yellow_tripdata-2022-01-parquet
+
+      - name: Download data file if not cached
+        run: |
+          if [ ! -f crates/uwheel-query-tests/yellow_tripdata_2022-01.parquet ]; then
+            (cd crates/uwheel-query-tests && ./fetch_data.sh)
+          fi
+
       - name: Run query integration tests
         run: ./scripts/query_tests.sh
