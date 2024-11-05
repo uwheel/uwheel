@@ -9,6 +9,9 @@ jobs:
   fmt-clippy-check-test:
     name: Format + Clippy + check + test
     runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        feature: [top_n, sync, serde, simd, "sync, serde", "sync, timer", "sync, timer, serde", "timer, serde", "sync, profiler"]
     steps:
       - uses: actions/checkout@v4
 
@@ -31,8 +34,13 @@ jobs:
       - name: Check
         run: cargo hack check --all
 
-      - name: Test
-        run: cargo hack test --workspace
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+        with:
+          tool: nextest
+
+      - name: Run tests with nextest
+        run: cargo nextest run --features ${{ matrix.feature }}
 
   check_wasm:
     name: Check wasm32 compatibility
