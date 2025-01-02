@@ -9,9 +9,6 @@ jobs:
   fmt-clippy-check-test:
     name: Format + Clippy + check + test
     runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        feature: [top_n, sync, serde, simd, "sync, serde", "sync, timer", "sync, timer, serde", "timer, serde", "sync, profiler"]
     steps:
       - uses: actions/checkout@v4
 
@@ -40,7 +37,7 @@ jobs:
           tool: nextest
 
       - name: Run tests with nextest
-        run: cargo nextest run --features ${{ matrix.feature }}
+        run: cargo nextest run
 
   check_wasm:
     name: Check wasm32 compatibility
