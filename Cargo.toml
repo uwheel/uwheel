@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "examples/*"]
-exclude = ["crates/uwheel-tree"]
+exclude = ["crates/uwheel-tree", "examples/aggregator", "examples/sync"]
 
 [workspace.package]
 version = "0.2.1"
