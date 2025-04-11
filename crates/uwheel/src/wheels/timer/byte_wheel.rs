@@ -97,7 +97,7 @@ impl<EntryType, RestType> ByteWheel<EntryType, RestType> {
             let bl = Some(l);
             self.slots[index] = bl;
         }
-        if let Some(ref mut l) = &mut self.slots[index] {
+        if let Some(l) = &mut self.slots[index] {
             l.push(we);
             self.count += 1;
         }

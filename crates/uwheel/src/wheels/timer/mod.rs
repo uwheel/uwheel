@@ -12,7 +12,7 @@ use crate::{cfg_not_sync, cfg_sync, wheels::read::Haw};
 use core::{fmt::Debug, hash::Hash, time::Duration};
 pub(super) use raw_wheel::RawTimerWheel;
 
-use crate::{duration, Aggregator};
+use crate::{Aggregator, duration};
 use core::{fmt, fmt::Display};
 
 /// Result of a [can_skip](quad_wheel::QuadWheelWithOverflow::can_skip) invocation

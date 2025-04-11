@@ -3,8 +3,8 @@
 use aggregator::{Compression, InverseFn};
 use std::{fs::File, num::NonZeroUsize};
 use uwheel::{
-    aggregator::{self, sum::F64SumAggregator},
     Aggregator,
+    aggregator::{self, sum::F64SumAggregator},
 };
 
 use bitpacking::{BitPacker, BitPacker4x};
@@ -14,12 +14,12 @@ use datafusion::{
     parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder,
 };
 use uwheel::{
-    wheels::read::aggregation::conf::{DataLayout, WheelMode},
     Conf,
     Entry,
     HawConf,
     NumericalDuration,
     RwWheel,
+    wheels::read::aggregation::conf::{DataLayout, WheelMode},
 };
 
 pub enum WheelType {

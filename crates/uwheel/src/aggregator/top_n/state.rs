@@ -1,4 +1,4 @@
-use super::{entry::TopNEntry, map::TopNMap, KeyBounds};
+use super::{KeyBounds, entry::TopNEntry, map::TopNMap};
 use crate::aggregator::{Aggregator, PartialAggregateType};
 use core::{cmp::Ordering, fmt::Debug, ops::Deref};
 

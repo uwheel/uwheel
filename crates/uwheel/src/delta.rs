@@ -40,7 +40,7 @@ impl<T> DeltaState<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{aggregator::sum::U32SumAggregator, wheels::read::ReaderWheel, NumericalDuration};
+    use crate::{NumericalDuration, aggregator::sum::U32SumAggregator, wheels::read::ReaderWheel};
 
     #[test]
     fn build_wheel_from_delta_state_test() {

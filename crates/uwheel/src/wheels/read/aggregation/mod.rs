@@ -143,7 +143,10 @@ impl<A: Aggregator> Wheel<A> {
                 Data::create_prefix_deque()
             }
             DataLayout::Compressed(chunk_size) => {
-                assert!(A::compression_support(), "Compressed data layout requires the aggregator to implement compressor + decompressor");
+                assert!(
+                    A::compression_support(),
+                    "Compressed data layout requires the aggregator to implement compressor + decompressor"
+                );
                 Data::create_compressed_deque(chunk_size)
             }
         };
@@ -473,9 +476,9 @@ mod tests {
     use super::{deque::MutablePartialDeque, *};
     use crate::{
         aggregator::{
+            Compression,
             min::U64MinAggregator,
             sum::{U32SumAggregator, U64SumAggregator},
-            Compression,
         },
         wheels::read::hierarchical::HOUR_TICK_MS,
     };

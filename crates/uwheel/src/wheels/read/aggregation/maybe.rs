@@ -4,7 +4,7 @@ use time::{Duration, OffsetDateTime};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-use super::{conf::WheelConf, Wheel};
+use super::{Wheel, conf::WheelConf};
 use crate::{
     aggregator::Aggregator,
     wheels::read::{

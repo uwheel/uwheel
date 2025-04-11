@@ -1,21 +1,13 @@
-use crate::{aggregator::PartialAggregateType, Aggregator};
+use crate::{Aggregator, aggregator::PartialAggregateType};
 
 #[inline]
 fn min<T: PartialOrd>(a: T, b: T) -> T {
-    if a < b {
-        a
-    } else {
-        b
-    }
+    if a < b { a } else { b }
 }
 
 #[inline]
 fn max<T: PartialOrd>(a: T, b: T) -> T {
-    if a > b {
-        a
-    } else {
-        b
-    }
+    if a > b { a } else { b }
 }
 
 /// MinMax Aggregate State

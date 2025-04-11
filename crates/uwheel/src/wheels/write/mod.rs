@@ -1,6 +1,6 @@
 use core::{mem, num::NonZeroUsize, time::Duration as CoreDuration};
 
-use crate::{aggregator::Aggregator, duration::Duration, Entry};
+use crate::{Entry, aggregator::Aggregator, duration::Duration};
 
 use super::{timer::RawTimerWheel, wheel_ext::WheelExt};
 

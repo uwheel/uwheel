@@ -13,16 +13,16 @@ use chrono::{DateTime, NaiveDate};
 use clap::Parser;
 use datafusion::error::Result;
 use pbr::ProgressBar;
-use uwheel::{aggregator::sum::F64SumAggregator, wheels::read::ReaderWheel, WheelRange};
+use uwheel::{WheelRange, aggregator::sum::F64SumAggregator, wheels::read::ReaderWheel};
 use uwheel_query_tests::{
+    SumAggregator,
+    WheelType,
     build_count_wheel,
     build_fare_wheel,
     generate_day_time_ranges,
     generate_hour_time_ranges,
     generate_minute_time_ranges,
     generate_second_time_ranges,
-    SumAggregator,
-    WheelType,
 };
 
 #[derive(Parser, Debug)]

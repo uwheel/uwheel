@@ -1,4 +1,4 @@
-use super::{entry::TopNEntry, state::TopNState, KeyBounds};
+use super::{KeyBounds, entry::TopNEntry, state::TopNState};
 use crate::Aggregator;
 use core::{cmp::Ordering, fmt::Debug};
 use hashbrown::HashMap;

@@ -1,8 +1,8 @@
 mod common;
 
 use bitpacking::{BitPacker, BitPacker4x};
-use common::{generate_seconds_range, into_offset_date_time_start_end, SumAggregator};
-use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
+use common::{SumAggregator, generate_seconds_range, into_offset_date_time_start_end};
+use criterion::{Bencher, Criterion, black_box, criterion_group, criterion_main};
 use uwheel::{wheels::read::aggregation::conf::RetentionPolicy, *};
 use wheels::read::aggregation::conf::DataLayout;
 
