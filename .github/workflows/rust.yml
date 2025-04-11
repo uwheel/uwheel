@@ -31,8 +31,13 @@ jobs:
       - name: Check
         run: cargo hack check --all
 
-      - name: Test
-        run: cargo hack test --workspace
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+        with:
+          tool: nextest
+
+      - name: Run tests with nextest
+        run: cargo nextest run
 
   check_wasm:
     name: Check wasm32 compatibility
