@@ -65,12 +65,12 @@ mod macros;
 pub use aggregator::Aggregator;
 
 pub use wheels::{
+    Conf,
+    RwWheel,
     read::{
         aggregation::conf::{CompressionPolicy, RetentionPolicy, WheelConf},
         hierarchical::{Haw, HawConf, WheelRange},
     },
-    Conf,
-    RwWheel,
 };
 pub use window::{Window, WindowAggregate};
 

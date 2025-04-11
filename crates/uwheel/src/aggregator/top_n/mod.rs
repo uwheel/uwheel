@@ -73,10 +73,10 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
-        aggregator::{all::AllAggregator, sum::U64SumAggregator, top_n::TopNAggregator},
-        duration::NumericalDuration,
         Entry,
         RwWheel,
+        aggregator::{all::AllAggregator, sum::U64SumAggregator, top_n::TopNAggregator},
+        duration::NumericalDuration,
     };
 
     use super::state::TopNState;

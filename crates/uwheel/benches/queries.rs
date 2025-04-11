@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Bencher, Criterion};
+use criterion::{Bencher, Criterion, criterion_group, criterion_main};
 use uwheel::{aggregator::all::AllAggregator, *};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
@@ -38,25 +38,33 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 fn random_interval(wheel: &RwWheel<AllAggregator>) {
     let pick = fastrand::usize(0..4);
     if pick == 0usize {
-        assert!(wheel
-            .read()
-            .interval(Duration::seconds(random_seconds() as i64))
-            .is_some());
+        assert!(
+            wheel
+                .read()
+                .interval(Duration::seconds(random_seconds() as i64))
+                .is_some()
+        );
     } else if pick == 1usize {
-        assert!(wheel
-            .read()
-            .interval(Duration::minutes(random_minute() as i64))
-            .is_some());
+        assert!(
+            wheel
+                .read()
+                .interval(Duration::minutes(random_minute() as i64))
+                .is_some()
+        );
     } else if pick == 2usize {
-        assert!(wheel
-            .read()
-            .interval(Duration::hours(random_hours() as i64))
-            .is_some());
+        assert!(
+            wheel
+                .read()
+                .interval(Duration::hours(random_hours() as i64))
+                .is_some()
+        );
     } else {
-        assert!(wheel
-            .read()
-            .interval(Duration::days(random_days() as i64))
-            .is_some());
+        assert!(
+            wheel
+                .read()
+                .interval(Duration::days(random_days() as i64))
+                .is_some()
+        );
     }
 }
 // #[inline]
@@ -128,38 +136,46 @@ fn landmark_window_bench(bencher: &mut Bencher) {
 fn random_seconds_interval_bench(bencher: &mut Bencher) {
     let wheel = large_wheel();
     bencher.iter(|| {
-        assert!(wheel
-            .read()
-            .interval(Duration::seconds(random_seconds() as i64))
-            .is_some());
+        assert!(
+            wheel
+                .read()
+                .interval(Duration::seconds(random_seconds() as i64))
+                .is_some()
+        );
     });
 }
 fn random_minutes_interval_bench(bencher: &mut Bencher) {
     let wheel = large_wheel();
     bencher.iter(|| {
-        assert!(wheel
-            .read()
-            .interval(Duration::minutes(random_minute() as i64))
-            .is_some());
+        assert!(
+            wheel
+                .read()
+                .interval(Duration::minutes(random_minute() as i64))
+                .is_some()
+        );
     });
 }
 
 fn random_hour_interval_bench(bencher: &mut Bencher) {
     let wheel = large_wheel();
     bencher.iter(|| {
-        assert!(wheel
-            .read()
-            .interval(Duration::hours(random_hours() as i64))
-            .is_some());
+        assert!(
+            wheel
+                .read()
+                .interval(Duration::hours(random_hours() as i64))
+                .is_some()
+        );
     });
 }
 fn random_days_interval_bench(bencher: &mut Bencher) {
     let wheel = large_wheel();
     bencher.iter(|| {
-        assert!(wheel
-            .read()
-            .interval(Duration::days(random_days() as i64))
-            .is_some());
+        assert!(
+            wheel
+                .read()
+                .interval(Duration::days(random_days() as i64))
+                .is_some()
+        );
     });
 }
 

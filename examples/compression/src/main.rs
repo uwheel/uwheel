@@ -1,14 +1,14 @@
 use bitpacking::{BitPacker, BitPacker4x};
 use clap::Parser;
 use uwheel::{
-    aggregator::{sum::U32SumAggregator, Compression},
+    Aggregator,
+    Conf,
+    RwWheel,
+    aggregator::{Compression, sum::U32SumAggregator},
     wheels::read::{
         aggregation::conf::{DataLayout, RetentionPolicy},
         hierarchical::HawConf,
     },
-    Aggregator,
-    Conf,
-    RwWheel,
 };
 
 pub const CHUNK_SIZE: usize = BitPacker4x::BLOCK_LEN;

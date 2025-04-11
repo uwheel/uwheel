@@ -1,12 +1,12 @@
 use tinystr::TinyAsciiStr;
 use uwheel::{
+    Entry,
+    NumericalDuration,
+    RwWheel,
     aggregator::{
         sum::U64SumAggregator,
         top_n::{Descending, TopNAggregator, TopNState},
     },
-    Entry,
-    NumericalDuration,
-    RwWheel,
 };
 
 const N: usize = 5;

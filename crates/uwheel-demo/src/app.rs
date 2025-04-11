@@ -13,13 +13,13 @@ use hdrhistogram::Histogram;
 use postcard::to_allocvec;
 use time::OffsetDateTime;
 use uwheel::{
-    aggregator::sum::U64SumAggregator,
-    wheels::read::{aggregation::conf::RetentionPolicy, hierarchical::HawConf, Haw},
     Conf,
     Entry,
     NumericalDuration,
     RwWheel,
     WheelRange,
+    aggregator::sum::U64SumAggregator,
+    wheels::read::{Haw, aggregation::conf::RetentionPolicy, hierarchical::HawConf},
 };
 
 thread_local! {

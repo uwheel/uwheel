@@ -1,11 +1,11 @@
 use std::{cell::RefCell, rc::Rc};
 
 use uwheel::{
-    aggregator::sum::U32SumAggregator,
-    wheels::read::Haw,
     Entry,
     NumericalDuration,
     RwWheel,
+    aggregator::sum::U32SumAggregator,
+    wheels::read::Haw,
 };
 
 fn main() {

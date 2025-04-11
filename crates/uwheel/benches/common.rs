@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use bitpacking::{BitPacker, BitPacker4x};
 use time::OffsetDateTime;
-use uwheel::{aggregator, Aggregator};
+use uwheel::{Aggregator, aggregator};
 
 use aggregator::{Compression, InverseFn};
 

@@ -1,10 +1,10 @@
 use uwheel::{
-    aggregator::sum::U32SumAggregator,
     Entry,
     NumericalDuration,
     RwWheel,
     WheelRange,
     Window,
+    aggregator::sum::U32SumAggregator,
 };
 
 fn main() {

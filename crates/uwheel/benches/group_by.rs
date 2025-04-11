@@ -2,7 +2,7 @@ mod common;
 
 use bitpacking::{BitPacker, BitPacker4x};
 use common::SumAggregator;
-use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
+use criterion::{Bencher, Criterion, black_box, criterion_group, criterion_main};
 use uwheel::{wheels::read::aggregation::conf::RetentionPolicy, *};
 use wheels::read::aggregation::conf::DataLayout;
 

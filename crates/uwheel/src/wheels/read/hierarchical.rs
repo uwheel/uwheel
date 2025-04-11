@@ -8,14 +8,16 @@ use time::OffsetDateTime;
 use super::{
     super::write::WriterWheel,
     aggregation::{
+        Wheel,
         conf::{DataLayout, RetentionPolicy, WheelMode},
         maybe::MaybeWheel,
-        Wheel,
     },
     plan::{ExecutionPlan, WheelAggregation, WheelRanges},
 };
 
 use crate::{
+    Duration,
+    Window,
     aggregator::Aggregator,
     delta::DeltaState,
     wheels::read::{
@@ -23,8 +25,6 @@ use crate::{
         plan::{CombinedAggregation, WheelAggregations},
     },
     window::{WindowAggregate, WindowManager},
-    Duration,
-    Window,
 };
 
 #[cfg(test)]

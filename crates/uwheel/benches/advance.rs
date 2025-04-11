@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, BatchSize, Bencher, BenchmarkId, Criterion};
+use criterion::{BatchSize, Bencher, BenchmarkId, Criterion, criterion_group, criterion_main};
 use uwheel::{aggregator::sum::U64SumAggregator, wheels::read::ReaderWheel, *};
 
 pub fn advance_time_benchmark(c: &mut Criterion) {

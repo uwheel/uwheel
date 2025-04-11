@@ -73,7 +73,9 @@ macro_rules! sum_impl {
             }
 
             #[inline]
-            fn combine_inverse() -> Option<fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate> {
+            fn combine_inverse()
+            -> Option<fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate>
+            {
                 Some(|a, b| if a > b { a - b } else { 0 as $pa })
             }
 
@@ -187,7 +189,7 @@ sum_impl!(F64SumAggregator, f64, f64, f64x32);
 
 #[cfg(test)]
 mod tests {
-    use crate::{duration::NumericalDuration, Entry, RwWheel};
+    use crate::{Entry, RwWheel, duration::NumericalDuration};
 
     use super::*;
 

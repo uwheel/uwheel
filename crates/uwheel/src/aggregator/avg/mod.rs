@@ -18,7 +18,7 @@ macro_rules! avg_impl {
             }
             #[inline]
             fn combine_mutable(a: &mut Self::MutablePartialAggregate, input: Self::Input) {
-                let (ref mut sum, ref mut count) = a;
+                let &mut (ref mut sum, ref mut count) = a;
                 *sum += input;
                 *count += 1 as $type;
             }
@@ -42,7 +42,9 @@ macro_rules! avg_impl {
                 a.0 / a.1
             }
             #[inline]
-            fn combine_inverse() -> Option<fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate> {
+            fn combine_inverse()
+            -> Option<fn(Self::PartialAggregate, Self::PartialAggregate) -> Self::PartialAggregate>
+            {
                 Some(|a, b| {
                     let (a_sum, a_count) = a;
                     let (b_sum, b_count) = b;
@@ -67,7 +69,7 @@ avg_impl!(F64AvgAggregator, f64, (f64, f64));
 
 #[cfg(test)]
 mod tests {
-    use crate::{duration::NumericalDuration, RwWheel, SECONDS};
+    use crate::{RwWheel, SECONDS, duration::NumericalDuration};
 
     use super::*;
 

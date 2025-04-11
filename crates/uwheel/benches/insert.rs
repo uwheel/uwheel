@@ -1,13 +1,13 @@
 use std::num::NonZeroUsize;
 
 use criterion::{
-    criterion_group,
-    criterion_main,
     BatchSize,
     Bencher,
     BenchmarkId,
     Criterion,
     Throughput,
+    criterion_group,
+    criterion_main,
 };
 use rand::prelude::*;
 use uwheel::{aggregator::sum::U64SumAggregator, *};

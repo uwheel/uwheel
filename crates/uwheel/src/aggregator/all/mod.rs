@@ -1,4 +1,4 @@
-use crate::{aggregator::PartialAggregateType, Aggregator};
+use crate::{Aggregator, aggregator::PartialAggregateType};
 
 use core::cmp::Ordering;
 
@@ -123,7 +123,7 @@ impl Aggregator for AllAggregator {
 
 #[cfg(test)]
 mod tests {
-    use crate::{duration::Duration, RwWheel, SECONDS};
+    use crate::{RwWheel, SECONDS, duration::Duration};
 
     use super::*;
 

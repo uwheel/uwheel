@@ -1,4 +1,4 @@
-use super::util::{create_pair_type, PairType};
+use super::util::{PairType, create_pair_type};
 use crate::duration::Duration;
 
 /// Stream Slicing State using the pairs technique

@@ -1,4 +1,4 @@
-use super::{quad_wheel::QuadWheelWithOverflow, Skip, TimerError};
+use super::{Skip, TimerError, quad_wheel::QuadWheelWithOverflow};
 use core::time::Duration;
 
 #[cfg(not(feature = "std"))]

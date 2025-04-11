@@ -16,7 +16,7 @@ mod stats;
 #[allow(dead_code)]
 mod timer;
 
-use crate::{aggregator::Aggregator, duration::Duration, window::WindowAggregate, Entry};
+use crate::{Entry, aggregator::Aggregator, duration::Duration, window::WindowAggregate};
 use core::{fmt::Debug, num::NonZeroUsize};
 use write::DEFAULT_WRITE_AHEAD_SLOTS;
 
@@ -24,7 +24,7 @@ pub use read::{DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
 pub use wheel_ext::WheelExt;
 pub use write::WriterWheel;
 
-use self::read::{hierarchical::HawConf, ReaderWheel};
+use self::read::{ReaderWheel, hierarchical::HawConf};
 
 use crate::window::Window;
 
@@ -240,7 +240,7 @@ where
     #[cfg(feature = "profiler")]
     /// Prints the stats of the [RwWheel]
     pub fn print_stats(&self) {
-        use prettytable::{row, Table};
+        use prettytable::{Table, row};
         use uwheel_stats::Sketch;
         let mut table = Table::new();
         table.add_row(row![

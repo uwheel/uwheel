@@ -354,12 +354,12 @@ impl<A: Aggregator> TwoStacks<A> {
 mod tests {
     use super::Window;
     use crate::{
-        aggregator::{min::U64MinAggregator, sum::U64SumAggregator},
-        window::WindowAggregate,
         Duration,
         Entry,
         NumericalDuration,
         RwWheel,
+        aggregator::{min::U64MinAggregator, sum::U64SumAggregator},
+        window::WindowAggregate,
     };
 
     #[test]

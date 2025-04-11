@@ -1,4 +1,4 @@
-use crate::{window::circular_queue::CircularQueue, Aggregator};
+use crate::{Aggregator, window::circular_queue::CircularQueue};
 
 #[cfg(feature = "std")]
 use std::vec::Vec;
@@ -130,7 +130,7 @@ mod tests {
     use crate::aggregator::{min::U32MinAggregator, sum::U32SumAggregator};
 
     use super::*;
-    use rand::{distributions::Uniform, Rng};
+    use rand::{Rng, distributions::Uniform};
 
     #[test]
     fn test_insert_and_query_sum() {

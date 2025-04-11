@@ -1,11 +1,11 @@
 use criterion::{
-    black_box,
-    criterion_group,
-    criterion_main,
     BatchSize,
     Bencher,
     BenchmarkId,
     Criterion,
+    black_box,
+    criterion_group,
+    criterion_main,
 };
 use uwheel::{
     aggregator::{

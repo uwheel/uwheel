@@ -13,14 +13,14 @@ pub(crate) mod stats;
 use crate::wheels::timer::{TimerAction, TimerError};
 
 use crate::{
+    WheelRange,
     cfg_not_sync,
     cfg_sync,
     delta::DeltaState,
     duration::Duration,
     window::WindowAggregate,
-    WheelRange,
 };
-pub use hierarchical::{Haw, DAYS, HOURS, MINUTES, SECONDS, WEEKS, YEARS};
+pub use hierarchical::{DAYS, HOURS, Haw, MINUTES, SECONDS, WEEKS, YEARS};
 pub use plan::ExecutionPlan;
 
 use crate::aggregator::Aggregator;

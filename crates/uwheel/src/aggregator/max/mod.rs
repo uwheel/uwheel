@@ -116,7 +116,7 @@ max_impl!(F64MaxAggregator, f64, f64, f64x32);
 
 #[cfg(test)]
 mod tests {
-    use crate::{duration::NumericalDuration, Entry, RwWheel};
+    use crate::{Entry, RwWheel, duration::NumericalDuration};
 
     use super::*;
 
