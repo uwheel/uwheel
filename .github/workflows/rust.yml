@@ -6,70 +6,33 @@ env:
   RUSTDOCFLAGS: -D warnings
 
 jobs:
-  fmt-clippy-check-test:
-    name: Format + Clippy + check + test
-    runs-on: ubuntu-22.04
+  just:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [check-fmt, check-fuzz, check-wasm, check-no-std, clippy, test, test-sync, test-serde, test-doc]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
-
-      - name: Set up cargo cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install cargo hack
-        run: cargo install cargo-hack
-
-      - name: Rustfmt
-        run: cargo fmt --all -- --check
-
-      - name: Clippy
-        run: cargo hack clippy --workspace --all-targets --  -D warnings -W clippy::all
-
-      - name: Check
-        run: cargo hack check --all
+          targets: wasm32-unknown-unknown, thumbv7m-none-eabi
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
         with:
           tool: nextest
 
-      - name: Run tests with nextest
-        run: cargo nextest run
-
-  check_wasm:
-    name: Check wasm32 compatibility
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
-          targets: wasm32-unknown-unknown
-
       - name: Set up cargo cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Check wasm32 uwheel-demo
-        run: cargo check -p uwheel-demo --lib --target wasm32-unknown-unknown
+      - name: Set up Just Runner
+        uses: extractions/setup-just@v2
 
-  check_no_std:
-    name: Check no_std compatibility
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
-          targets: thumbv7m-none-eabi
-
-      - name: Set up cargo cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Check no_std support
-        run: cargo check -p uwheel --lib --target thumbv7m-none-eabi --no-default-features
+      - name: Run +${{ matrix.target }}
+        run: just ${{ matrix.target }}
 
   query_integration_tests:
     name: Query integration tests
@@ -97,3 +60,4 @@ jobs:
 
       - name: Run query integration tests
         run: ./scripts/query_tests.sh
+
