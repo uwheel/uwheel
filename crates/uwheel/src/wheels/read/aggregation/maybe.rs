@@ -83,7 +83,7 @@ impl<A: Aggregator> MaybeWheel<A> {
     #[allow(dead_code)]
     #[inline]
     pub fn head(&self) -> Option<A::PartialAggregate> {
-        self.inner.as_ref().and_then(|w| w.at(0)).copied()
+        self.inner.as_ref().and_then(|w| w.at(0))
     }
 
     #[inline]

@@ -266,6 +266,7 @@ impl<A: Aggregator> PrefixDeque<A> {
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
 #[derive(Clone, Debug)]
 pub struct CompressedDeque<A: Aggregator> {
+    head: A::PartialAggregate,
     buffer: MutablePartialDeque<A>,
     chunks: VecDeque<Vec<u8>>,
     pub(crate) chunk_size: usize,
@@ -279,14 +280,30 @@ impl<A: Aggregator> CompressedDeque<A> {
         );
 
         Self {
+            head: A::IDENTITY,
             buffer: Default::default(),
             chunks: Default::default(),
             chunk_size,
         }
     }
 
-    pub(crate) fn get(&self, slot: usize) -> Option<&A::PartialAggregate> {
-        self.buffer.get(slot)
+    pub(crate) fn get(&self, slot: usize) -> Option<A::PartialAggregate> {
+        if slot == 0 {
+            Some(self.head)
+        } else {
+            let mut full_data = Vec::with_capacity(self.len());
+
+            full_data.extend(self.buffer.iter().copied().collect::<Vec<_>>());
+
+            // Iterate in newest to oldest order
+            for chunk in self.chunks.iter() {
+                // SAFETY: we are sure that the compression fn is implemented since we assert it in the constructor
+                let decompressor = A::compression().unwrap().decompressor;
+                let decompressed_chunk = (decompressor)(chunk);
+                full_data.extend_from_slice(&decompressed_chunk);
+            }
+            full_data.get(slot).copied()
+        }
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -308,17 +325,18 @@ impl<A: Aggregator> CompressedDeque<A> {
     }
 
     pub(crate) fn push_front(&mut self, agg: A::PartialAggregate) {
+        // Keep track of the current head as it is used by `Wheel`
+        // to updae the total for the current rotation.
+        self.head = agg;
+
         self.buffer.push_front(agg);
 
         // if we have reached the chunk size then compress
         if self.buffer.len() == self.chunk_size {
             let compressor = A::compression().unwrap().compressor;
-            // SAFETY: make sure all data points are included in our slice
-            self.buffer.make_contiguous();
-            let chunk = (compressor)(self.buffer.as_slice());
+            let to_compress: Vec<_> = self.buffer.iter().copied().collect();
+            let chunk = (compressor)(&to_compress);
             self.chunks.push_front(chunk);
-
-            // clear current buffer
             self.buffer.clear();
         }
     }
@@ -423,5 +441,40 @@ impl<A: Aggregator> CompressedDeque<A> {
 
             (partial_deque, new_start..new_end)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::wheels::read::aggregation::tests::PcoSumAggregator;
+
+    #[test]
+    fn test_deque_consistency() {
+        use crate::Aggregator;
+
+        const N: usize = 1000;
+        let values: Vec<u32> = (1..=N as u32).collect();
+        let expected_sum: u32 = values.iter().sum();
+
+        // Fill MutablePartialDeque
+        let mut regular = MutablePartialDeque::<PcoSumAggregator>::default();
+        for &v in values.iter() {
+            regular.push_front(PcoSumAggregator::freeze(PcoSumAggregator::lift(v)));
+        }
+
+        // Fill CompressedDeque
+        let mut compressed = CompressedDeque::<PcoSumAggregator>::new(128);
+        for &v in values.iter() {
+            compressed.push_front(PcoSumAggregator::freeze(PcoSumAggregator::lift(v)));
+        }
+
+        let range = 0..N;
+
+        let sum_regular = regular.combine_range(range.clone()).unwrap();
+        let sum_compressed = compressed.combine_range(range.clone()).unwrap();
+
+        assert_eq!(sum_regular, expected_sum, "Regular sum mismatch");
+        assert_eq!(sum_compressed, expected_sum, "Compressed sum mismatch");
     }
 }

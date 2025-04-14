@@ -184,11 +184,9 @@ async fn validate_combine_range(
         let prefix_uwheel_count = prefix_count
             .combine_range_and_lower(wheel_range)
             .unwrap_or(0) as i64;
-        /*
-                let compressed_uwheel_count = compressed_count
-                    .combine_range_and_lower(wheel_range)
-                    .unwrap_or(0) as i64;
-        */
+        let compressed_uwheel_count = compressed_count
+            .combine_range_and_lower(wheel_range)
+            .unwrap_or(0) as i64;
 
         pretty_assertions::assert_eq!(
             df_count,
@@ -203,29 +201,11 @@ async fn validate_combine_range(
             "Prefix count does not match normal uwheel count"
         );
 
-        /*
-                pretty_assertions::assert_eq!(
-                    prefix_uwheel_count,
-                    compressed_uwheel_count,
-                    "Prefix count does not match compressed uwheel count"
-                );
-        */
-
-        /*
-                // SUM(fare_amount)
-                let df_query = datafusion_sum_query(*start, *end);
-                let df_sum: f64 = exec_single_value::<Float64Type>(ctx, &df_query).await;
-                let uwheel_sum = fare_wheel
-                    .combine_range_and_lower(wheel_range)
-                    .unwrap_or(0.0);
-
-                pretty_assertions::assert_eq!(
-                    df_sum,
-                    uwheel_sum,
-                    "DataFusion query:\n{}",
-                    df_query.to_string().replace(", ", ",\n    ")
-                );
-        */
+        pretty_assertions::assert_eq!(
+            prefix_uwheel_count,
+            compressed_uwheel_count,
+            "Prefix count does not match compressed uwheel count"
+        );
 
         pb.inc();
     }

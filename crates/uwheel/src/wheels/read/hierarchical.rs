@@ -1957,7 +1957,6 @@ mod tests {
         let plan = haw
             .explain_combine_range(WheelRange { start, end })
             .unwrap();
-        dbg!(&plan);
         let combined_plan = match plan {
             ExecutionPlan::CombinedAggregation(plan) => plan,
             _ => panic!("not supposed to happen"),

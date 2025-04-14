@@ -218,7 +218,7 @@ impl<A: Aggregator> Wheel<A> {
     ///   or `None` if out of bounds
     /// - If `0` is specified, it will return the current head.
     #[inline]
-    pub fn at(&self, subtrahend: usize) -> Option<&A::PartialAggregate> {
+    pub fn at(&self, subtrahend: usize) -> Option<A::PartialAggregate> {
         if subtrahend > self.len() {
             None
         } else {
@@ -233,7 +233,7 @@ impl<A: Aggregator> Wheel<A> {
     /// - If `0` is specified, it will lower the current head.
     #[inline]
     pub fn lower_at(&self, subtrahend: usize) -> Option<A::Aggregate> {
-        self.at(subtrahend).map(|res| A::lower(*res))
+        self.at(subtrahend).map(|res| A::lower(res))
     }
 
     /// Returns ``true`` if the underlying data is a PrefixDeque
@@ -427,8 +427,8 @@ impl<A: Aggregator> Wheel<A> {
         self.watermark += self.tick_size_ms;
 
         // Possibly update the partial aggregate for the current rotation
-        if let Some(curr) = self.data.get(0) {
-            combine_or_insert::<A>(&mut self.total, *curr);
+        if let Some(curr) = self.data.head() {
+            combine_or_insert::<A>(&mut self.total, curr);
         }
 
         // If the wheel is full, we clear the oldest entry
