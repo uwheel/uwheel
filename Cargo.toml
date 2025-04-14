@@ -4,7 +4,7 @@ members = ["crates/*", "examples/*"]
 exclude = ["crates/uwheel-tree", "examples/aggregator", "examples/sync"]
 
 [workspace.package]
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Max Meldrum <max@meldrum.se>"]
 edition = "2024"
 repository = "https://github.com/uwheel/uwheel"
@@ -16,9 +16,9 @@ readme = "README.md"
 opt-level = 2 # fast and small wasm
 
 [workspace.dependencies]
-uwheel = { path = "crates/uwheel", version = "0.2.1" }
-uwheel-tree = { path = "crates/uwheel-tree", version = "0.2.1" }
-uwheel-stats = { path = "crates/uwheel-stats", version = "0.2.1" }
+uwheel = { path = "crates/uwheel", version = "0.3.0" }
+uwheel-tree = { path = "crates/uwheel-tree", version = "0.3.0" }
+uwheel-stats = { path = "crates/uwheel-stats", version = "0.3.0" }
 
 parking_lot = "0.12"
 hashbrown = "0.14.3"

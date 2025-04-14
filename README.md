@@ -3,7 +3,7 @@
 </p>
 
 ![ci](https://github.com/uwheel/uwheel/actions/workflows/rust.yml/badge.svg)
-[![Cargo](https://img.shields.io/badge/crates.io-v0.2.1-orange)](https://crates.io/crates/uwheel)
+[![Cargo](https://img.shields.io/badge/crates.io-v0.3.0-orange)](https://crates.io/crates/uwheel)
 [![Documentation](https://docs.rs/uwheel/badge.svg)](https://docs.rs/uwheel)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
 [![Discord](https://img.shields.io/discord/1245309039940993085?label=µWheel%20discord)](https://discord.gg/dhRxfck9jN)
@@ -95,13 +95,13 @@ See a user-defined aggregator example [here](examples/aggregator/).
 For ``std`` support and compilation of built-in aggregators:
 
 ```toml
-uwheel  = "0.2.1"
+uwheel  = "0.3.0"
 ```
 
 For ``no_std`` support and minimal compile time:
 
 ```toml
-uwheel = { version = "0.2.1", default-features = false }
+uwheel = { version = "0.3.0", default-features = false }
 ```
 
 ## Examples

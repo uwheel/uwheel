@@ -2,6 +2,17 @@
 
 This file contains all notable changes to µWheel.
 
+## 0.3.0 (2025-04-14)
+
+### Bug Fixes
+
+* Fix issue with CompressedDeque returning incorrect results when used across time dimensions [#162](https://github.com/uwheel/uwheel/pull/162) by [@Max-Meldrum](https://github.com/Max-Meldrum)
+
+### Added
+
+* [Hammerslide](https://github.com/grtheod/Hammerslide) slicing window aggregator support [#155](https://github.com/uwheel/uwheel/pull/155) by [@LYZJU2019](https://github.com/LYZJU2019)
+* Prefix SIMD Build capability [#152](https://github.com/uwheel/uwheel/pull/152) by [@LYZJU2019](https://github.com/LYZJU2019)
+* Query integration tests with Datafusion [#149](https://github.com/uwheel/uwheel/pull/149) by [@Max-Meldrum](https://github.com/Max-Meldrum)
 
 ## 0.2.1  (2024-08-22)
 
@@ -15,7 +26,6 @@ This file contains all notable changes to µWheel.
 
 * Add initial test cases using proptest [#147](https://github.com/uwheel/uwheel/pull/147) by [@Max-Meldrum](https://github.com/Max-Meldrum)
 * Add group_by benches [#144](https://github.com/uwheel/uwheel/pull/144) by [@Max-Meldrum](https://github.com/Max-Meldrum)
-
 
 ## 0.2.0 (2024-07-13)
 
