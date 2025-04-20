@@ -162,7 +162,7 @@ If you find µWheel interesting and want to learn more, then join the [Discord](
 
 ## Publications
 
-- Max Meldrum, Paris Carbone (2024). µWheel: Aggregate Management for Streams and Queries (**Best Paper Award**). In DEBS '24. [[PDF]](https://maxmeldrum.com/assets/files/uwheel_debs24.pdf).
+- Max Meldrum, Paris Carbone (2024). µWheel: Aggregate Management for Streams and Queries (**Best Paper Award**). In DEBS '24. [[PDF]](https://dl.acm.org/doi/pdf/10.1145/3629104.3666031).
 
 ## Blog Posts
 
