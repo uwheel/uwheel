@@ -61,19 +61,15 @@ pub const DAY_COLOR: Color32 = Color32::from_rgb(222, 0, 204);
 pub const WEEK_COLOR: Color32 = Color32::from_rgb(255, 237, 73);
 pub const YEAR_COLOR: Color32 = Color32::from_rgb(255, 143, 154);
 
-#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum Granularity {
+    #[default]
     Second,
     Minute,
     Hour,
     Day,
     Week,
     Year,
-}
-impl Default for Granularity {
-    fn default() -> Self {
-        Self::Second
-    }
 }
 
 fn calculate_granularity(position: usize) -> Option<(Granularity, usize)> {

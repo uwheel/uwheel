@@ -20,11 +20,8 @@ pub struct CircularQueue<A: Aggregator> {
 
 impl<A: Aggregator> CircularQueue<A> {
     pub fn new(size: usize) -> Self {
-        let mut arr = Vec::new();
-
-        for _ in 0..size {
-            arr.push(A::IDENTITY);
-        }
+        let mut arr = Vec::with_capacity(size);
+        arr.resize_with(size, || A::IDENTITY.clone());
 
         CircularQueue {
             m_front: -1,
@@ -58,8 +55,7 @@ impl<A: Aggregator> CircularQueue<A> {
             return None;
         }
 
-        let data = self.m_arr[self.m_front as usize];
-        self.m_arr[self.m_front as usize] = A::PartialAggregate::default();
+        let data = core::mem::take(&mut self.m_arr[self.m_front as usize]);
 
         if self.m_front == self.m_rear {
             // Reset the queue when the last element is removed

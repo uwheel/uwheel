@@ -44,8 +44,8 @@ pub fn combine_or_insert<A: Aggregator>(
 ) {
     match dest {
         Some(curr) => {
-            let new_curr = A::combine(*curr, entry);
-            *curr = new_curr;
+            let current = core::mem::take(curr);
+            *curr = A::combine(current, entry);
         }
         None => {
             *dest = Some(entry);
@@ -82,7 +82,7 @@ impl<A: Aggregator> WheelSlot<A> {
     /// Creates a new wheel slot
     pub fn new(total: Option<A::PartialAggregate>) -> Self {
         Self {
-            total: total.unwrap_or(A::IDENTITY),
+            total: total.unwrap_or_else(|| A::IDENTITY.clone()),
         }
     }
     #[cfg(test)]
@@ -340,10 +340,10 @@ impl<A: Aggregator> Wheel<A> {
     fn clear_tail(&mut self) {
         if !self.data.is_empty() && self.retention.should_drop() {
             self.data.pop_back();
-        } else if let RetentionPolicy::KeepWithLimit(limit) = self.retention {
-            if self.data.len() > self.capacity.get() + limit {
-                self.data.pop_back();
-            }
+        } else if let RetentionPolicy::KeepWithLimit(limit) = self.retention
+            && self.data.len() > self.capacity.get() + limit
+        {
+            self.data.pop_back();
         };
     }
     /// Returns the current rotation position in the wheel
@@ -381,7 +381,7 @@ impl<A: Aggregator> Wheel<A> {
         #[cfg(feature = "profiler")]
         self.stats.bump_total();
 
-        self.total
+        self.total.clone()
     }
 
     /// Insert PartialAggregate into the head of the wheel
@@ -413,7 +413,7 @@ impl<A: Aggregator> Wheel<A> {
     #[inline]
     pub fn merge(&mut self, other: &Self) {
         // merge current total
-        if let Some(other_total) = other.total {
+        if let Some(other_total) = other.total.clone() {
             combine_or_insert::<A>(&mut self.total, other_total)
         }
 

@@ -16,7 +16,7 @@ pub struct TopNMap<Key, A>
 where
     Key: KeyBounds,
     A: Aggregator,
-    A::PartialAggregate: Ord,
+    A::PartialAggregate: Ord + Copy,
 {
     table: HashMap<Key, A::PartialAggregate>,
 }
@@ -25,7 +25,7 @@ impl<Key, A> Default for TopNMap<Key, A>
 where
     Key: KeyBounds,
     A: Aggregator,
-    A::PartialAggregate: Ord,
+    A::PartialAggregate: Ord + Copy,
 {
     fn default() -> Self {
         Self {
@@ -38,7 +38,7 @@ impl<Key, A> TopNMap<Key, A>
 where
     Key: KeyBounds,
     A: Aggregator,
-    A::PartialAggregate: Ord,
+    A::PartialAggregate: Ord + Copy,
 {
     #[inline]
     pub(super) fn insert(&mut self, key: Key, delta: A::PartialAggregate) {
@@ -57,11 +57,11 @@ where
             let entry = TopNEntry::new(key, agg);
             if heap.len() < N {
                 heap.push(entry);
-            } else if let Some(top) = heap.peek() {
-                if entry.cmp(top) == order {
-                    let _ = heap.pop();
-                    heap.push(entry);
-                }
+            } else if let Some(top) = heap.peek()
+                && entry.cmp(top) == order
+            {
+                let _ = heap.pop();
+                heap.push(entry);
             }
         }
 

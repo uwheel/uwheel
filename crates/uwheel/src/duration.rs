@@ -44,17 +44,12 @@ const fn expect_failed(message: &str) -> ! {
 /// By explicitly inserting this enum where padding is expected, the compiler is able to better
 /// perform niche value optimization.
 #[repr(u32)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub(crate) enum Padding {
     #[allow(clippy::missing_docs_in_private_items)]
+    #[default]
     Optimize,
-}
-
-impl Default for Padding {
-    fn default() -> Self {
-        Self::Optimize
-    }
 }
 
 /// A span of time with nanosecond precision.

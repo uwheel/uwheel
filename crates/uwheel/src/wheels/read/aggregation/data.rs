@@ -89,16 +89,16 @@ impl<A: Aggregator> Data<A> {
 
     pub fn get(&self, index: usize) -> Option<A::PartialAggregate> {
         match self {
-            Data::Deque(arr) => arr.get(index).copied(),
-            Data::PrefixDeque(parr) => parr.get(index).copied(),
+            Data::Deque(arr) => arr.get(index).cloned(),
+            Data::PrefixDeque(parr) => parr.get(index).cloned(),
             Data::CompressedDeque(arr) => arr.get(index),
         }
     }
 
     pub fn head(&self) -> Option<A::PartialAggregate> {
         match self {
-            Data::Deque(arr) => arr.get(0).copied(),
-            Data::PrefixDeque(parr) => parr.get(0).copied(),
+            Data::Deque(arr) => arr.get(0).cloned(),
+            Data::PrefixDeque(parr) => parr.get(0).cloned(),
             Data::CompressedDeque(arr) => arr.get(0),
         }
     }
