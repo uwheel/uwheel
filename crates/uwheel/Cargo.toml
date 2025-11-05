@@ -32,9 +32,11 @@ serde = [
   "parking_lot?/serde",
   "hashbrown?/serde",
   "uwheel-stats?/serde",
+  "roaring?/serde",
 ]
 profiler = ["dep:uwheel-stats", "prettytable-rs", "std"]
 timer = []
+roaring = ["dep:roaring", "std"]
 
 [dependencies]
 time = { workspace = true, default-features = false }
@@ -48,6 +50,7 @@ serde = { workspace = true, optional = true, features = ["derive", "rc"] }
 serde-big-array = { workspace = true, optional = true }
 prettytable-rs = { workspace = true, optional = true }
 smallvec = { workspace = true, optional = true }
+roaring = { workspace = true, optional = true }
 
 [dev-dependencies]
 time = { workspace = true, default-features = false, features = [

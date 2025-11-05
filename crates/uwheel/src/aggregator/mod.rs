@@ -26,6 +26,10 @@ pub mod sum;
 /// Top-N Aggregation using a nested Aggregator which has a PartialAggregate that implements `Ord`
 pub mod top_n;
 
+/// Roaring bitmap-based aggregators for u32 and u64 values.
+#[cfg(feature = "roaring")]
+pub mod roaring;
+
 /// Type alias for a Combine Simd function
 pub type CombineSimdFn<P> = fn(&[P]) -> P;
 /// Type alias for an Inverse Combine function.
