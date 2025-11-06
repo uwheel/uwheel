@@ -97,3 +97,7 @@ harness = false
 [[bench]]
 name = "prefix"
 harness = false
+
+[[bench]]
+name = "roaring"
+harness = false
