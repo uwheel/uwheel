@@ -142,7 +142,7 @@ fn check_id_in_range(
     wheel
         .read()
         .combine_range(WheelRange::new_unchecked(start_ms, end_ms))
-        .map_or(false, |partial| partial.contains(value))
+        .is_some_and(|partial| partial.contains(value))
 }
 
 criterion_group!(benches, roaring_benchmarks);
