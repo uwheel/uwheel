@@ -79,6 +79,8 @@ See a user-defined aggregator example [here](examples/aggregator/).
   - Enables all aggregation
 - `top_n`
   - Enables Top-N aggregation
+- `roaring` (_implicitly enables `std`_)
+  - Enables roaring bitmap aggregators
 - `simd` (_requires `nightly`_)
   - Enables support to speed up aggregation functions with SIMD operations
 - `sync` (_implicitly enables `std`_)
