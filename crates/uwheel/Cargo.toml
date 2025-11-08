@@ -16,7 +16,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["std", "all", "avg", "sum", "min", "max", "min_max"]
-std = ["serde?/std"]
+std = ["serde?/std", "roaring?/std"]
 all = []
 avg = []
 sum = []
@@ -36,7 +36,7 @@ serde = [
 ]
 profiler = ["dep:uwheel-stats", "prettytable-rs", "std"]
 timer = []
-roaring = ["dep:roaring", "std"]
+roaring = ["dep:roaring"]
 
 [dependencies]
 time = { workspace = true, default-features = false }
