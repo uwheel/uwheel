@@ -1,7 +1,14 @@
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+};
+
 use uwheel::{aggregator::bloom::BloomAggregator, Entry, RwWheel, WheelRange};
 
-/// Bloom filter aggregator specialized for &'static str identifiers.
-type BloomFilterAggregator = BloomAggregator<&'static str>;
+type UserKey = u64;
+
+/// Bloom filter aggregator specialized for hashed user identifiers.
+type BloomFilterAggregator = BloomAggregator<UserKey>;
 
 #[derive(Clone, Copy)]
 struct BadgeEvent {
@@ -65,7 +72,7 @@ fn main() {
 
     let mut wheel: RwWheel<BloomFilterAggregator> = RwWheel::new(0);
     for event in BADGE_EVENTS {
-        wheel.insert(Entry::new(event.user_id, event.timestamp_ms));
+        wheel.insert(Entry::new(user_key(event.user_id), event.timestamp_ms));
     }
 
     if let Some(last) = BADGE_EVENTS.last() {
@@ -93,7 +100,7 @@ fn report_window(wheel: &RwWheel<BloomFilterAggregator>, label: &str, start_ms: 
     {
         Some(partial) => {
             for candidate in WATCH_LIST {
-                let seen = partial.contains(&candidate);
+                let seen = partial.contains(&user_key(candidate));
                 println!("  contains {candidate:<7}: {seen}");
             }
         }
@@ -112,5 +119,11 @@ fn seen_in_range(
     wheel
         .read()
         .combine_range(WheelRange::new_unchecked(start_ms, end_ms))
-        .is_some_and(|partial| partial.contains(&user_id))
+        .is_some_and(|partial| partial.contains(&user_key(user_id)))
+}
+
+fn user_key(user_id: &str) -> UserKey {
+    let mut hasher = DefaultHasher::new();
+    user_id.hash(&mut hasher);
+    hasher.finish()
 }
