@@ -212,13 +212,7 @@ impl Aggregator for RoaringAggregator64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        Entry,
-        RwWheel,
-        aggregator::Aggregator,
-        duration::NumericalDuration,
-        window::Window,
-    };
+    use crate::{Entry, RwWheel, WheelRange, aggregator::Aggregator};
 
     use super::{RoaringAggregator32, RoaringAggregator64};
 
@@ -243,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn bitmap_aggregates_threshold_buckets() {
+    fn bitmap_reports_temporal_membership() {
         const THRESHOLD: u32 = 70;
 
         let events = vec![
@@ -274,7 +268,6 @@ mod tests {
         ];
 
         let mut wheel: RwWheel<RoaringAggregator32> = RwWheel::new(0);
-        wheel.window(Window::tumbling(4.seconds()));
 
         for event in &events {
             if event.value >= THRESHOLD {
@@ -282,22 +275,26 @@ mod tests {
             }
         }
 
-        let aggregates = wheel.advance_to(12_000);
-        let expected = [(0, vec![2, 3]), (4_000, vec![7]), (8_000, vec![9])];
+        let _ = wheel.advance_to(12_000);
 
-        assert_eq!(aggregates.len(), expected.len());
+        let ranges = [
+            (0, 4_000, vec![2, 3]),
+            (4_000, 8_000, vec![7]),
+            (8_000, 12_000, vec![9]),
+        ];
 
-        for (window, (start_ms, buckets)) in aggregates.into_iter().zip(expected) {
-            assert_eq!(window.window_start_ms, start_ms);
-            assert_eq!(window.window_end_ms, start_ms + 4_000);
-
-            let bitmap = window.aggregate.clone().into_bitmap();
+        for (start, end, buckets) in ranges {
+            let bitmap = wheel
+                .read()
+                .combine_range(WheelRange::new_unchecked(start, end))
+                .expect("range should produce aggregate")
+                .into_bitmap();
             assert_eq!(bitmap.iter().collect::<Vec<_>>(), buckets);
         }
     }
 
     #[test]
-    fn treemap_aggregates_threshold_buckets() {
+    fn treemap_reports_temporal_membership() {
         const THRESHOLD: u64 = 70;
 
         let events = vec![
@@ -328,7 +325,6 @@ mod tests {
         ];
 
         let mut wheel: RwWheel<RoaringAggregator64> = RwWheel::new(0);
-        wheel.window(Window::tumbling(4.seconds()));
 
         for event in &events {
             if event.value >= THRESHOLD {
@@ -336,16 +332,20 @@ mod tests {
             }
         }
 
-        let aggregates = wheel.advance_to(12_000);
-        let expected = [(0, vec![2_u64, 3]), (4_000, vec![7]), (8_000, vec![9])];
+        let _ = wheel.advance_to(12_000);
 
-        assert_eq!(aggregates.len(), expected.len());
+        let ranges = [
+            (0, 4_000, vec![2_u64, 3]),
+            (4_000, 8_000, vec![7]),
+            (8_000, 12_000, vec![9]),
+        ];
 
-        for (window, (start_ms, buckets)) in aggregates.into_iter().zip(expected) {
-            assert_eq!(window.window_start_ms, start_ms);
-            assert_eq!(window.window_end_ms, start_ms + 4_000);
-
-            let treemap = window.aggregate.clone().into_treemap();
+        for (start, end, buckets) in ranges {
+            let treemap = wheel
+                .read()
+                .combine_range(WheelRange::new_unchecked(start, end))
+                .expect("range should produce aggregate")
+                .into_treemap();
             assert_eq!(treemap.iter().collect::<Vec<_>>(), buckets);
         }
     }
