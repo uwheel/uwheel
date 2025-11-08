@@ -19,6 +19,8 @@
 //!    - Enables all aggregation
 //! - `top_n`
 //!    - Enables Top-N aggregation
+//! - `roaring`
+//!    - Enables roaring bitmap aggregators
 //! - `simd` (_requires `nightly`_)
 //!    - Enables support to speed up aggregation functions with SIMD operations
 //! - `sync` (_implicitly enables `std`_)

@@ -18,7 +18,7 @@ use std::collections::VecDeque;
 use self::util::pairs_space;
 
 /// Window Aggregation Result
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct WindowAggregate<T> {
     /// The start time of the window in milliseconds since unix epoch
     pub window_start_ms: u64,
@@ -185,12 +185,11 @@ impl<A: Aggregator> Default for SessionAggregator<A> {
 impl<A: Aggregator> SessionAggregator<A> {
     /// Aggregate a partial aggregate into the current session aggregate
     pub fn aggregate_session(&mut self, partial: A::PartialAggregate) {
-        self.current = A::combine(self.current, partial);
+        let current = core::mem::take(&mut self.current);
+        self.current = A::combine(current, partial);
     }
     pub fn get_and_reset(&mut self) -> A::PartialAggregate {
-        let current = self.current;
-        self.current = A::PartialAggregate::default();
-        current
+        core::mem::take(&mut self.current)
     }
 }
 
@@ -252,7 +251,7 @@ impl<A: Aggregator> Default for SubtractOnEvict<A> {
         );
         Self {
             stack: Default::default(),
-            agg: A::IDENTITY,
+            agg: A::IDENTITY.clone(),
         }
     }
 }
@@ -275,27 +274,30 @@ impl<A: Aggregator> SubtractOnEvict<A> {
         );
         Self {
             stack: VecDeque::with_capacity(capacity),
-            agg: A::IDENTITY,
+            agg: A::IDENTITY.clone(),
         }
     }
     fn pop(&mut self) {
         if let Some(top) = self.stack.pop_front() {
             let inverse_combine = A::combine_inverse().unwrap();
-            self.agg = inverse_combine(self.agg, top);
+            let current = core::mem::take(&mut self.agg);
+            self.agg = inverse_combine(current, top);
         }
     }
     fn query(&self) -> A::PartialAggregate {
-        self.agg
+        self.agg.clone()
     }
     fn push(&mut self, agg: A::PartialAggregate) {
-        self.agg = A::combine(self.agg, agg);
+        let current = core::mem::take(&mut self.agg);
+        let new_agg = A::combine(current, agg.clone());
+        self.agg = new_agg;
         self.stack.push_back(agg);
     }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(bound = "A: Default"))]
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct Value<A: Aggregator> {
     agg: A::PartialAggregate,
     val: A::PartialAggregate,
@@ -323,18 +325,17 @@ impl<A: Aggregator> TwoStacks<A> {
     #[inline(always)]
     fn agg(stack: &[Value<A>]) -> A::PartialAggregate {
         if let Some(top) = stack.last() {
-            top.agg
+            top.agg.clone()
         } else {
-            A::IDENTITY
+            A::IDENTITY.clone()
         }
     }
     fn pop(&mut self) {
         if self.front.is_empty() {
             while let Some(top) = self.back.pop() {
-                self.front.push(Value::new(
-                    A::combine(top.val, Self::agg(&self.front)),
-                    top.val,
-                ));
+                let Value { agg: _, val } = top;
+                let combined = A::combine(val.clone(), Self::agg(&self.front));
+                self.front.push(Value::new(combined, val));
             }
         }
         self.front.pop();
@@ -345,8 +346,8 @@ impl<A: Aggregator> TwoStacks<A> {
     }
     #[inline]
     fn push(&mut self, agg: A::PartialAggregate) {
-        self.back
-            .push(Value::new(A::combine(Self::agg(&self.back), agg), agg));
+        let combined = A::combine(Self::agg(&self.back), agg.clone());
+        self.back.push(Value::new(combined, agg));
     }
 }
 

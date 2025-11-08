@@ -94,7 +94,7 @@ impl<A: Aggregator> MutablePartialDeque<A> {
             .iter()
             .skip(start)
             .take(slots)
-            .copied()
+            .cloned()
             .rev()
             .collect()
     }
@@ -121,8 +121,8 @@ impl<A: Aggregator> MutablePartialDeque<A> {
                     .iter()
                     .skip(start)
                     .take(slots)
-                    .copied()
-                    .fold(A::IDENTITY, A::combine),
+                    .cloned()
+                    .fold(A::IDENTITY.clone(), A::combine),
             )
         }
     }
@@ -147,7 +147,7 @@ impl<A: Aggregator> MutablePartialDeque<A> {
 
         for partial in relevant_range {
             if filter(partial) {
-                combine_or_insert::<A>(&mut accumulator, *partial);
+                combine_or_insert::<A>(&mut accumulator, partial.clone());
             }
         }
 
@@ -280,7 +280,7 @@ impl<A: Aggregator> CompressedDeque<A> {
         );
 
         Self {
-            head: A::IDENTITY,
+            head: A::IDENTITY.clone(),
             buffer: Default::default(),
             chunks: Default::default(),
             chunk_size,
@@ -289,11 +289,11 @@ impl<A: Aggregator> CompressedDeque<A> {
 
     pub(crate) fn get(&self, slot: usize) -> Option<A::PartialAggregate> {
         if slot == 0 {
-            Some(self.head)
+            Some(self.head.clone())
         } else {
             let mut full_data = Vec::with_capacity(self.len());
 
-            full_data.extend(self.buffer.iter().copied().collect::<Vec<_>>());
+            full_data.extend(self.buffer.iter().cloned());
 
             // Iterate in newest to oldest order
             for chunk in self.chunks.iter() {
@@ -302,7 +302,7 @@ impl<A: Aggregator> CompressedDeque<A> {
                 let decompressed_chunk = (decompressor)(chunk);
                 full_data.extend_from_slice(&decompressed_chunk);
             }
-            full_data.get(slot).copied()
+            full_data.get(slot).cloned()
         }
     }
 
@@ -327,14 +327,14 @@ impl<A: Aggregator> CompressedDeque<A> {
     pub(crate) fn push_front(&mut self, agg: A::PartialAggregate) {
         // Keep track of the current head as it is used by `Wheel`
         // to updae the total for the current rotation.
-        self.head = agg;
+        self.head = agg.clone();
 
         self.buffer.push_front(agg);
 
         // if we have reached the chunk size then compress
         if self.buffer.len() == self.chunk_size {
             let compressor = A::compression().unwrap().compressor;
-            let to_compress: Vec<_> = self.buffer.iter().copied().collect();
+            let to_compress: Vec<_> = self.buffer.iter().cloned().collect();
             let chunk = (compressor)(&to_compress);
             self.chunks.push_front(chunk);
             self.buffer.clear();
@@ -390,7 +390,7 @@ impl<A: Aggregator> CompressedDeque<A> {
 
         // check whether we need to include the buffer which is not compressed
         if buffer_included {
-            vec.extend_from_slice(&self.buffer.inner.iter().copied().collect::<Vec<_>>());
+            vec.extend(self.buffer.inner.iter().cloned());
         }
 
         let start_after_buffer = start.saturating_sub(buffer_size);

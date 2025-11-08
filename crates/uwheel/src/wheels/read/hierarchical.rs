@@ -685,11 +685,12 @@ where
     ) -> Vec<WindowAggregate<A::PartialAggregate>> {
         let mut windows = Vec::new();
         for delta in deltas {
-            self.tick(delta);
+            let delta_for_tick = delta.clone();
+            self.tick(delta_for_tick);
 
             // Store delta if configured to
             if self.conf.generate_deltas {
-                self.delta.push(delta);
+                self.delta.push(delta.clone());
             }
             // maybe handle window if there is any configured
             self.handle_window_maybe(delta, &mut windows);
@@ -714,11 +715,12 @@ where
 
                 // Store delta if configured to
                 if self.conf.generate_deltas {
-                    self.delta.push(delta);
+                    self.delta.push(delta.clone());
                 }
 
                 // Tick the HAW
-                self.tick(delta);
+                let delta_for_tick = delta.clone();
+                self.tick(delta_for_tick);
 
                 // maybe handle window if there is any configured
                 self.handle_window_maybe(delta, &mut windows);
@@ -808,7 +810,7 @@ where
                 let (ref mut state, ref mut aggregator) = manager.aggregator.slicing_as_mut();
 
                 // insert pair into window aggregator
-                aggregator.push(pair.unwrap_or(A::IDENTITY));
+                aggregator.push(pair.unwrap_or_else(|| A::IDENTITY.clone()));
 
                 // Update pair metadata
                 state.update_state(self.watermark);
@@ -931,7 +933,10 @@ where
             };
             result.push((
                 Self::to_ms(step.unix_timestamp() as u64),
-                A::lower(self.combine_range(query_range).unwrap_or(A::IDENTITY)),
+                A::lower(
+                    self.combine_range(query_range)
+                        .unwrap_or_else(|| A::IDENTITY.clone()),
+                ),
             ));
             step = next;
         }
@@ -1381,10 +1386,12 @@ where
         let combine_inverse = A::combine_inverse().unwrap(); // assumed to be safe as it has been verified by the plan generation
 
         wheel_aggregations.into_iter().fold(
-            (landmark.unwrap_or(A::IDENTITY), lcost),
+            (landmark.unwrap_or_else(|| A::IDENTITY.clone()), lcost),
             |mut acc, plan| {
                 let cost = plan.cost();
-                let agg = self.wheel_aggregation(plan).unwrap_or(A::IDENTITY);
+                let agg = self
+                    .wheel_aggregation(plan)
+                    .unwrap_or_else(|| A::IDENTITY.clone());
                 acc.0 = combine_inverse(acc.0, agg);
                 acc.1 += cost;
                 acc
@@ -1534,18 +1541,21 @@ where
         partial_aggs: impl IntoIterator<Item = Option<A::PartialAggregate>>,
     ) -> (Option<A::PartialAggregate>, usize) {
         let mut combines = 0;
-        let agg = partial_aggs
-            .into_iter()
-            .reduce(|acc, b| match (acc, b) {
-                (Some(curr), Some(agg)) => {
+        let mut accumulator: Option<A::PartialAggregate> = None;
+
+        for value in partial_aggs.into_iter().flatten() {
+            match accumulator.take() {
+                Some(current) => {
                     combines += 1;
-                    Some(A::combine(curr, agg))
+                    accumulator = Some(A::combine(current, value));
                 }
-                (None, Some(_)) => b,
-                _ => acc,
-            })
-            .flatten();
-        (agg, combines)
+                None => {
+                    accumulator = Some(value);
+                }
+            }
+        }
+
+        (accumulator, combines)
     }
     /// Schedules a timer to fire once the HAW has reached the specified time.
     ///
@@ -1608,7 +1618,7 @@ where
         self.watermark += Self::SECOND_AS_MS;
 
         // if 'None', insert the Identity value
-        let partial = partial_opt.unwrap_or(A::IDENTITY);
+        let partial = partial_opt.unwrap_or_else(|| A::IDENTITY.clone());
         let seconds = self.seconds_wheel.get_or_insert();
 
         seconds.insert_head(partial);

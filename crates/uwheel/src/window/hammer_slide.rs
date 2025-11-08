@@ -27,7 +27,7 @@ impl<A: Aggregator> HammerSlide<A> {
         let mut stack = Vec::new();
 
         for _ in 0..capacity {
-            stack.push(A::IDENTITY);
+            stack.push(A::IDENTITY.clone());
         }
 
         HammerSlide {
@@ -36,22 +36,21 @@ impl<A: Aggregator> HammerSlide<A> {
             m_istack_ptr: -1,
             m_ostack_size: 0,
             m_ostack_ptr: -1,
-            m_istack_val: A::IDENTITY,
+            m_istack_val: A::IDENTITY.clone(),
             m_queue: queue,
             m_ostack_val: stack,
         }
     }
 
     pub fn push(&mut self, val: A::PartialAggregate) {
-        let temp_value = if self.m_istack_size == 0 {
-            A::IDENTITY
+        let base = if self.m_istack_size == 0 {
+            A::IDENTITY.clone()
         } else {
-            self.m_istack_val
+            core::mem::take(&mut self.m_istack_val)
         };
 
-        self.m_istack_val = A::combine(val, temp_value);
-
-        self.m_queue.enqueue(val);
+        self.m_queue.enqueue(val.clone());
+        self.m_istack_val = A::combine(val, base);
 
         self.m_istack_ptr = self.m_queue.m_rear as isize;
 
@@ -77,14 +76,14 @@ impl<A: Aggregator> HammerSlide<A> {
 
         // If the swap didn't populate the output stack, return the identity value
         if self.m_ostack_size == 0 {
-            return A::IDENTITY;
+            return A::IDENTITY.clone();
         }
 
-        let temp1 = self.m_ostack_val[self.m_ostack_size - 1];
+        let temp1 = self.m_ostack_val[self.m_ostack_size - 1].clone();
         let temp2 = if self.m_istack_size == 0 {
-            A::IDENTITY
+            A::IDENTITY.clone()
         } else {
-            self.m_istack_val
+            self.m_istack_val.clone()
         };
 
         A::combine(temp1, temp2)
@@ -99,13 +98,13 @@ impl<A: Aggregator> HammerSlide<A> {
         let temp_rear = self.m_queue.m_rear;
         let queue_size = self.m_queue.m_size;
 
-        let mut temp_value = A::IDENTITY;
+        let mut temp_value = A::IDENTITY.clone();
 
         while output_index < limit {
-            let temp_tuple = self.m_queue.m_arr[input_index];
+            let temp_tuple = self.m_queue.m_arr[input_index].clone();
 
             temp_value = A::combine(temp_tuple, temp_value);
-            self.m_ostack_val[output_index] = temp_value;
+            self.m_ostack_val[output_index] = temp_value.clone();
 
             input_index = if input_index == 0 {
                 queue_size - 1

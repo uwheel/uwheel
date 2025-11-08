@@ -306,9 +306,9 @@ cfg_not_sync! {
     #[cfg(feature = "std")]
     use std::rc::Rc;
 
-    /// An immutably borrowed Haw from [`RefCell::borrow´]
+    /// An immutably borrowed Haw from [RefCell::borrow]
     pub type HawRef<'a, T> = core::cell::Ref<'a, Haw<T>>;
-    /// A mutably borrowed Haw from [`RefCell::borrow_mut´]
+    /// A mutably borrowed Haw from [RefCell::borrow_mut]
     pub type HawRefMut<'a, T> = core::cell::RefMut<'a, Haw<T>>;
 
     /// An inner read wheel impl for single-threaded executions

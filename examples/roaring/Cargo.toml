@@ -1,0 +1,7 @@
+[package]
+name = "roaring"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+uwheel = { workspace = true, features = ["roaring"] }

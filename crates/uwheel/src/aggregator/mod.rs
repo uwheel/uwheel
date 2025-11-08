@@ -26,6 +26,10 @@ pub mod sum;
 /// Top-N Aggregation using a nested Aggregator which has a PartialAggregate that implements `Ord`
 pub mod top_n;
 
+/// Roaring bitmap-based aggregators for u32 and u64 values.
+#[cfg(feature = "roaring")]
+pub mod roaring;
+
 /// Type alias for a Combine Simd function
 pub type CombineSimdFn<P> = fn(&[P]) -> P;
 /// Type alias for an Inverse Combine function.
@@ -123,7 +127,12 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     fn combine_slice(slice: &[Self::PartialAggregate]) -> Option<Self::PartialAggregate> {
         match Self::combine_simd() {
             Some(combine_simd) => Some(combine_simd(slice)),
-            None => Some(slice.iter().copied().fold(Self::IDENTITY, Self::combine)),
+            None => Some(
+                slice
+                    .iter()
+                    .cloned()
+                    .fold(Self::IDENTITY.clone(), Self::combine),
+            ),
         }
     }
 
@@ -136,7 +145,9 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     fn merge(s1: &mut [Self::PartialAggregate], s2: &[Self::PartialAggregate]) {
         // NOTE: merges at most s2.len() aggregates
         for (self_slot, other_slot) in s1.iter_mut().zip(s2.iter()).take(s2.len()) {
-            *self_slot = Self::combine(*self_slot, *other_slot);
+            let left = core::mem::take(self_slot);
+            let combined = Self::combine(left, other_slot.clone());
+            *self_slot = combined;
         }
     }
 
@@ -146,11 +157,13 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
     #[doc(hidden)]
     #[inline]
     fn build_prefix(slice: &[Self::PartialAggregate]) -> Vec<Self::PartialAggregate> {
+        let mut acc = Self::IDENTITY.clone();
         slice
             .iter()
-            .scan(Self::IDENTITY, |pa, &i| {
-                *pa = Self::combine(*pa, i);
-                Some(*pa)
+            .map(|item| {
+                let combined = Self::combine(acc.clone(), item.clone());
+                acc = combined.clone();
+                combined
             })
             .collect::<Vec<_>>()
     }
@@ -166,10 +179,12 @@ pub trait Aggregator: Default + Debug + Clone + 'static {
         end: usize,
     ) -> Option<Self::PartialAggregate> {
         Self::combine_inverse().map(|inverse| {
+            let end_value = slice[end].clone();
             if start == 0 {
-                slice[end]
+                end_value
             } else {
-                inverse(slice[end], slice[start - 1])
+                let start_value = slice[start - 1].clone();
+                inverse(end_value, start_value)
             }
         })
     }
@@ -273,21 +288,21 @@ impl<T> MutablePartialAggregateType for T where
 
 /// Trait bounds for a partial aggregate type
 #[cfg(not(feature = "serde"))]
-pub trait PartialAggregateBounds: Default + Debug + Clone + Copy + Send {}
+pub trait PartialAggregateBounds: Default + Debug + Clone + Send {}
 
 /// Trait bounds for a partial aggregate type
 #[cfg(feature = "serde")]
 pub trait PartialAggregateBounds:
-    Default + Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
+    Default + Debug + Clone + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
 {
 }
 
 #[cfg(not(feature = "serde"))]
-impl<T> PartialAggregateBounds for T where T: Default + Debug + Clone + Copy + Send {}
+impl<T> PartialAggregateBounds for T where T: Default + Debug + Clone + Send {}
 
 #[cfg(feature = "serde")]
 impl<T> PartialAggregateBounds for T where
-    T: Default + Debug + Clone + Copy + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
+    T: Default + Debug + Clone + Send + serde::Serialize + for<'a> serde::Deserialize<'a>
 {
 }
 

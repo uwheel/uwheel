@@ -21,7 +21,7 @@ impl<'a, A: Aggregator> Iter<'a, A> {
     pub fn combinez(self) -> Option<A::PartialAggregate> {
         let mut res: Option<A::PartialAggregate> = None;
         for partial in self.flatten() {
-            combine_or_insert::<A>(&mut res, *partial);
+            combine_or_insert::<A>(&mut res, partial.clone());
         }
         res
     }
@@ -35,7 +35,7 @@ impl<'a, A: Aggregator> Iter<'a, A> {
                 // count combine operation only if current res has some value
                 ops += 1;
             }
-            combine_or_insert::<A>(&mut res, *partial);
+            combine_or_insert::<A>(&mut res, partial.clone());
         }
         (res, ops)
     }
