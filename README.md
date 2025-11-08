@@ -81,6 +81,8 @@ See a user-defined aggregator example [here](examples/aggregator/).
   - Enables Top-N aggregation
 - `roaring`
   - Enables roaring bitmap aggregators
+- `bloom`
+  - Enables bloom filter aggregator powered by `fastbloom`
 - `simd` (_requires `nightly`_)
   - Enables support to speed up aggregation functions with SIMD operations
 - `sync` (_implicitly enables `std`_)

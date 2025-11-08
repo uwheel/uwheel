@@ -16,7 +16,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["std", "all", "avg", "sum", "min", "max", "min_max"]
-std = ["serde?/std", "roaring?/std"]
+std = ["serde?/std", "roaring?/std", "fastbloom?/std"]
 all = []
 avg = []
 sum = []
@@ -33,10 +33,12 @@ serde = [
   "hashbrown?/serde",
   "uwheel-stats?/serde",
   "roaring?/serde",
+  "fastbloom?/serde",
 ]
 profiler = ["dep:uwheel-stats", "prettytable-rs", "std"]
 timer = []
 roaring = ["dep:roaring"]
+bloom = ["dep:fastbloom"]
 
 [dependencies]
 time = { workspace = true, default-features = false }
@@ -51,6 +53,7 @@ serde-big-array = { workspace = true, optional = true }
 prettytable-rs = { workspace = true, optional = true }
 smallvec = { workspace = true, optional = true }
 roaring = { workspace = true, optional = true }
+fastbloom = { workspace = true, optional = true }
 
 [dev-dependencies]
 time = { workspace = true, default-features = false, features = [
@@ -100,4 +103,8 @@ harness = false
 
 [[bench]]
 name = "roaring"
+harness = false
+
+[[bench]]
+name = "bloom"
 harness = false
