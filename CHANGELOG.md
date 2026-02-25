@@ -2,6 +2,17 @@
 
 This file contains all notable changes to µWheel.
 
+## 0.4.0 (2026-02-25)
+
+### Added
+
+* Bloom filter aggregator powered by `fastbloom` [#166](https://github.com/uwheel/uwheel/pull/166) by [@Max-Meldrum](https://github.com/Max-Meldrum)
+* Roaring Bitmap Aggregators [#164](https://github.com/uwheel/uwheel/pull/164) by [@Max-Meldrum](https://github.com/Max-Meldrum)
+
+### Breaking Changes
+
+* `PartialAggregateBounds` no longer requires `Copy`, only `Clone`. Aggregators with heap-allocated partial aggregates (e.g., Roaring Bitmaps, Bloom Filters) are now supported. Code relying on `PartialAggregate: Copy` (e.g., `.copied()`) must switch to `.cloned()` [#164](https://github.com/uwheel/uwheel/pull/164) by [@Max-Meldrum](https://github.com/Max-Meldrum)
+
 ## 0.3.0 (2025-04-14)
 
 ### Bug Fixes
